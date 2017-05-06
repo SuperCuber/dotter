@@ -46,15 +46,17 @@ def deploy_file(src_filename, dst_filename, variables):
     src_filename = src_filename.replace("~", os.path.expanduser("~"))
     dst_filename = dst_filename.replace("~", os.path.expanduser("~"))
     try:
-        with open(src_filename) as src:
+        with open(src_filename, "rb") as src:
             try:
                 os.makedirs(os.path.split(dst_filename)[0])
             except FileExistsError: pass
-            with open(dst_filename, "w") as dst:
+            mode = os.stat(src_filename).st_mode
+            with open(dst_filename, "wb") as dst:
                 content = src.read()
                 for var in variables:
-                    content = content.replace("{{ " + var + " }}", variables[var])
+                    content = content.replace(b"{{ " + var.encode() + b" }}", variables[var].encode())
                 dst.write(content)
+            os.chmod(dst_filename, mode)
     except FileNotFoundError:
         print("Warning: File", src_filename, "not found, skipping...")
     except IsADirectoryError:
