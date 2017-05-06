@@ -85,9 +85,9 @@ def deploy_file(src_filename, dst_filename, variables):
 def main():
     parser = argparse.ArgumentParser(prog="Dotfiler",
             description="A small dotfile manager and templater.")
-    parser.add_argument("-d", "--directory", default=".")
-    parser.add_argument("-c", "--config", default="dotter.yml")
-    parser.add_argument("-s", "--secrets", default="secrets.yml")
+    parser.add_argument("-d", "--directory", default=".", help="Do all operations relative to this directory. Default is .")
+    parser.add_argument("-c", "--config", default="dotter.yml", help="Config file for dotter. Default is dotter.yml")
+    parser.add_argument("-s", "--secrets", default="secrets.yml", help="Secrets file for dotter, doesn't have to exist. Default is secrets.yml")
 
     args = parser.parse_args()
     exit_code = deploy(args)
