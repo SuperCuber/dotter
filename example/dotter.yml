@@ -1,0 +1,7 @@
+files:
+    file1: 'some/directory/file1'
+    file2: 'another/directory/file2'
+
+variables:
+    name: amit
+    nick: SuperCuber

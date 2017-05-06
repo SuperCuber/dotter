@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import argparse
+import os
+import sys
+import yaml
+
+# Taken from http://stackoverflow.com/a/26379693
+def set_default_subparser(self, name, args=None):
+    subparser_found = False
+    for arg in sys.argv[1:]:
+        if arg in ['-h', '--help']:  # global help if no subparser
+            break
+    else:
+        for x in self._subparsers._actions:
+            if not isinstance(x, argparse._SubParsersAction):
+                continue
+            for sp_name in x._name_parser_map.keys():
+                if sp_name in sys.argv[1:]:
+                    subparser_found = True
+        if not subparser_found:
+            # insert default in first position, this implies no
+            # global options without a sub_parsers specified
+            if args is None:
+                sys.argv.insert(1, name)
+            else:
+                args.insert(0, name)
+argparse.ArgumentParser.set_default_subparser = set_default_subparser
+
+
+def deploy(args):
+    os.chdir(args.directory)
+
+    # Load configuration
+    try:
+        with open(args.config) as conf:
+            configuration = yaml.safe_load(conf)
+    except FileNotFoundError:
+        print("No such file", args.config)
+        return 1
+
+    # Load secrets
+    try:
+        with open(args.secrets) as sec:
+            secrets = yaml.safe_load(sec)
+    except FileNotFoundError:
+        secrets = dict()
+
+    # Get files
+    if "files" in configuration:
+        files = configuration["files"]
+    else:
+        files = dict()
+        print("Warning: no files in configuration.")
+
+    # Get variables and update them with secrets
+    if "variables" in configuration:
+        variables = configuration["variables"]
+    else:
+        variables = dict()
+    variables.update(secrets)
+
+    for filename in files:
+        deploy_file(filename, files[filename], variables)
+
+
+def deploy_file(src_filename, dst_filename, variables):
+    src_filename = src_filename.replace("~", os.path.expanduser("~"))
+    dst_filename = dst_filename.replace("~", os.path.expanduser("~"))
+    try:
+        with open(src_filename) as src:
+            try:
+                os.makedirs(os.path.split(dst_filename)[0])
+            except FileExistsError: pass
+            with open(dst_filename, "w") as dst:
+                content = src.read()
+                for var in variables:
+                    content = content.replace("{{ " + var + " }}", variables[var])
+                dst.write(content)
+    except FileNotFoundError:  # No such file
+        print("Warning: File", src_filename, "not found, skipping...")
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="Dotfiler",
+            description="A small dotfile manager and templater.")
+    parser.add_argument("-d", "--directory", default=".")
+    parser.add_argument("-c", "--config", default="dotter.yml")
+    parser.add_argument("-s", "--secrets", default="secrets.yml")
+
+    args = parser.parse_args()
+    exit_code = deploy(args)
+    if exit_code: exit(exit_code)
+
+if __name__ == "__main__":
+    main()
+
+# vim:nolist:
