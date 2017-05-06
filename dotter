@@ -55,8 +55,14 @@ def deploy_file(src_filename, dst_filename, variables):
                 for var in variables:
                     content = content.replace("{{ " + var + " }}", variables[var])
                 dst.write(content)
-    except FileNotFoundError:  # No such file
+    except FileNotFoundError:
         print("Warning: File", src_filename, "not found, skipping...")
+    except IsADirectoryError:
+        try:
+            os.makedirs(dst_filename)
+        except FileExistsError: pass
+        for file in os.listdir(src_filename):
+            deploy_file(os.path.join(src_filename, file), os.path.join(dst_filename, file), variables)
 
 
 def main():

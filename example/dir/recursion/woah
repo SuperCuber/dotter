@@ -1,0 +1,1 @@
+Woah, recursive! Templating works here too, here, my name is {{ name }}!
