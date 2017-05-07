@@ -39,12 +39,15 @@ def deploy(args):
     variables.update(secrets)
 
     for filename in files:
-        deploy_file(filename, files[filename], variables)
+        deploy_file(filename, files[filename], variables,
+                args.verbose, args.dry_run)
 
 
-def deploy_file(src_filename, dst_filename, variables):
+def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
     src_filename = src_filename.replace("~", os.path.expanduser("~"))
     dst_filename = dst_filename.replace("~", os.path.expanduser("~"))
+    if verbose: print("Copying", src_filename, "to", dst_filename)
+    if dry_run: return
     try:
         with open(src_filename, "rb") as src:
             try:
@@ -61,17 +64,42 @@ def deploy_file(src_filename, dst_filename, variables):
     except FileNotFoundError:
         print("Warning: File", src_filename, "not found, skipping...")
     except IsADirectoryError:
+        if verbose: print("Recursing into", src_filename)
         try:
             os.makedirs(dst_filename)
         except FileExistsError: pass
         for file in os.listdir(src_filename):
             deploy_file(os.path.join(src_filename, file),
-                    os.path.join(dst_filename, file), variables)
+                    os.path.join(dst_filename, file),
+                    variables, verbose, dry_run)
+
+
+def add(args):
+    try:
+        with open(args.config) as conf:
+            config = yaml.safe_load(conf)
+    except FileNotFoundError:
+        print("No file, " + args.config + ", will create.")
+        config = dict()
+
+    if "files" not in config:
+        config["files"] = dict()
+
+    # Insert
+    config["files"][src] = dst
+
+    try:
+        with open(args.config, "w") as conf:
+            yaml.safe_dump(config, conf)
+    except:
+        print("Error writing configuration to", args.config)
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="Dotfiler",
+    parser = argparse.ArgumentParser(
             description="A small dotfile manager and templater.")
+    subparsers = parser.add_subparsers()
+
     parser.add_argument("-d", "--directory", default=".",
             help="Do all operations relative to this directory. Default is .")
     parser.add_argument("-c", "--config", default="dotter.yml",
@@ -79,9 +107,33 @@ def main():
     parser.add_argument("-s", "--secrets", default="secrets.yml",
             help="Secrets file for dotter, doesn't have to exist." +
             "Default is secrets.yml")
+    parser.add_argument("-v", "--verbose", action='store_true',
+            help="Print information about what's being done.")
+    parser.add_argument("--dry-run", action='store_true',
+            help="Dry run - don't do anything, only print information.")
+
+    deploy_parser = subparsers.add_parser('deploy',
+            help="deploy -h",
+            description="Copy all files to their configured locations.")
+    deploy_parser.set_defaults(func=deploy)
+
+    add_parser = subparsers.add_parser('add',
+            help="add -h",
+            description="Add a file to the configuration.")
+    add_parser.add_argument("src")
+    add_parser.add_argument("dst")
+    add_parser.set_defaults(func=add)
 
     args = parser.parse_args()
-    exit_code = deploy(args)
+
+    if 'func' not in args:
+        parser.print_help()
+        return
+
+    if 'dry_run' in args:
+        args.verbose = True
+
+    exit_code = args.func(args)
     if exit_code: exit(exit_code)
 
 if __name__ == "__main__":
