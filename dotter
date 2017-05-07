@@ -75,6 +75,7 @@ def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
 
 
 def add(args):
+    os.chdir(args.directory)
     try:
         with open(args.config) as conf:
             config = yaml.safe_load(conf)
@@ -86,7 +87,7 @@ def add(args):
         config["files"] = dict()
 
     # Insert
-    config["files"][src] = dst
+    config["files"][args.src] = args.dst
 
     try:
         with open(args.config, "w") as conf:
