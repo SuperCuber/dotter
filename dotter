@@ -54,7 +54,8 @@ def deploy_file(src_filename, dst_filename, variables):
             with open(dst_filename, "wb") as dst:
                 content = src.read()
                 for var in variables:
-                    content = content.replace(b"{{ " + var.encode() + b" }}", variables[var].encode())
+                    content = content.replace(b"{{ " + var.encode() + b" }}",
+                            variables[var].encode())
                 dst.write(content)
             os.chmod(dst_filename, mode)
     except FileNotFoundError:
@@ -64,15 +65,20 @@ def deploy_file(src_filename, dst_filename, variables):
             os.makedirs(dst_filename)
         except FileExistsError: pass
         for file in os.listdir(src_filename):
-            deploy_file(os.path.join(src_filename, file), os.path.join(dst_filename, file), variables)
+            deploy_file(os.path.join(src_filename, file),
+                    os.path.join(dst_filename, file), variables)
 
 
 def main():
     parser = argparse.ArgumentParser(prog="Dotfiler",
             description="A small dotfile manager and templater.")
-    parser.add_argument("-d", "--directory", default=".", help="Do all operations relative to this directory. Default is .")
-    parser.add_argument("-c", "--config", default="dotter.yml", help="Config file for dotter. Default is dotter.yml")
-    parser.add_argument("-s", "--secrets", default="secrets.yml", help="Secrets file for dotter, doesn't have to exist. Default is secrets.yml")
+    parser.add_argument("-d", "--directory", default=".",
+            help="Do all operations relative to this directory. Default is .")
+    parser.add_argument("-c", "--config", default="dotter.yml",
+            help="Config file for dotter. Default is dotter.yml")
+    parser.add_argument("-s", "--secrets", default="secrets.yml",
+            help="Secrets file for dotter, doesn't have to exist." +
+            "Default is secrets.yml")
 
     args = parser.parse_args()
     exit_code = deploy(args)
