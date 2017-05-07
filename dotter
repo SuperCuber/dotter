@@ -74,20 +74,35 @@ def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
                     variables, verbose, dry_run)
 
 
-def add(args):
+def add_or_remove(args):
     os.chdir(args.directory)
     try:
         with open(args.config) as conf:
             config = yaml.safe_load(conf)
     except FileNotFoundError:
-        print("No file, " + args.config + ", will create.")
+        print("No file " + args.config + ", will create.")
         config = dict()
 
     if "files" not in config:
         config["files"] = dict()
 
-    # Insert
-    config["files"][args.src] = args.dst
+    if 'dst' in args:
+        # Insert
+        if args.verbose:
+            print("Inserting value into configuration, before:")
+            print(config["files"])
+        if not args.dry_run: config["files"][args.src] = args.dst
+        if args.verbose:
+            print("After:")
+            print(config["files"])
+    else:
+        if args.verbose:
+            print("Removing value from configuration, before:")
+            print(config["files"])
+        if not args.dry_run: del config["files"][args.src]
+        if args.verbose:
+            print("After:")
+            print(config["files"])
 
     try:
         with open(args.config, "w") as conf:
@@ -121,9 +136,18 @@ def main():
     add_parser = subparsers.add_parser('add',
             help="add -h",
             description="Add a file to the configuration.")
-    add_parser.add_argument("src")
-    add_parser.add_argument("dst")
-    add_parser.set_defaults(func=add)
+    add_parser.add_argument("src",
+            help="Source file")
+    add_parser.add_argument("dst",
+            help="Destination location")
+    add_parser.set_defaults(func=add_or_remove)
+
+    add_parser = subparsers.add_parser('remove',
+            help="remove -h",
+            description="Remove a file from the configuration.")
+    add_parser.add_argument("src",
+            help="Source file to be removed")
+    add_parser.set_defaults(func=add_or_remove)
 
     args = parser.parse_args()
 
