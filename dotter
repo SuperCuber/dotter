@@ -91,7 +91,7 @@ def add(args):
 
     try:
         with open(args.config, "w") as conf:
-            yaml.safe_dump(config, conf)
+            yaml.safe_dump(config, conf, allow_unicode=True, default_flow_style=False)
     except:
         print("Error writing configuration to", args.config)
 

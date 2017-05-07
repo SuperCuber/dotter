@@ -1,8 +1,7 @@
 files:
-    file1: 'product/some/directory/file1'
-    file2: 'product/another/directory/file2'
-    dir  : 'product/whole/dir'
-
+  dir: product/whole/dir
+  file1: product/some/directory/file1
+  file2: product/another/directory/file2
 variables:
-    name: amit
-    nick: SuperCuber
+  name: amit
+  nick: SuperCuber
