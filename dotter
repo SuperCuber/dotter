@@ -155,7 +155,7 @@ def main():
         parser.print_help()
         return
 
-    if 'dry_run' in args:
+    if args.dry_run:
         args.verbose = True
 
     exit_code = args.func(args)
