@@ -142,11 +142,12 @@ def main():
     add_parser = subparsers.add_parser('add',
             help="add -h",
             description="Add a file to the configuration.")
-    add_parser.add_argument(
+    add_parser.add_argument("-v", "--var", action='store_true',
+            help="Operate on variables instead of files.")
     add_parser.add_argument("src",
-            help="Source file")
+            help="Source file/variable")
     add_parser.add_argument("dst",
-            help="Destination location")
+            help="Destination location/value")
     add_parser.set_defaults(func=add_or_remove)
 
     add_parser = subparsers.add_parser('remove',
