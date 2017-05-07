@@ -14,7 +14,7 @@ def deploy(args):
         with open(args.config) as conf:
             configuration = yaml.safe_load(conf)
     except FileNotFoundError:
-        print("No such file", args.config)
+        print("Error: No such file", args.config)
         return 1
 
     # Load secrets
@@ -75,6 +75,8 @@ def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
 
 
 def add_or_remove(args):
+    field = "files" if not args.var else "variables"
+
     os.chdir(args.directory)
     try:
         with open(args.config) as conf:
@@ -83,30 +85,30 @@ def add_or_remove(args):
         print("No file " + args.config + ", will create.")
         config = dict()
 
-    if "files" not in config:
-        config["files"] = dict()
+    if field not in config:
+        config[field] = dict()
 
     if 'dst' in args:
         # Insert
         if args.verbose:
             print("Inserting value into configuration, before:")
-            print(config["files"])
-        if not args.dry_run: config["files"][args.src] = args.dst
+            print(config[field])
+        if not args.dry_run: config[field][args.src] = args.dst
         if args.verbose:
             print("After:")
-            print(config["files"])
+            print(config[field])
     else:
         if args.verbose:
             print("Removing value from configuration, before:")
-            print(config["files"])
+            print(config[field])
         if not args.dry_run :
-            if args.src in config["files"]:
-                del config["files"][args.src]
+            if args.src in config[field]:
+                del config[field][args.src]
             else:
-                print("Warning: No file", args.src, "in configuration.")
+                print("Warning: No value", args.src, "in configuration.")
         if args.verbose:
             print("After:")
-            print(config["files"])
+            print(config[field])
 
     try:
         with open(args.config, "w") as conf:
@@ -140,6 +142,7 @@ def main():
     add_parser = subparsers.add_parser('add',
             help="add -h",
             description="Add a file to the configuration.")
+    add_parser.add_argument(
     add_parser.add_argument("src",
             help="Source file")
     add_parser.add_argument("dst",
