@@ -77,21 +77,35 @@ def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
 def configure(args):
     os.chdir(args.directory)
     if args.file:
-        with open(args.config) as conf:
-            configuration = yaml.safe_load(conf)
-            if "files" not in configuration:
-                configuration["files"] = dict()
-            config = configuration["files"]
+        try:
+            with open(args.config) as conf:
+                configuration = yaml.safe_load(conf)
+                if "files" not in configuration:
+                    configuration["files"] = dict()
+                config = configuration["files"]
+        except FileNotFoundError:
+            print("Warning: File", args.config, "not found, will create...")
+            config = {}
+            configuration = {"files": config}
     elif args.variable:
-        with open(args.config) as conf:
-            configuration = yaml.safe_load(conf)
-            if "variables" not in configuration:
-                configuration["variables"] = dict()
-            config = configuration["variables"]
+        try:
+            with open(args.config) as conf:
+                configuration = yaml.safe_load(conf)
+                if "variables" not in configuration:
+                    configuration["variables"] = dict()
+                config = configuration["variables"]
+        except FileNotFoundError:
+            print("Warning: File", args.config, "not found, will create...")
+            config = {}
+            configuration = {"variables": config}
     elif args.secret:
-        with open(args.secrets) as sec:
-            configuration = yaml.safe_load(sec)
-            config = configuration
+        try:
+            with open(args.secrets) as sec:
+                configuration = yaml.safe_load(sec)
+                config = configuration
+        except FileNotFoundError:
+            print("Warning: File", args.secret, "not found, will create...")
+            configuration = config = {}
 
     if args.add:
         if args.verbose:
