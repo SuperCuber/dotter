@@ -99,7 +99,11 @@ def add_or_remove(args):
         if args.verbose:
             print("Removing value from configuration, before:")
             print(config["files"])
-        if not args.dry_run: del config["files"][args.src]
+        if not args.dry_run :
+            if args.src in config["files"]:
+                del config["files"][args.src]
+            else:
+                print("Warning: No file", args.src, "in configuration.")
         if args.verbose:
             print("After:")
             print(config["files"])
