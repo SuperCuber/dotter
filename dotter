@@ -74,48 +74,48 @@ def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
                     variables, verbose, dry_run)
 
 
-def add_or_remove(args):
-    field = "files" if not args.var else "variables"
-
+def configure(args):
     os.chdir(args.directory)
-    try:
+    if args.file:
         with open(args.config) as conf:
-            config = yaml.safe_load(conf)
-    except FileNotFoundError:
-        print("No file " + args.config + ", will create.")
-        config = dict()
+            configuration = yaml.safe_load(conf)
+            if "files" not in configuration:
+                configuration["files"] = dict()
+            config = configuration["files"]
+    elif args.variable:
+        with open(args.config) as conf:
+            configuration = yaml.safe_load(conf)
+            if "variables" not in configuration:
+                configuration["variables"] = dict()
+            config = configuration["variables"]
+    elif args.secret:
+        with open(args.secrets) as sec:
+            configuration = yaml.safe_load(sec)
+            config = configuration
 
-    if field not in config:
-        config[field] = dict()
-
-    if 'dst' in args:
-        # Insert
+    if args.add:
         if args.verbose:
             print("Inserting value into configuration, before:")
-            print(config[field])
-        if not args.dry_run: config[field][args.src] = args.dst
+            print(config)
+        if not args.dry_run: config[args.add[0]] = args.add[1]
         if args.verbose:
             print("After:")
-            print(config[field])
-    else:
+            print(config)
+    elif args.remove:
         if args.verbose:
             print("Removing value from configuration, before:")
-            print(config[field])
-        if not args.dry_run :
-            if args.src in config[field]:
-                del config[field][args.src]
+            print(config)
+        if not args.dry_run:
+            if args.remove[0] in config:
+                del config[args.remove[0]]
             else:
                 print("Warning: No value", args.src, "in configuration.")
-        if args.verbose:
-            print("After:")
-            print(config[field])
+    elif args.display:
+        print(yaml.safe_dump(config, default_flow_style=False)[:-1])
 
-    try:
-        with open(args.config, "w") as conf:
-            yaml.safe_dump(config, conf, allow_unicode=True, default_flow_style=False)
-    except:
-        print("Error writing configuration to", args.config)
-
+    filename = args.config if args.file or args.variable else args.secrets
+    with open(filename, "w") as conf:
+        yaml.safe_dump(configuration, conf, default_flow_style=False)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -129,37 +129,39 @@ def main():
     parser.add_argument("-s", "--secrets", default="secrets.yml",
             help="Secrets file for dotter, doesn't have to exist." +
             "Default is secrets.yml")
-    parser.add_argument("-v", "--verbose", action='store_true',
+    parser.add_argument("-v", "--verbose", action="store_true",
             help="Print information about what's being done.")
-    parser.add_argument("--dry-run", action='store_true',
+    parser.add_argument("--dry-run", action="store_true",
             help="Dry run - don't do anything, only print information.")
 
-    deploy_parser = subparsers.add_parser('deploy',
+    deploy_parser = subparsers.add_parser("deploy",
             help="deploy -h",
             description="Copy all files to their configured locations.")
     deploy_parser.set_defaults(func=deploy)
 
-    add_parser = subparsers.add_parser('add',
-            help="add -h",
-            description="Add a file to the configuration.")
-    add_parser.add_argument("-v", "--var", action='store_true',
-            help="Operate on variables instead of files.")
-    add_parser.add_argument("src",
-            help="Source file/variable")
-    add_parser.add_argument("dst",
-            help="Destination location/value")
-    add_parser.set_defaults(func=add_or_remove)
-
-    add_parser = subparsers.add_parser('remove',
-            help="remove -h",
-            description="Remove a file from the configuration.")
-    add_parser.add_argument("src",
-            help="Source file to be removed")
-    add_parser.set_defaults(func=add_or_remove)
+    config_parser: argparse.ArgumentParser = subparsers.add_parser("config",
+            help="config -h",
+            description="Configure files/variables")
+    target = config_parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("-f", "--file", action="store_true",
+            help="Operate on files")
+    target.add_argument("-v", "--variable", action="store_true",
+            help="Operate on variables")
+    target.add_argument("-s", "--secret", action="store_true",
+            help="Operate on secrets")
+    action = config_parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("-a", "--add", nargs=2,
+            help="In case of file, add file -> target entry, " +
+            "in case of variable/secret, add key -> value entry.")
+    action.add_argument("-r", "--remove", nargs=1,
+            help="Remove a file or variable from configuration.")
+    action.add_argument("-d", "--display", action="store_true",
+            help="Display the configuration.")
+    action.set_defaults(func=configure)
 
     args = parser.parse_args()
 
-    if 'func' not in args:
+    if "func" not in args:
         parser.print_help()
         return
 
@@ -171,5 +173,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# vim:nolist:
