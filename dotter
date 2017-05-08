@@ -127,7 +127,7 @@ def configure(args):
     elif args.display:
         print(yaml.safe_dump(config, default_flow_style=False)[:-1])
 
-    filename = args.config if args.file or args.variable else args.secrets
+    filename = args.config if (args.file or args.variable) else args.secrets
     with open(filename, "w") as conf:
         yaml.safe_dump(configuration, conf, default_flow_style=False)
 
@@ -146,7 +146,8 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true",
             help="Print information about what's being done.")
     parser.add_argument("--dry-run", action="store_true",
-            help="Dry run - don't do anything, only print information.")
+            help="Dry run - don't do anything, only print information. " +
+            "Implies --verbose.")
 
     deploy_parser = subparsers.add_parser("deploy",
             help="deploy -h",
