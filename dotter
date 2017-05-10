@@ -4,7 +4,11 @@
 import argparse
 import os
 import sys
-import yaml
+try:
+    import yaml
+except ImportError:
+    print("You need to install PyYAML using pip.")
+    exit(1)
 
 def deploy(args):
     os.chdir(args.directory)
@@ -154,7 +158,7 @@ def main():
             description="Copy all files to their configured locations.")
     deploy_parser.set_defaults(func=deploy)
 
-    config_parser: argparse.ArgumentParser = subparsers.add_parser("config",
+    config_parser = subparsers.add_parser("config",
             help="config -h",
             description="Configure files/variables")
     target = config_parser.add_mutually_exclusive_group(required=True)
