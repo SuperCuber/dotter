@@ -4,6 +4,7 @@
 import argparse
 import os
 import sys
+import shutil
 try:
     import yaml
 except ImportError:
@@ -42,17 +43,39 @@ def deploy(args):
         variables = dict()
     variables.update(secrets)
 
+    if not args.nocache:
+        try:
+            os.makedirs(args.cache_directory)
+        except FileExistsError: pass
+
     for filename in files:
-        deploy_file(filename, files[filename], variables,
-                args.verbose, args.dry_run)
+        deploy_file(filename, files[filename],
+                variables, args.verbose, args.dry_run,
+                not args.nocache, args.cache_directory)
 
 
-def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
+def deploy_file(src_filename, dst_filename, variables,
+        verbose, dry_run, cache, cache_directory):
     src_filename = src_filename.replace("~", os.path.expanduser("~"))
     dst_filename = dst_filename.replace("~", os.path.expanduser("~"))
-    if verbose: print("Copying", src_filename, "to", dst_filename)
+    if verbose and not cache:
+            print("Copying", src_filename, "to", dst_filename)
     if dry_run: return
     try:
+        if cache:
+            dst_filename_for_cache = dst_filename[1:] if \
+                    dst_filename.startswith("/") else dst_filename
+            cached_filename = os.path.join(cache_directory,
+                    dst_filename_for_cache)
+            deploy_file(src_filename, cached_filename,
+                    variables, verbose, dry_run,
+                    False, None)
+            if verbose: print("Copying", cached_filename, "to", dst_filename)
+            try:
+                os.makedirs(os.path.split(dst_filename)[0])
+            except FileExistsError: pass
+            shutil.copy2(cached_filename, dst_filename)
+            return
         with open(src_filename, "rb") as src:
             try:
                 os.makedirs(os.path.split(dst_filename)[0])
@@ -75,7 +98,8 @@ def deploy_file(src_filename, dst_filename, variables, verbose, dry_run):
         for file in os.listdir(src_filename):
             deploy_file(os.path.join(src_filename, file),
                     os.path.join(dst_filename, file),
-                    variables, verbose, dry_run)
+                    variables, verbose, dry_run,
+                    cache, cache_directory)
 
 
 def configure(args):
@@ -156,6 +180,12 @@ def main():
     deploy_parser = subparsers.add_parser("deploy",
             help="deploy -h",
             description="Copy all files to their configured locations.")
+    deploy_parser.add_argument("-c", "--nocache", action="store_true",
+            help="Create a directory with templated files,"
+            + " then copy from there.")
+    deploy_parser.add_argument("-d", "--cache-directory",
+            default="dotter_cache",
+            help="Directory to cache in. Default is dotter_cache")
     deploy_parser.set_defaults(func=deploy)
 
     config_parser = subparsers.add_parser("config",
