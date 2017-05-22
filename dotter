@@ -132,7 +132,7 @@ def configure(args):
                 configuration = yaml.safe_load(sec)
                 config = configuration
         except FileNotFoundError:
-            print("Warning: File", args.secret, "not found, will create...")
+            print("Warning: File", args.secrets, "not found, will create...")
             configuration = config = {}
 
     if args.add:
@@ -206,7 +206,7 @@ def main():
             help="Remove a file or variable from configuration.")
     action.add_argument("-d", "--display", action="store_true",
             help="Display the configuration.")
-    action.set_defaults(func=configure)
+    config_parser.set_defaults(func=configure)
 
     args = parser.parse_args()
 
