@@ -2,7 +2,12 @@
 extern crate clap;
 
 fn main() {
-    let args = clap::App::new("Dotter")
+    let args = get_args();
+    println!("{:?}", args);
+}
+
+fn get_args() -> clap::ArgMatches<'static> {
+    clap::App::new("Dotter")
         .version("1.0.0")
         .author(crate_authors!())
         .about("A small dotfile manager.")
@@ -86,7 +91,5 @@ fn main() {
                     .group(clap::ArgGroup::with_name("action")
                            .required(true)
                            .args(&["add", "remove", "display"])))
-        .get_matches();
-
-    println!("{:?}", args);
+        .get_matches()
 }
