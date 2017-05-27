@@ -5,4 +5,6 @@ authors = ["SuperCuber <amit.gold00@gmail.com>"]
 
 [dependencies]
 clap = "*"
-yaml-rust = "*"
+toml = "*"
+serde = "*"
+serde_derive = "*"

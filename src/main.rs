@@ -1,19 +1,19 @@
 #[macro_use] extern crate clap;
-extern crate yaml_rust;
+extern crate toml;
+extern crate serde;
+#[macro_use] extern crate serde_derive;
 
-mod parse;
+mod args;
 #[macro_use] mod macros;
+mod parse;
 
 use std::env;
-use std::fs::File;
-use std::io::Read;
 use std::process;
-
-use yaml_rust::{Yaml, YamlLoader};
 
 fn main() {
     // Parse arguments
-    let matches = parse::get_args();
+    let matches = args::get_args();
+
     // Do the "implies" relation between verbose and dry_run
     let act = matches.occurrences_of("dry_run") == 0;
     let verbosity = matches.occurrences_of("verbose");
@@ -44,32 +44,32 @@ fn main() {
     }
 }
 
-fn load_file(filename: &str) -> Yaml {
-    if let Ok(mut file) = File::open(filename) {
-        let mut buf = String::new();
-        if file.read_to_string(&mut buf).is_err() {
-            println!("Failed to read from file {}", filename);
-            process::exit(1);
-        }
-        match YamlLoader::load_from_str(&buf) {
-            Ok(mut yaml) => {yaml.swap_remove(0)}
-            Err(_) => {
-                println!("Failed to parse file {}", filename);
-                process::exit(1);
-            }
-        }
-    } else {
-        // No file
-        Yaml::Null
-    }
-}
-
 fn deploy(matches: &clap::ArgMatches<'static>,
           verbosity: u64, act: bool) {
     verb!(verbosity, 3, "Deploy args: {:?}", matches);
-    let filename = matches.value_of("config").unwrap();
-    let configuration = load_file(filename);
-    verb!(verbosity, 2, "configuration: {:?}", configuration);
+
+    // Load configuration
+    let configuration: parse::Config = parse::load_file(
+            matches.value_of("config")
+            .unwrap()).unwrap();
+    verb!(verbosity, 2, "Configuration: {}", configuration);
+
+    // Load secrets
+    // let secrets: parse::Secrets = parse::load_file(
+    //         matches.value_of("secrets")
+    //         .unwrap());
+    // verb!(verbosity, 2, "Secrets: {:?}", secrets);
+
+    // Get files
+    // let mut files: &Yaml;
+    // let files_opt = &configuration["files"];
+    // if files_opt.is_badvalue() {
+    //     files = &Yaml::Hash(BTreeMap::new());
+    // } else {
+    //     files = files_opt;
+    // }
+
+    // println!("{:?}", files);
 }
 
 fn config(matches: &clap::ArgMatches<'static>,
