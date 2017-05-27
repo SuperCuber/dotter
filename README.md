@@ -1,4 +1,8 @@
 # Dotter
+
+# NOTE: THIS RBANCH IS WIP.
+# Master will soon be replaces by it (once this is ready)
+
 This is a small dotfile manager and templater.
 
 Find out help with `./dotter -h`.
