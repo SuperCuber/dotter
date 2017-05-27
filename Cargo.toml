@@ -5,3 +5,4 @@ authors = ["SuperCuber <amit.gold00@gmail.com>"]
 
 [dependencies]
 clap = "*"
+yaml-rust = "*"
