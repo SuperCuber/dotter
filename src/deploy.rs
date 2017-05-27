@@ -31,10 +31,16 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     // Deploy files
     for pair in files {
         println!("deploying {} -> {}", pair.0, pair.1);
-        deploy_file(&pair.0, pair.1.as_str().unwrap(),
-                    &variables, verbosity, act,
-                    cache, cache_directory)
+        let from = parse_path(&pair.0);
+        let to = parse_path(pair.1.as_str().unwrap());
+        deploy_file(from, to, &variables, verbosity,
+                    act, cache, cache_directory)
     }
+}
+
+fn parse_path(path: &str) -> &str {
+    // TODO: implement this <27-05-17, Amit Gold> //
+    path
 }
 
 fn deploy_file(from: &str, to: &str, variables: &Table,
