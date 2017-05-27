@@ -18,14 +18,14 @@ pub fn load_file<T>(filename: &str) -> Result<T, String>
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub dotfiles: Option<toml::value::Table>,
+    pub files: Option<toml::value::Table>,
     pub variables: Option<toml::value::Table>,
 }
 
 impl ::std::fmt::Display for Config {
     fn fmt(&self, formatter: &mut ::std::fmt::Formatter)
         -> ::std::result::Result<(), ::std::fmt::Error> {
-        formatter.write_str(&format!("Config [ dotfiles: {:?}, variables: {:?} ]",
-                                    self.dotfiles, self.variables))
+        formatter.write_str(&format!("Config [ files: {:?}, variables: {:?} ]",
+                                    self.files, self.variables))
     }
 }

@@ -55,21 +55,30 @@ fn deploy(matches: &clap::ArgMatches<'static>,
     verb!(verbosity, 2, "Configuration: {}", configuration);
 
     // Load secrets
-    // let secrets: parse::Secrets = parse::load_file(
-    //         matches.value_of("secrets")
-    //         .unwrap());
-    // verb!(verbosity, 2, "Secrets: {:?}", secrets);
+    let mut secrets: toml::value::Table = parse::load_file(
+            matches.value_of("secrets")
+            .unwrap()).unwrap();
+    verb!(verbosity, 2, "Secrets: {:?}", secrets);
 
     // Get files
-    // let mut files: &Yaml;
-    // let files_opt = &configuration["files"];
-    // if files_opt.is_badvalue() {
-    //     files = &Yaml::Hash(BTreeMap::new());
-    // } else {
-    //     files = files_opt;
-    // }
+    let files = match configuration.files {
+        Some(files) => { files }
+        None => {
+            println!("Warning: No files in configuration.");
+            toml::value::Table::new()
+        }
+    };
 
-    // println!("{:?}", files);
+    verb!(verbosity, 2, "Files: {:?}", files);
+
+    // Get variables and update with secrets
+    let mut variables = match configuration.variables {
+        Some(variables) => { variables }
+        None => { toml::value::Table::new() }
+    };
+    variables.append(&mut secrets); // Secrets is now empty
+
+    verb!(verbosity, 2, "Variables: {:?}", variables);
 }
 
 fn config(matches: &clap::ArgMatches<'static>,
