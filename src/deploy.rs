@@ -3,18 +3,51 @@ use parse;
 
 use toml::value::Table;
 
-pub fn deploy(matches: &clap::ArgMatches<'static>,
-          verbosity: u64, act: bool) {
-    let (files, variables) = load_configuration(matches, verbosity);
+use std::fs::create_dir_all;
+use std::process;
 
-    if matches.occurences_of("")
+pub fn deploy(global: &clap::ArgMatches<'static>,
+          specific: &clap::ArgMatches<'static>,
+          verbosity: u64, act: bool) {
+
+    // Configuration
+    verb!(verbosity, 1, "Loading configuration...");
+    let (files, variables) = load_configuration(global, verbosity);
+
+    // Cache
+    let cache = global.occurrences_of("nocache") == 0;
+    verb!(verbosity, 1, "Cache: {}", cache);
+    let cache_directory = specific.value_of("cache_directory").unwrap();
+    if cache {
+        verb!(verbosity, 1, "Creating cache directory at {}", cache_directory);
+        if act {
+            if create_dir_all(cache_directory).is_err() {
+                println!("Failed to create cache directory.");
+                process::exit(1);
+            }
+        }
+    }
+
+    // Deploy files
+    for pair in files {
+        println!("deploying {} -> {}", pair.0, pair.1);
+        deploy_file(&pair.0, pair.1.as_str().unwrap(),
+                    &variables, verbosity, act,
+                    cache, cache_directory)
+    }
 }
 
-pub fn load_configuration(matches: &clap::ArgMatches<'static>,
+fn deploy_file(from: &str, to: &str, variables: &Table,
+               verbosity: u64, act: bool, cache: bool,
+               cache_directory: &str) {
+
+}
+
+fn load_configuration(matches: &clap::ArgMatches<'static>,
               verbosity: u64) -> (Table, Table) {
     verb!(verbosity, 3, "Deploy args: {:?}", matches);
 
-    // Load configuration
+    // Load config
     let configuration: parse::Config = parse::load_file(
             matches.value_of("config")
             .unwrap()).unwrap();

@@ -21,10 +21,10 @@ fn main() {
     let verbosity = matches.occurrences_of("verbose");
     // If dry run, then at least one verbosity level.
     let verbosity = if act {
-            verbosity
-        } else {
-            std::cmp::max(1, verbosity)
-        };
+        verbosity
+    } else {
+        std::cmp::max(1, verbosity)
+    };
 
     // Change dir
     let dir = matches.value_of("directory").unwrap();
@@ -37,10 +37,10 @@ fn main() {
     verb!(verbosity, 3, "{:?}", matches);
 
     // Execute subcommand
-    if matches.subcommand_matches("deploy").is_some() {
-        deploy::deploy(&matches, verbosity, act);
-    } else if matches.subcommand_matches("config").is_some() {
-        config::config(&matches, verbosity, act);
+    if let Some(specific) = matches.subcommand_matches("deploy") {
+        deploy::deploy(&matches, specific, verbosity, act);
+    } else if let Some(specific) = matches.subcommand_matches("config") {
+        config::config(&matches, specific, verbosity, act);
     } else {
         unreachable!();
     }
