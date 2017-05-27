@@ -1,10 +1,10 @@
 #[macro_use] extern crate clap;
-extern crate toml;
-extern crate serde;
 #[macro_use] extern crate serde_derive;
+extern crate serde;
+extern crate toml;
 
-mod args;
 #[macro_use] mod macros;
+mod args;
 mod parse;
 
 use std::env;
@@ -52,19 +52,26 @@ fn deploy(matches: &clap::ArgMatches<'static>,
     let configuration: parse::Config = parse::load_file(
             matches.value_of("config")
             .unwrap()).unwrap();
-    verb!(verbosity, 2, "Configuration: {}", configuration);
+    verb!(verbosity, 2, "Configuration: {:?}", configuration);
 
     // Load secrets
-    let mut secrets: toml::value::Table = parse::load_file(
+    let secrets: parse::Secrets = parse::load_file(
             matches.value_of("secrets")
             .unwrap()).unwrap();
+    let mut secrets = match secrets.secrets {
+        Some(secrets) => {secrets}
+        None => {
+            println!("Warning: No secrets section in secrets file.");
+            toml::value::Table::new()
+        }
+    };
     verb!(verbosity, 2, "Secrets: {:?}", secrets);
 
     // Get files
     let files = match configuration.files {
         Some(files) => { files }
         None => {
-            println!("Warning: No files in configuration.");
+            println!("Warning: No files section in config file.");
             toml::value::Table::new()
         }
     };

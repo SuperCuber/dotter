@@ -1,8 +1,8 @@
-use std::io::Read;
 use std::fs::File;
+use std::io::Read;
 
-use toml;
 use serde::de::DeserializeOwned;
+use toml;
 
 pub fn load_file<T>(filename: &str) -> Result<T, String>
     where T: DeserializeOwned
@@ -11,21 +11,18 @@ pub fn load_file<T>(filename: &str) -> Result<T, String>
     let mut f = File::open(filename)
         .or_else(|_| Err(["Error: file ", filename, " not found."].concat()))?;
     f.read_to_string(&mut buf)
-        .or_else(|_| Err(String::from("ErrorMessage")))?;
-    toml::from_str(&buf)
-        .or_else(|_| Err(String::from("ErrorMessage")))?
+        .or_else(|_| Err(["Error: Couldn't read ", filename].concat()))?;
+    Ok(toml::from_str::<T>(&buf)
+       .or_else(|_| Err(["Error: Couldn't parse ", filename].concat()))?)
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug,Serialize, Deserialize)]
 pub struct Config {
     pub files: Option<toml::value::Table>,
     pub variables: Option<toml::value::Table>,
 }
 
-impl ::std::fmt::Display for Config {
-    fn fmt(&self, formatter: &mut ::std::fmt::Formatter)
-        -> ::std::result::Result<(), ::std::fmt::Error> {
-        formatter.write_str(&format!("Config [ files: {:?}, variables: {:?} ]",
-                                    self.files, self.variables))
-    }
+#[derive(Debug,Serialize, Deserialize)]
+pub struct Secrets {
+    pub secrets: Option<toml::value::Table>,
 }
