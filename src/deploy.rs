@@ -75,12 +75,13 @@ fn deploy_file(from: &str, to: &str, variables: &Table,
                 println!("Warning: Couldn't write to {}", to);
                 return;
             }
+            // [TODO]: f_to.set_mode(mode);
         } else {
-            println!("Warning: Failed to open {} for reading", to);
+            println!("Warning: Failed to open {} for writing", to);
             return;
         }
     }
-
+    // TODO: handle directory <28-05-17, Amit Gold> //
 }
 
 fn load_configuration(matches: &clap::ArgMatches<'static>,
