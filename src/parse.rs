@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Read;
 
 use serde::de::DeserializeOwned;
+use serde::ser::Serialize;
 use toml;
 
 pub fn load_file<T>(filename: &str) -> Result<T, String>
@@ -16,13 +17,14 @@ pub fn load_file<T>(filename: &str) -> Result<T, String>
        .or_else(|_| Err(["Error: Couldn't parse ", filename].concat()))?)
 }
 
-#[derive(Debug,Serialize, Deserialize)]
-pub struct Config {
-    pub files: Option<toml::value::Table>,
-    pub variables: Option<toml::value::Table>,
-}
-
-#[derive(Debug,Serialize, Deserialize)]
-pub struct Secrets {
-    pub secrets: Option<toml::value::Table>,
+pub fn save_file<T>(filename: &str, data: T) -> Result<(), String>
+    where T: Serialize
+{
+    let mut f = File::create(filename)
+        .or_else(|_| Err(["Error: Couldn't open ", filename].concat()))?;
+    let buf = toml::to_string(&data)
+        .or_else(|_| Err(["Error: Couldn't serialize ", data]))?;
+    f.write(buf)
+        .or_else(|_| Err(["Error: Couldn't write to ", filename].concat()))?;
+    Ok(())
 }

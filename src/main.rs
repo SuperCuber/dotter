@@ -1,5 +1,4 @@
 #[macro_use] extern crate clap;
-#[macro_use] extern crate serde_derive;
 extern crate serde;
 extern crate toml;
 

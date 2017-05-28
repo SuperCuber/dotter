@@ -31,7 +31,7 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
 
     // Deploy files
     for pair in files {
-        println!("deploying {} -> {}", pair.0, pair.1);
+        verb!(verbosity, 1, "deploying {} -> {}", pair.0, pair.1);
         let from = parse_path(&pair.0);
         let to = parse_path(pair.1.as_str().unwrap());
         deploy_file(from, to, &variables, verbosity,
@@ -62,6 +62,8 @@ fn deploy_file(from: &str, to: &str, variables: &Table,
         let mut content = String::new();
         if let Ok(mut f_from) = fs::File::open(from) {
             if f_from.read_to_string(&mut content).is_err() {
+                // TODO: this warns about dirs, can maybe use?
+                // there's also fs::FileType <28-05-17, Amit Gold> //
                 println!("Warning: Couldn't read from {}", from);
                 return;
             }
@@ -81,51 +83,33 @@ fn deploy_file(from: &str, to: &str, variables: &Table,
             return;
         }
     }
-    // TODO: handle directory <28-05-17, Amit Gold> //
 }
 
 fn load_configuration(matches: &clap::ArgMatches<'static>,
               verbosity: u64) -> (Table, Table) {
     verb!(verbosity, 3, "Deploy args: {:?}", matches);
 
-    // Load config
-    let configuration: parse::Config = parse::load_file(
-            matches.value_of("config")
+    // Load files
+    let files: Table = parse::load_file(
+            matches.value_of("files")
             .unwrap()).unwrap();
-    verb!(verbosity, 2, "Configuration: {:?}", configuration);
-
-    // Load secrets
-    let secrets: parse::Secrets = parse::load_file(
-            matches.value_of("secrets")
-            .unwrap()).unwrap();
-    let mut secrets = match secrets.secrets {
-        Some(secrets) => {secrets}
-        None => {
-            println!("Warning: No secrets section in secrets file.");
-            Table::new()
-        }
-    };
-    verb!(verbosity, 2, "Secrets: {:?}", secrets);
-
-    // Get files
-    let files = match configuration.files {
-        Some(files) => { files }
-        None => {
-            println!("Warning: No files section in config file.");
-            Table::new()
-        }
-    };
-
     verb!(verbosity, 2, "Files: {:?}", files);
 
-    // Get variables and update with secrets
-    let mut variables = match configuration.variables {
-        Some(variables) => { variables }
-        None => { Table::new() }
-    };
+    // Load variables
+    let mut variables: Table = parse::load_file(
+            matches.value_of("variables")
+            .unwrap()).unwrap();
+    verb!(verbosity, 2, "Variables: {:?}", variables);
+
+    // Load secrets
+    let mut secrets: Table = parse::load_file(
+            matches.value_of("secrets")
+            .unwrap()).unwrap();
+    verb!(verbosity, 2, "Secrets: {:?}", secrets);
+
     variables.append(&mut secrets); // Secrets is now empty
 
-    verb!(verbosity, 2, "Variables: {:?}", variables);
+    verb!(verbosity, 2, "Variables with secrets: {:?}", variables);
 
     (files, variables)
 }
