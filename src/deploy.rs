@@ -64,8 +64,7 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
         }
     } else {
         verb!(verbosity, 1, "Copying {:?} to {:?}", from, to);
-        // TODO implement transfering permissions
-        // let mode = fs::metadata(src).unwrap();
+        let perms = fs::metadata(from).unwrap().permissions();
         let mut content = String::new();
         if act {
             if let Ok(mut f_from) = fs::File::open(from) {
@@ -87,6 +86,9 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
                     return;
                 }
                 // [TODO]: f_to.set_mode(mode);
+                if f_to.set_permissions(perms).is_err() {
+                    println!("Warning: Couldn't set permissions on {:?}", to);
+                }
             } else {
                 println!("Warning: Failed to open {:?} for writing", to);
                 return;
