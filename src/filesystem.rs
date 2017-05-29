@@ -3,9 +3,7 @@ use std::process;
 
 pub fn parse_path(path: &str) -> Result<PathBuf, String> {
     let mut command = format!("realpath -ms --relative-to=. {}", path);
-    if let Ok(working_dir) = ::std::env::current_dir() {
-        command = format!("cd {:?} && {}", working_dir, command);
-    }
+    command = format!("{}", command);
 
     let output = process::Command::new("sh")
         .arg("-c")
@@ -27,11 +25,7 @@ pub fn parse_path(path: &str) -> Result<PathBuf, String> {
     Ok(resolved_out.trim().into())
 }
 
-pub fn ignore_absolute_join(one: &Path, two: &Path) -> PathBuf {
-    relativize(one).join(relativize(two))
-}
-
-fn relativize(path: &Path) -> PathBuf {
+pub fn relativize(path: &Path) -> PathBuf {
     if path.is_relative() { path.into() }
     else {
         let mut answer = PathBuf::new();
@@ -42,4 +36,35 @@ fn relativize(path: &Path) -> PathBuf {
         }
         answer
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::relativize;
+
+    fn test_relativize(arg: &str, expected: &str) {
+        let arg: super::PathBuf = arg.into();
+        assert_eq!(relativize(&arg).as_os_str(), expected);
+    }
+
+    #[test]
+    fn test_relativize_relative_single() {
+        test_relativize("foo", "foo");
+    }
+
+    #[test]
+    fn test_relativize_relative_multiple() {
+        test_relativize("foo/bar/baz", "foo/bar/baz");
+    }
+
+    #[test]
+    fn test_relativize_absolute_single() {
+        test_relativize("/foo", "foo");
+    }
+
+    #[test]
+    fn test_relativize_absolute_multiple() {
+        test_relativize("/foo/bar/baz", "foo/bar/baz");
+    }
+
 }

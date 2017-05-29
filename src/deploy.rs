@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 use std::path::{Path};
 use std::process;
 
-use filesystem::{parse_path, ignore_absolute_join};
+use filesystem::{parse_path, relativize};
 
 pub fn deploy(global: &clap::ArgMatches<'static>,
           specific: &clap::ArgMatches<'static>,
@@ -21,10 +21,10 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     // Cache
     let cache = global.occurrences_of("nocache") == 0;
     verb!(verbosity, 1, "Cache: {}", cache);
-    let cache_directory = specific.value_of("cache_directory").unwrap();
+    let cache_directory = parse_path(specific.value_of("cache_directory").unwrap()).unwrap();
     if cache {
-        verb!(verbosity, 1, "Creating cache directory at {}", cache_directory);
-        if act && fs::create_dir_all(cache_directory).is_err() {
+        verb!(verbosity, 1, "Creating cache directory at {:?}", cache_directory);
+        if act && fs::create_dir_all(&cache_directory).is_err() {
             println!("Failed to create cache directory.");
             process::exit(1);
         }
@@ -36,7 +36,7 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
         let to = &parse_path(pair.1.as_str().unwrap()).unwrap();
         verb!(verbosity, 1, "Deploying {:?} -> {:?}", from, to);
         deploy_file(from, to, &variables, verbosity,
-                    act, cache, &parse_path(cache_directory).unwrap())
+                    act, cache, &cache_directory)
     }
 }
 
@@ -52,7 +52,7 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
     }
 
     if cache {
-        let to_cache = ignore_absolute_join(cache_directory, to);
+        let to_cache = cache_directory.join(relativize(to));
         deploy_file(from, &to_cache, variables, verbosity,
                     act, false, cache_directory);
         verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
