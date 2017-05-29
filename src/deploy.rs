@@ -130,3 +130,48 @@ fn substitute_variables(content: String, variables: &Table) -> String {
     }
     content.to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::substitute_variables;
+    use super::Table;
+
+    fn table_insert(table: &mut Table, key: &str, value: &str) {
+        table.insert(String::from(key),
+                     ::toml::Value::String(String::from(value)));
+    }
+
+    fn test_substitute_variables(table: &Table, content: &str, expected: &str) {
+        assert_eq!(substitute_variables(String::from(content), table), expected);
+    }
+
+    #[test]
+    fn test_substitute_variables1() {
+        let table = &mut Table::new();
+        table_insert(table, "foo", "bar");
+        test_substitute_variables(table, "{{ foo }}", "bar");
+    }
+
+    #[test]
+    fn test_substitute_variables2() {
+        let table = &mut Table::new();
+        table_insert(table, "foo", "bar");
+        table_insert(table, "baz", "idk");
+        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar idk");
+    }
+
+    #[test]
+    fn test_substitute_variables_invalid() {
+        let table = &mut Table::new();
+        table_insert(table, "foo", "bar");
+        test_substitute_variables(table, "{{ baz }}", "{{ baz }}");
+    }
+
+    #[test]
+    fn test_substitute_variables_mixed() {
+        let table = &mut Table::new();
+        table_insert(table, "foo", "bar");
+        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar {{ baz }}");
+    }
+
+}
