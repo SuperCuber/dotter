@@ -46,12 +46,22 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
 
 fn deploy_file(from: &Path, to: &Path, variables: &Table,
                verbosity: u64, act: bool, cache: bool,
-               cache_directory: &Path) -> Result<(), String> {
+               cache_directory: &Path) -> Result<(), ::std::io::Error> {
     // Create target directory
     if act {
         let to_parent = to.parent().unwrap();
-        fs::create_dir_all(to_parent)
-            .or_else(|_| Err(format!("Warning: Failed creating directory {:?}", to_parent)))?;
+        fs::create_dir_all(to_parent)?;
+    }
+
+    // If directory, recurse in
+    let meta_from = fs::metadata(from)?;
+    if meta_from.file_type().is_dir() {
+        for entry in fs::read_dir(from)? {
+            let entry = entry?.file_name();
+            deploy_file(&from.join(&entry), &to.join(&entry), variables, verbosity,
+                        act, cache, cache_directory)?;
+        }
+        return Ok(());
     }
 
     if cache {
@@ -60,27 +70,19 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
                     act, false, cache_directory)?;
         verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
         if act {
-            fs::copy(&to_cache, to)
-                .or_else(|_| Err(format!("Warning: Failed copying {:?} to {:?}", to_cache, to)))?;
+            fs::copy(&to_cache, to)?;
         }
     } else {
         verb!(verbosity, 1, "Copying {:?} to {:?}", from, to);
-        let meta = fs::metadata(from)
-            .or_else(|_| Err(format!("Warning: Couldn't get metadata from {:?}", from)))?;
-        let perms = meta.permissions();
+        let perms = meta_from.permissions();
         if act {
-            let mut f_from = fs::File::open(from)
-                .or_else(|_| Err(format!("Warning: Failed to open {:?} for reading", from)))?;
+            let mut f_from = fs::File::open(from)?;
             let mut content = String::new();
-            f_from.read_to_string(&mut content)
-                .or_else(|_| Err(format!("Warning: Couldn't read from {:?}", from)))?;
+            f_from.read_to_string(&mut content)?;
             let content = substitute_variables(content, variables);
-            let mut f_to = fs::File::create(to)
-                .or_else(|_| Err(format!("Warning: Couldn't open {:?} for writing.", to)))?;
-            f_to.write_all(content.as_bytes())
-                .or_else(|_| Err(format!("Warning: Couldn't write to {:?}", to)))?;
-            f_to.set_permissions(perms)
-                .or_else(|_| Err(format!("Warning: Couldn't set permissions on {:?}", to)))?;
+            let mut f_to = fs::File::create(to)?;
+            f_to.write_all(content.as_bytes())?;
+            f_to.set_permissions(perms)?;
         }
     }
     Ok(())
