@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 pub fn parse_path(path: &str) -> Result<PathBuf, String> {
-    let command = format!("realpath -ms --relative-to=. {}", path);
+    let command = format!("realpath -ms {}", path);
 
     let output = process::Command::new("sh")
         .arg("-c")
