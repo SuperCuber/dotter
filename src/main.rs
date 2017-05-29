@@ -6,6 +6,7 @@ extern crate toml;
 mod args;
 mod config;
 mod deploy;
+mod filesystem;
 mod parse;
 
 use std::env;
