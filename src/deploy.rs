@@ -21,9 +21,11 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     // Cache
     let cache = global.occurrences_of("nocache") == 0;
     verb!(verbosity, 1, "Cache: {}", cache);
-    let cache_directory = parse_path(specific.value_of("cache_directory").unwrap()).unwrap();
+    let cache_directory = parse_path(specific.value_of("cache_directory")
+                                     .unwrap()).unwrap();
     if cache {
-        verb!(verbosity, 1, "Creating cache directory at {:?}", cache_directory);
+        verb!(verbosity, 1, "Creating cache directory at {:?}",
+              cache_directory);
         if act && fs::create_dir_all(&cache_directory).is_err() {
             println!("Failed to create cache directory.");
             process::exit(1);
@@ -171,7 +173,8 @@ mod tests {
     fn test_substitute_variables_mixed() {
         let table = &mut Table::new();
         table_insert(table, "foo", "bar");
-        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar {{ baz }}");
+        test_substitute_variables(table, "{{ foo }} {{ baz }}",
+                                  "bar {{ baz }}");
     }
 
 }

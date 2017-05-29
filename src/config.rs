@@ -40,7 +40,8 @@ pub fn config(matches: &clap::ArgMatches<'static>,
         }
         (0, 1, 0) => {
             let key = specific.value_of("remove").unwrap();
-            verb!(1, verbosity, "Removing {}.\nBefore: {}", key, pretty_print(&parsed));
+            verb!(1, verbosity, "Removing {}.\nBefore: {}", key,
+                  pretty_print(&parsed));
             if act { parsed.remove(key); }
             verb!(1, verbosity, "After: {:?}", pretty_print(&parsed));
         }
