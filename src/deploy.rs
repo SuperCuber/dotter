@@ -107,7 +107,7 @@ fn load_configuration(matches: &clap::ArgMatches<'static>,
     // Load secrets
     let mut secrets: Table = parse::load_file(
             matches.value_of("secrets")
-            .unwrap()).unwrap();
+            .unwrap()).unwrap_or(Table::new());
     verb!(verbosity, 2, "Secrets: {:?}", secrets);
 
     variables.append(&mut secrets); // Secrets is now empty
