@@ -62,14 +62,13 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
         }
     } else {
         verb!(verbosity, 1, "Copying {:?} to {:?}", from, to);
-        // TODO fix this
+        // TODO implement transfering permissions
         // let mode = fs::metadata(src).unwrap();
         let mut content = String::new();
         if act {
             if let Ok(mut f_from) = fs::File::open(from) {
                 if f_from.read_to_string(&mut content).is_err() {
-                    // TODO: this warns about dirs, can maybe use?
-                    // there's also fs::FileType <28-05-17, Amit Gold> //
+                    // TODO: Implement recursing into dirs, currently warns.
                     println!("Warning: Couldn't read from {:?}", from);
                     return;
                 }

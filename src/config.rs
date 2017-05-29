@@ -25,7 +25,6 @@ pub fn config(matches: &clap::ArgMatches<'static>,
     let mut parsed: Table = parse::load_file(filename).unwrap();
     verb!(verbosity, 2, "Loaded data: {:?}", parsed);
 
-    // TODO: implement <29-05-17, Amit Gold> //
     match (specific.occurrences_of("add"),
            specific.occurrences_of("remove"),
            specific.occurrences_of("display")) {
