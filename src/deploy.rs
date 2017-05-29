@@ -37,64 +37,53 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
         let from = &parse_path(&pair.0).unwrap();
         let to = &parse_path(pair.1.as_str().unwrap()).unwrap();
         verb!(verbosity, 1, "Deploying {:?} -> {:?}", from, to);
-        deploy_file(from, to, &variables, verbosity,
-                    act, cache, &cache_directory)
+        if let Err(msg) = deploy_file(from, to, &variables, verbosity,
+                                      act, cache, &cache_directory) {
+            println!("{}", msg);
+        }
     }
 }
 
 fn deploy_file(from: &Path, to: &Path, variables: &Table,
                verbosity: u64, act: bool, cache: bool,
-               cache_directory: &Path) {
+               cache_directory: &Path) -> Result<(), String> {
     // Create target directory
     if act {
         let to_parent = to.parent().unwrap();
-        if fs::create_dir_all(to_parent).is_err() {
-            println!("Warning: Failed creating directory {:?}", to_parent);
-        }
+        fs::create_dir_all(to_parent)
+            .or_else(|_| Err(format!("Warning: Failed creating directory {:?}", to_parent)))?;
     }
 
     if cache {
         let to_cache = cache_directory.join(relativize(to));
         deploy_file(from, &to_cache, variables, verbosity,
-                    act, false, cache_directory);
+                    act, false, cache_directory)?;
         verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
-        if act && fs::copy(&to_cache, to).is_err() {
-            println!("Warning: Failed copying {:?} to {:?}",
-                     to_cache, to);
+        if act {
+            fs::copy(&to_cache, to)
+                .or_else(|_| Err(format!("Warning: Failed copying {:?} to {:?}", to_cache, to)))?;
         }
     } else {
         verb!(verbosity, 1, "Copying {:?} to {:?}", from, to);
-        let perms = fs::metadata(from).unwrap().permissions();
-        let mut content = String::new();
+        let meta = fs::metadata(from)
+            .or_else(|_| Err(format!("Warning: Couldn't get metadata from {:?}", from)))?;
+        let perms = meta.permissions();
         if act {
-            if let Ok(mut f_from) = fs::File::open(from) {
-                if f_from.read_to_string(&mut content).is_err() {
-                    // TODO: Implement recursing into dirs, currently warns.
-                    println!("Warning: Couldn't read from {:?}", from);
-                    return;
-                }
-            content = substitute_variables(content, variables);
-            } else {
-                println!("Warning: Failed to open {:?} for reading", from);
-                return;
-            }
-        }
-        if act {
-            if let Ok(mut f_to) = fs::File::create(to) {
-                if f_to.write_all(content.as_bytes()).is_err() {
-                    println!("Warning: Couldn't write to {:?}", to);
-                    return;
-                }
-                // [TODO]: f_to.set_mode(mode);
-                if f_to.set_permissions(perms).is_err() {
-                    println!("Warning: Couldn't set permissions on {:?}", to);
-                }
-            } else {
-                println!("Warning: Failed to open {:?} for writing", to);
-                return;
-            }
+            let mut f_from = fs::File::open(from)
+                .or_else(|_| Err(format!("Warning: Failed to open {:?} for reading", from)))?;
+            let mut content = String::new();
+            f_from.read_to_string(&mut content)
+                .or_else(|_| Err(format!("Warning: Couldn't read from {:?}", from)))?;
+            let content = substitute_variables(content, variables);
+            let mut f_to = fs::File::create(to)
+                .or_else(|_| Err(format!("Warning: Couldn't open {:?} for writing.", to)))?;
+            f_to.write_all(content.as_bytes())
+                .or_else(|_| Err(format!("Warning: Couldn't write to {:?}", to)))?;
+            f_to.set_permissions(perms)
+                .or_else(|_| Err(format!("Warning: Couldn't set permissions on {:?}", to)))?;
         }
     }
+    Ok(())
 }
 
 fn load_configuration(matches: &clap::ArgMatches<'static>,
