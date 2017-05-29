@@ -9,16 +9,10 @@ pub fn config(matches: &clap::ArgMatches<'static>,
     let filename = match (specific.occurrences_of("file"),
                           specific.occurrences_of("variable"),
                           specific.occurrences_of("secret")) {
-        (1, 0, 0) => {
-            matches.value_of("files").unwrap()
-        }
-        (0, 1, 0) => {
-            matches.value_of("variables").unwrap()
-        }
-        (0, 0, 1) => {
-            matches.value_of("secrets").unwrap()
-        }
-        _ => { unreachable!(); }
+        (1, 0, 0) => matches.value_of("files").unwrap(),
+        (0, 1, 0) => matches.value_of("variables").unwrap(),
+        (0, 0, 1) => matches.value_of("secrets").unwrap(),
+        _ => unreachable!(),
     };
     verb!(verbosity, 1, "Operating on file {}", filename);
 
@@ -48,7 +42,7 @@ pub fn config(matches: &clap::ArgMatches<'static>,
         (0, 0, 1) => {
             println!("{}", pretty_print(&parsed));
         }
-        _ => { unreachable!(); }
+        _ => unreachable!()
     }
 
     parse::save_file(filename, &parsed).unwrap();
