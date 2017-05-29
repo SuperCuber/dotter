@@ -4,7 +4,7 @@ use parse;
 use toml::value::Table;
 
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Write, Seek};
 use std::path::{Path};
 use std::process;
 
@@ -36,7 +36,6 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     for pair in files {
         let from = &parse_path(&pair.0).unwrap();
         let to = &parse_path(pair.1.as_str().unwrap()).unwrap();
-        verb!(verbosity, 1, "Deploying {:?} -> {:?}", from, to);
         if let Err(msg) = deploy_file(from, to, &variables, verbosity,
                                       act, cache, &cache_directory) {
             println!("{}", msg);
@@ -73,15 +72,23 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
             fs::copy(&to_cache, to)?;
         }
     } else {
-        verb!(verbosity, 1, "Copying {:?} to {:?}", from, to);
+        verb!(verbosity, 1, "Templating {:?} to {:?}", from, to);
         let perms = meta_from.permissions();
         if act {
             let mut f_from = fs::File::open(from)?;
             let mut content = String::new();
-            f_from.read_to_string(&mut content)?;
-            let content = substitute_variables(content, variables);
             let mut f_to = fs::File::create(to)?;
-            f_to.write_all(content.as_bytes())?;
+            if f_from.read_to_string(&mut content).is_ok() {
+                // UTF-8 Compatible file
+                let content = substitute_variables(content, variables);
+                f_to.write_all(content.as_bytes())?;
+            } else {
+                // Binary file or with invalid chars
+                f_from.seek(::std::io::SeekFrom::Start(0))?;
+                let mut content = Vec::new();
+                f_from.read_to_end(&mut content)?;
+                f_to.write_all(&content)?;
+            }
             f_to.set_permissions(perms)?;
         }
     }
