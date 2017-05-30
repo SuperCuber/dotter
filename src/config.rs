@@ -3,8 +3,9 @@ use parse;
 use toml::value::Table;
 
 pub fn config(matches: &clap::ArgMatches<'static>,
-          specific: &clap::ArgMatches<'static>,
-          verbosity: u64, act: bool) {
+              specific: &clap::ArgMatches<'static>,
+              verbosity: u64,
+              act: bool) {
     verb!(verbosity, 3, "Config args: {:?}", matches);
     let filename = match (specific.occurrences_of("file"),
                           specific.occurrences_of("variable"),
@@ -27,22 +28,33 @@ pub fn config(matches: &clap::ArgMatches<'static>,
             let key = String::from(pair.next().unwrap());
             let value = pair.next().unwrap();
             let value = ::toml::Value::String(String::from(value));
-            verb!(1, verbosity, "Inserting {} -> {:?}.\nBefore: {}",
-                  key, value, pretty_print(&parsed));
-            if act { parsed.insert(key, value); }
+            verb!(1,
+                  verbosity,
+                  "Inserting {} -> {:?}.\nBefore: {}",
+                  key,
+                  value,
+                  pretty_print(&parsed));
+            if act {
+                parsed.insert(key, value);
+            }
             verb!(1, verbosity, "After: {}", pretty_print(&parsed));
         }
         (0, 1, 0) => {
             let key = specific.value_of("remove").unwrap();
-            verb!(1, verbosity, "Removing {}.\nBefore: {}", key,
+            verb!(1,
+                  verbosity,
+                  "Removing {}.\nBefore: {}",
+                  key,
                   pretty_print(&parsed));
-            if act { parsed.remove(key); }
+            if act {
+                parsed.remove(key);
+            }
             verb!(1, verbosity, "After: {:?}", pretty_print(&parsed));
         }
         (0, 0, 1) => {
             println!("{}", pretty_print(&parsed));
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 
     parse::save_file(filename, &parsed).unwrap();

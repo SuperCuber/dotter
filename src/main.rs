@@ -1,8 +1,10 @@
-#[macro_use] extern crate clap;
+#[macro_use]
+extern crate clap;
 extern crate serde;
 extern crate toml;
 
-#[macro_use] mod macros;
+#[macro_use]
+mod macros;
 mod args;
 mod config;
 mod deploy;

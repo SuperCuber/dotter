@@ -14,7 +14,7 @@ pub fn load_file<T>(filename: &str) -> Result<T, String>
     f.read_to_string(&mut buf)
         .or_else(|_| Err(["Error: Couldn't read ", filename].concat()))?;
     Ok(toml::from_str::<T>(&buf)
-       .or_else(|_| Err(["Error: Couldn't parse ", filename].concat()))?)
+           .or_else(|_| Err(["Error: Couldn't parse ", filename].concat()))?)
 }
 
 pub fn save_file<T>(filename: &str, data: &T) -> Result<(), String>

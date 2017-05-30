@@ -5,14 +5,15 @@ use toml::value::Table;
 
 use std::fs;
 use std::io::{Read, Write, Seek};
-use std::path::{Path};
+use std::path::Path;
 use std::process;
 
 use filesystem::{parse_path, relativize};
 
 pub fn deploy(global: &clap::ArgMatches<'static>,
-          specific: &clap::ArgMatches<'static>,
-          verbosity: u64, act: bool) {
+              specific: &clap::ArgMatches<'static>,
+              verbosity: u64,
+              act: bool) {
 
     // Configuration
     verb!(verbosity, 1, "Loading configuration...");
@@ -21,10 +22,11 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     // Cache
     let cache = global.occurrences_of("nocache") == 0;
     verb!(verbosity, 1, "Cache: {}", cache);
-    let cache_directory = parse_path(specific.value_of("cache_directory")
-                                     .unwrap()).unwrap();
+    let cache_directory = parse_path(specific.value_of("cache_directory").unwrap()).unwrap();
     if cache {
-        verb!(verbosity, 1, "Creating cache directory at {:?}",
+        verb!(verbosity,
+              1,
+              "Creating cache directory at {:?}",
               cache_directory);
         if act && fs::create_dir_all(&cache_directory).is_err() {
             println!("Failed to create cache directory.");
@@ -36,16 +38,26 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     for pair in files {
         let from = &parse_path(&pair.0).unwrap();
         let to = &parse_path(pair.1.as_str().unwrap()).unwrap();
-        if let Err(msg) = deploy_file(from, to, &variables, verbosity,
-                                      act, cache, &cache_directory) {
+        if let Err(msg) = deploy_file(from,
+                                      to,
+                                      &variables,
+                                      verbosity,
+                                      act,
+                                      cache,
+                                      &cache_directory) {
             println!("{}", msg);
         }
     }
 }
 
-fn deploy_file(from: &Path, to: &Path, variables: &Table,
-               verbosity: u64, act: bool, cache: bool,
-               cache_directory: &Path) -> Result<(), ::std::io::Error> {
+fn deploy_file(from: &Path,
+               to: &Path,
+               variables: &Table,
+               verbosity: u64,
+               act: bool,
+               cache: bool,
+               cache_directory: &Path)
+               -> Result<(), ::std::io::Error> {
     // Create target directory
     if act {
         let to_parent = to.parent().unwrap();
@@ -57,16 +69,26 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
     if meta_from.file_type().is_dir() {
         for entry in fs::read_dir(from)? {
             let entry = entry?.file_name();
-            deploy_file(&from.join(&entry), &to.join(&entry), variables, verbosity,
-                        act, cache, cache_directory)?;
+            deploy_file(&from.join(&entry),
+                        &to.join(&entry),
+                        variables,
+                        verbosity,
+                        act,
+                        cache,
+                        cache_directory)?;
         }
         return Ok(());
     }
 
     if cache {
         let to_cache = cache_directory.join(relativize(to));
-        deploy_file(from, &to_cache, variables, verbosity,
-                    act, false, cache_directory)?;
+        deploy_file(from,
+                    &to_cache,
+                    variables,
+                    verbosity,
+                    act,
+                    false,
+                    cache_directory)?;
         verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
         if act {
             fs::copy(&to_cache, to)?;
@@ -95,26 +117,20 @@ fn deploy_file(from: &Path, to: &Path, variables: &Table,
     Ok(())
 }
 
-fn load_configuration(matches: &clap::ArgMatches<'static>,
-              verbosity: u64) -> (Table, Table) {
+fn load_configuration(matches: &clap::ArgMatches<'static>, verbosity: u64) -> (Table, Table) {
     verb!(verbosity, 3, "Deploy args: {:?}", matches);
 
     // Load files
-    let files: Table = parse::load_file(
-            matches.value_of("files")
-            .unwrap()).unwrap();
+    let files: Table = parse::load_file(matches.value_of("files").unwrap()).unwrap();
     verb!(verbosity, 2, "Files: {:?}", files);
 
     // Load variables
-    let mut variables: Table = parse::load_file(
-            matches.value_of("variables")
-            .unwrap()).unwrap();
+    let mut variables: Table = parse::load_file(matches.value_of("variables").unwrap()).unwrap();
     verb!(verbosity, 2, "Variables: {:?}", variables);
 
     // Load secrets
-    let mut secrets: Table = parse::load_file(
-            matches.value_of("secrets")
-            .unwrap()).unwrap_or_default();
+    let mut secrets: Table = parse::load_file(matches.value_of("secrets").unwrap())
+        .unwrap_or_default();
     verb!(verbosity, 2, "Secrets: {:?}", secrets);
 
     variables.append(&mut secrets); // Secrets is now empty
@@ -173,8 +189,7 @@ mod tests {
     fn test_substitute_variables_mixed() {
         let table = &mut Table::new();
         table_insert(table, "foo", "bar");
-        test_substitute_variables(table, "{{ foo }} {{ baz }}",
-                                  "bar {{ baz }}");
+        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar {{ baz }}");
     }
 
 }

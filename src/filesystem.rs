@@ -4,10 +4,7 @@ use std::process;
 pub fn parse_path(path: &str) -> Result<PathBuf, String> {
     let command = format!("realpath -ms {}", path);
 
-    let output = process::Command::new("sh")
-        .arg("-c")
-        .arg(&command)
-        .output();
+    let output = process::Command::new("sh").arg("-c").arg(&command).output();
     if output.is_err() {
         return Err(["Couldn't get output of command ", &command].concat());
     }
@@ -25,8 +22,9 @@ pub fn parse_path(path: &str) -> Result<PathBuf, String> {
 }
 
 pub fn relativize(path: &Path) -> PathBuf {
-    if path.is_relative() { path.into() }
-    else {
+    if path.is_relative() {
+        path.into()
+    } else {
         let mut answer = PathBuf::new();
         let mut components = path.components();
         components.next();
