@@ -6,7 +6,7 @@ pub fn parse_path(path: &str) -> Result<PathBuf, String> {
 
     let output = process::Command::new("sh").arg("-c").arg(&command).output();
     if output.is_err() {
-        return Err(["Couldn't get output of command ", &command].concat());
+        return Err(format!("Couldn't get output of command {}", &command));
     }
     let output = output.unwrap();
 
