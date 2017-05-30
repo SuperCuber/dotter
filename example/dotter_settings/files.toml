@@ -1,4 +1,4 @@
+binary_file = "product/zeroes_and_ones"
 dir = "product/whole/dir"
 file1 = "product/some/directory/file1"
 file2 = "product/another/directory/file2"
-binary_file = "product/zeroes_and_ones"

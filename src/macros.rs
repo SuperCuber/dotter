@@ -5,3 +5,15 @@ macro_rules! verb {
         }
     };
 }
+
+macro_rules! or_err {
+    ( $value:expr ) => {
+        match $value {
+            Ok(ans) => ans,
+            Err(msg) => {
+                println!("{}", msg);
+                process::exit(1);
+            }
+        }
+    }
+}

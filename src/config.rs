@@ -1,6 +1,7 @@
 use clap;
 use parse;
 use toml::value::Table;
+use std::process;
 
 pub fn config(matches: &clap::ArgMatches<'static>,
               specific: &clap::ArgMatches<'static>,
@@ -17,7 +18,7 @@ pub fn config(matches: &clap::ArgMatches<'static>,
     };
     verb!(verbosity, 1, "Operating on file {}", filename);
 
-    let mut parsed: Table = parse::load_file(filename).unwrap();
+    let mut parsed: Table = or_err!(parse::load_file(filename));
     verb!(verbosity, 2, "Loaded data: {:?}", parsed);
 
     match (specific.occurrences_of("add"),
@@ -57,7 +58,7 @@ pub fn config(matches: &clap::ArgMatches<'static>,
         _ => unreachable!(),
     }
 
-    parse::save_file(filename, &parsed).unwrap();
+    or_err!(parse::save_file(filename, &parsed));
 }
 
 fn pretty_print(table: &Table) -> String {

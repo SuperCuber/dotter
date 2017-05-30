@@ -17,12 +17,12 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
 
     // Configuration
     verb!(verbosity, 1, "Loading configuration...");
-    let (files, variables) = load_configuration(global, verbosity);
+    let (files, variables) = or_err!(load_configuration(global, verbosity));
 
     // Cache
     let cache = global.occurrences_of("nocache") == 0;
     verb!(verbosity, 1, "Cache: {}", cache);
-    let cache_directory = parse_path(specific.value_of("cache_directory").unwrap()).unwrap();
+    let cache_directory = or_err!(parse_path(specific.value_of("cache_directory").unwrap()));
     if cache {
         verb!(verbosity,
               1,
@@ -36,10 +36,10 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
 
     // Deploy files
     for pair in files {
-        let from = &parse_path(&pair.0).unwrap();
-        let to = &parse_path(pair.1.as_str().unwrap()).unwrap();
-        if let Err(msg) = deploy_file(from,
-                                      to,
+        let from = or_err!(parse_path(&pair.0));
+        let to = or_err!(parse_path(pair.1.as_str().unwrap()));
+        if let Err(msg) = deploy_file(&from,
+                                      &to,
                                       &variables,
                                       verbosity,
                                       act,
@@ -60,7 +60,7 @@ fn deploy_file(from: &Path,
                -> Result<(), ::std::io::Error> {
     // Create target directory
     if act {
-        let to_parent = to.parent().unwrap();
+        let to_parent = to.parent().unwrap_or(to);
         fs::create_dir_all(to_parent)?;
     }
 
@@ -117,15 +117,17 @@ fn deploy_file(from: &Path,
     Ok(())
 }
 
-fn load_configuration(matches: &clap::ArgMatches<'static>, verbosity: u64) -> (Table, Table) {
+fn load_configuration(matches: &clap::ArgMatches<'static>,
+                      verbosity: u64)
+                      -> Result<(Table, Table), String> {
     verb!(verbosity, 3, "Deploy args: {:?}", matches);
 
     // Load files
-    let files: Table = parse::load_file(matches.value_of("files").unwrap()).unwrap();
+    let files: Table = parse::load_file(matches.value_of("files").unwrap())?;
     verb!(verbosity, 2, "Files: {:?}", files);
 
     // Load variables
-    let mut variables: Table = parse::load_file(matches.value_of("variables").unwrap()).unwrap();
+    let mut variables: Table = parse::load_file(matches.value_of("variables").unwrap())?;
     verb!(verbosity, 2, "Variables: {:?}", variables);
 
     // Load secrets
@@ -137,7 +139,7 @@ fn load_configuration(matches: &clap::ArgMatches<'static>, verbosity: u64) -> (T
 
     verb!(verbosity, 2, "Variables with secrets: {:?}", variables);
 
-    (files, variables)
+    Ok((files, variables))
 }
 
 fn substitute_variables(content: String, variables: &Table) -> String {
