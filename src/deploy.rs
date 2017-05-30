@@ -164,7 +164,7 @@ fn copy_if_changed(from: &Path, to: &Path, verbosity: u64) -> Result<(), ::std::
         copy = true;
     }
 
-    let copy = copy && content_from != content_to;
+    let copy = copy || content_from != content_to;
 
     if copy {
         verb!(verbosity,
