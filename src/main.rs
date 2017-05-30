@@ -28,22 +28,21 @@ fn main() {
         std::cmp::max(1, verbosity)
     };
 
+    verb!(verbosity, 3, "{:?}", matches);
+
     // Change dir
     let dir = matches.value_of("directory").unwrap();
     verb!(verbosity, 1, "Changing directory to {}", dir);
     if env::set_current_dir(dir).is_err() {
-        println!("Error: No such directory {}", dir);
+        println!("Error: Couldn't set current directory to {}", dir);
         process::exit(1);
     }
 
-    verb!(verbosity, 3, "{:?}", matches);
-
     // Execute subcommand
-    if let Some(specific) = matches.subcommand_matches("deploy") {
-        deploy::deploy(&matches, specific, verbosity, act);
-    } else if let Some(specific) = matches.subcommand_matches("config") {
-        config::config(&matches, specific, verbosity, act);
-    } else {
-        unreachable!();
+    match (matches.subcommand_matches("deploy"),
+    matches.subcommand_matches("config")) {
+        (Some(specific), None) => deploy::deploy(&matches, specific, verbosity, act),
+        (None, Some(specific)) => config::config(&matches, specific, verbosity, act),
+        _ => unreachable!()
     }
 }
