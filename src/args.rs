@@ -49,8 +49,8 @@ pub fn get_args() -> clap::ArgMatches<'static> {
                         .arg(clap::Arg::with_name("nocache")
                                  .short("c")
                                  .long("nocache")
-                                 .help("Create a directory with templated files, \
-                               then copy from there."))
+                                 .help("Don't use a cache \
+                                       (used to not touch files that didn't change)"))
                         .arg(clap::Arg::with_name("cache_directory")
                                  .short("d")
                                  .long("cache-directory")
