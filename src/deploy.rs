@@ -81,9 +81,9 @@ fn deploy_file(from: &Path,
     }
 
     if cache {
-        let to_cache = cache_directory.join(relativize(to));
+        let to_cache = &cache_directory.join(relativize(to));
         deploy_file(from,
-                    &to_cache,
+                    to_cache,
                     variables,
                     verbosity,
                     act,
@@ -91,7 +91,7 @@ fn deploy_file(from: &Path,
                     cache_directory)?;
         verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
         if act {
-            fs::copy(&to_cache, to)?;
+            copy_if_changed(to_cache, to, verbosity)?;
         }
     } else {
         verb!(verbosity, 1, "Templating {:?} to {:?}", from, to);
@@ -149,6 +149,39 @@ fn substitute_variables(content: String, variables: &Table) -> String {
                                   variable.1.as_str().unwrap());
     }
     content.to_string()
+}
+
+fn copy_if_changed(from: &Path, to: &Path, verbosity: u64) -> Result<(), ::std::io::Error> {
+    let mut content_from = Vec::new();
+    let mut content_to = Vec::new();
+
+    let mut copy = false;
+
+    fs::File::open(from)?.read_to_end(&mut content_from)?;
+    if let Ok(mut f_to) = fs::File::open(to) {
+        f_to.read_to_end(&mut content_to)?;
+    } else {
+        copy = true;
+    }
+
+    let copy = copy && content_from != content_to;
+
+    if copy {
+        verb!(verbosity,
+              2,
+              "File {:?} differs from {:?}, copying.",
+              from,
+              to);
+        fs::File::create(to)?.write_all(&content_from)?;
+    } else {
+        verb!(verbosity,
+              2,
+              "File {:?} is the same as {:?}, not copying.",
+              from,
+              to);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
