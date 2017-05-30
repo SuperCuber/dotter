@@ -39,10 +39,9 @@ fn main() {
     }
 
     // Execute subcommand
-    match (matches.subcommand_matches("deploy"),
-    matches.subcommand_matches("config")) {
+    match (matches.subcommand_matches("deploy"), matches.subcommand_matches("config")) {
         (Some(specific), None) => deploy::deploy(&matches, specific, verbosity, act),
         (None, Some(specific)) => config::config(&matches, specific, verbosity, act),
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
