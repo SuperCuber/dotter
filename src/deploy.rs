@@ -20,7 +20,7 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     let (files, variables) = or_err!(load_configuration(global, verbosity));
 
     // Cache
-    let cache = global.occurrences_of("nocache") == 0;
+    let cache = specific.occurrences_of("nocache") == 0;
     verb!(verbosity, 1, "Cache: {}", cache);
     let cache_directory = or_err!(parse_path(specific.value_of("cache_directory").unwrap()));
     if cache {
