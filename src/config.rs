@@ -36,8 +36,8 @@ pub fn config(
             let value = pair.next().unwrap();
             let value = ::toml::Value::String(String::from(value));
             verb!(
-                1,
                 verbosity,
+                1,
                 "Inserting {} -> {:?}.\nBefore: {}",
                 key,
                 value,
@@ -46,13 +46,13 @@ pub fn config(
             if act {
                 parsed.insert(key, value);
             }
-            verb!(1, verbosity, "After: {}", pretty_print(&parsed));
+            verb!(verbosity, 1, "After: {}", pretty_print(&parsed));
         }
         (0, 1, 0) => {
             let key = specific.value_of("remove").unwrap();
             verb!(
-                1,
                 verbosity,
+                1,
                 "Removing {}.\nBefore: {}",
                 key,
                 pretty_print(&parsed)
@@ -60,7 +60,7 @@ pub fn config(
             if act {
                 parsed.remove(key);
             }
-            verb!(1, verbosity, "After: {:?}", pretty_print(&parsed));
+            verb!(verbosity, 1, "After: {:?}", pretty_print(&parsed));
         }
         (0, 0, 1) => {
             println!("{}", pretty_print(&parsed));
