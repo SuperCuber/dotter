@@ -10,10 +10,12 @@ use std::process;
 
 use filesystem::{parse_path, relativize};
 
-pub fn deploy(global: &clap::ArgMatches<'static>,
-              specific: &clap::ArgMatches<'static>,
-              verbosity: u64,
-              act: bool) {
+pub fn deploy(
+    global: &clap::ArgMatches<'static>,
+    specific: &clap::ArgMatches<'static>,
+    verbosity: u64,
+    act: bool,
+) {
 
     // Configuration
     verb!(verbosity, 1, "Loading configuration...");
@@ -24,10 +26,12 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     verb!(verbosity, 1, "Cache: {}", cache);
     let cache_directory = or_err!(parse_path(specific.value_of("cache_directory").unwrap()));
     if cache {
-        verb!(verbosity,
-              1,
-              "Creating cache directory at {:?}",
-              cache_directory);
+        verb!(
+            verbosity,
+            1,
+            "Creating cache directory at {:?}",
+            cache_directory
+        );
         if act && fs::create_dir_all(&cache_directory).is_err() {
             println!("Failed to create cache directory.");
             process::exit(1);
@@ -38,26 +42,30 @@ pub fn deploy(global: &clap::ArgMatches<'static>,
     for pair in files {
         let from = or_err!(parse_path(&pair.0));
         let to = or_err!(parse_path(pair.1.as_str().unwrap()));
-        if let Err(msg) = deploy_file(&from,
-                                      &to,
-                                      &variables,
-                                      verbosity,
-                                      act,
-                                      cache,
-                                      &cache_directory) {
+        if let Err(msg) = deploy_file(
+            &from,
+            &to,
+            &variables,
+            verbosity,
+            act,
+            cache,
+            &cache_directory,
+        )
+        {
             println!("{}", msg);
         }
     }
 }
 
-fn deploy_file(from: &Path,
-               to: &Path,
-               variables: &Table,
-               verbosity: u64,
-               act: bool,
-               cache: bool,
-               cache_directory: &Path)
-               -> Result<(), ::std::io::Error> {
+fn deploy_file(
+    from: &Path,
+    to: &Path,
+    variables: &Table,
+    verbosity: u64,
+    act: bool,
+    cache: bool,
+    cache_directory: &Path,
+) -> Result<(), ::std::io::Error> {
     // Create target directory
     if act {
         let to_parent = to.parent().unwrap_or(to);
@@ -69,26 +77,30 @@ fn deploy_file(from: &Path,
     if meta_from.file_type().is_dir() {
         for entry in fs::read_dir(from)? {
             let entry = entry?.file_name();
-            deploy_file(&from.join(&entry),
-                        &to.join(&entry),
-                        variables,
-                        verbosity,
-                        act,
-                        cache,
-                        cache_directory)?;
+            deploy_file(
+                &from.join(&entry),
+                &to.join(&entry),
+                variables,
+                verbosity,
+                act,
+                cache,
+                cache_directory,
+            )?;
         }
         return Ok(());
     }
 
     if cache {
         let to_cache = &cache_directory.join(relativize(to));
-        deploy_file(from,
-                    to_cache,
-                    variables,
-                    verbosity,
-                    act,
-                    false,
-                    cache_directory)?;
+        deploy_file(
+            from,
+            to_cache,
+            variables,
+            verbosity,
+            act,
+            false,
+            cache_directory,
+        )?;
         verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
         if act {
             copy_if_changed(to_cache, to, verbosity)?;
@@ -117,9 +129,10 @@ fn deploy_file(from: &Path,
     Ok(())
 }
 
-fn load_configuration(matches: &clap::ArgMatches<'static>,
-                      verbosity: u64)
-                      -> Result<(Table, Table), String> {
+fn load_configuration(
+    matches: &clap::ArgMatches<'static>,
+    verbosity: u64,
+) -> Result<(Table, Table), String> {
     verb!(verbosity, 3, "Deploy args: {:?}", matches);
 
     // Load files
@@ -145,8 +158,10 @@ fn load_configuration(matches: &clap::ArgMatches<'static>,
 fn substitute_variables(content: String, variables: &Table) -> String {
     let mut content = content;
     for variable in variables {
-        content = content.replace(&["{{ ", variable.0, " }}"].concat(),
-                                  variable.1.as_str().unwrap());
+        content = content.replace(
+            &["{{ ", variable.0, " }}"].concat(),
+            variable.1.as_str().unwrap(),
+        );
     }
     content.to_string()
 }
@@ -167,18 +182,22 @@ fn copy_if_changed(from: &Path, to: &Path, verbosity: u64) -> Result<(), ::std::
     let copy = copy || content_from != content_to;
 
     if copy {
-        verb!(verbosity,
-              2,
-              "File {:?} differs from {:?}, copying.",
-              from,
-              to);
+        verb!(
+            verbosity,
+            2,
+            "File {:?} differs from {:?}, copying.",
+            from,
+            to
+        );
         fs::File::create(to)?.write_all(&content_from)?;
     } else {
-        verb!(verbosity,
-              2,
-              "File {:?} is the same as {:?}, not copying.",
-              from,
-              to);
+        verb!(
+            verbosity,
+            2,
+            "File {:?} is the same as {:?}, not copying.",
+            from,
+            to
+        );
     }
 
     Ok(())
@@ -190,8 +209,10 @@ mod tests {
     use super::Table;
 
     fn table_insert(table: &mut Table, key: &str, value: &str) {
-        table.insert(String::from(key),
-                     ::toml::Value::String(String::from(value)));
+        table.insert(
+            String::from(key),
+            ::toml::Value::String(String::from(value)),
+        );
     }
 
     fn test_substitute_variables(table: &Table, content: &str, expected: &str) {

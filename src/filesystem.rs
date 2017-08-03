@@ -11,9 +11,11 @@ pub fn parse_path(path: &str) -> Result<PathBuf, String> {
     let output = output.unwrap();
 
     if !output.stderr.is_empty() {
-        let msg = format!("Couldn't resolve path using '{}':\n{}",
-                          command,
-                          String::from_utf8_lossy(&output.stderr).trim());
+        let msg = format!(
+            "Couldn't resolve path using '{}':\n{}",
+            command,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
         return Err(msg);
     }
 
