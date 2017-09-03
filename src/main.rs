@@ -2,6 +2,7 @@
 extern crate clap;
 extern crate serde;
 extern crate toml;
+extern crate ansi_term;
 
 #[macro_use]
 mod macros;
