@@ -2,9 +2,15 @@
 name = "dotter"
 version = "0.2.1"
 authors = ["SuperCuber <amit.gold00@gmail.com>"]
+description = "A small dotfile manager"
+repository = "https://www.github.com/SuperCuber/dotter"
+readme = "README.md"
+keywords = ["dotter", "dotfiles", "manager"]
+categories = ["command-line-utilities"]
+license = "WTFPL"
 
 [dependencies]
-clap = "*"
-toml = "*"
-serde = "*"
-ansi_term = "*"
+clap = "2.26.*"
+toml = "0.4.*"
+serde = "1.0.*"
+ansi_term = "0.9.*"
