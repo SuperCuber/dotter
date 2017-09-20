@@ -19,7 +19,16 @@ pub fn deploy(
 
     // Configuration
     verb!(verbosity, 1, "Loading configuration...");
-    let (files, variables) = or_err!(load_configuration(global, verbosity));
+
+    let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
+    let (files, variables) = loop {
+        if let Ok(conf) = load_configuration(global, verbosity) {
+            break conf;
+        }
+        parent.pop();
+        verb!(verbosity, 1, "Current directory failed, going one up to {}", parent.to_string_lossy());
+        ::std::env::set_current_dir(&parent).expect("Move a directory up");
+    };
 
     // Cache
     let cache = specific.occurrences_of("nocache") == 0;

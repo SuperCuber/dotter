@@ -14,7 +14,7 @@ macro_rules! or_err {
             Err(msg) => {
                 use ansi_term;
                 println!("{}", ansi_term::Colour::Red.paint(msg));
-                process::exit(1);
+                process::exit(1)
             }
         }
     }
