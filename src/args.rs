@@ -5,6 +5,7 @@ pub fn get_args() -> clap::ArgMatches<'static> {
         .setting(clap::AppSettings::SubcommandRequiredElseHelp)
         .version(crate_version!())
         .author(crate_authors!())
+        .setting(clap::AppSettings::ColoredHelp)
         .about("A small dotfile manager.")
         .arg(
             clap::Arg::with_name("directory")
