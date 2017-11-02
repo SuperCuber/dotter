@@ -21,14 +21,24 @@ pub fn deploy(
     verb!(verbosity, 1, "Loading configuration...");
 
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
-    let (files, variables) = loop {
+    let conf = loop {
         if let Ok(conf) = load_configuration(global, verbosity) {
-            break conf;
+            break Some(conf);
         }
-        parent.pop();
-        verb!(verbosity, 1, "Current directory failed, going one up to {}", parent.to_string_lossy());
+        if let Some(new_parent) = parent.parent().map(|p| p.into()) {
+            parent = new_parent;
+            verb!(verbosity, 1, "Current directory failed, going one up to {}", parent.to_string_lossy());
+        } else {
+            verb!(verbosity, 1, "Reached root.");
+            break None;
+        }
         ::std::env::set_current_dir(&parent).expect("Move a directory up");
     };
+
+    let (files, variables) = conf.unwrap_or_else(|| {
+        println!("Failed to find configuration in current or parent directories.");
+        process::exit(1);
+    });
 
     // Cache
     let cache = specific.occurrences_of("nocache") == 0;
