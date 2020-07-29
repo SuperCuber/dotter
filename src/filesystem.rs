@@ -1,24 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::process;
-
-pub fn canonicalize(path: &str) -> Result<PathBuf, String> {
-    let command = format!("realpath -ms {}", path);
-
-    let output = process::Command::new("sh").arg("-c").arg(&command).output();
-    let output = output.map_err(|_| format!("Couldn't get output of command {}", &command))?;
-
-    if !output.stderr.is_empty() {
-        let msg = format!(
-            "Couldn't resolve path using '{}':\n{}",
-            command,
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-        return Err(msg);
-    }
-
-    let resolved_out = String::from_utf8_lossy(&output.stdout);
-    Ok(resolved_out.trim().into())
-}
 
 pub fn relativize(path: &Path) -> PathBuf {
     if path.is_relative() {
