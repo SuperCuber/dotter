@@ -1,4 +1,11 @@
+use shellexpand;
+
 use std::path::{Path, PathBuf};
+use std::{io, fs};
+
+pub fn canonicalize<P: AsRef<Path>>(path: P) -> Result<PathBuf, io::Error> {
+    fs::canonicalize(shellexpand::tilde(&path.as_ref().to_string_lossy()).into_owned())
+}
 
 pub fn relativize(path: &Path) -> PathBuf {
     if path.is_relative() {

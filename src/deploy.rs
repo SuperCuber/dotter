@@ -4,12 +4,12 @@ use args;
 
 use toml::value::Table;
 
-use std::fs::{self, canonicalize};
+use std::fs;
 use std::io::{Read, Write, Seek};
 use std::path::Path;
 use std::process;
 
-use filesystem::relativize;
+use filesystem::{canonicalize, relativize};
 
 pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
     // Configuration
