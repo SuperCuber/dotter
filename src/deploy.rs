@@ -1,5 +1,6 @@
-use clap;
 use parse;
+
+use args;
 
 use toml::value::Table;
 
@@ -10,19 +11,15 @@ use std::process;
 
 use filesystem::{parse_path, relativize};
 
-pub fn deploy(
-    global: &clap::ArgMatches<'static>,
-    specific: &clap::ArgMatches<'static>,
-    verbosity: u64,
-    act: bool,
-) {
+pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
+    let verbosity = opt.verbose;
 
     // Configuration
     verb!(verbosity, 1, "Loading configuration...");
 
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
     let conf = loop {
-        if let Ok(conf) = load_configuration(global, verbosity) {
+        if let Ok(conf) = load_configuration(&opt) {
             break Some(conf);
         }
         if let Some(new_parent) = parent.parent().map(|p| p.into()) {
@@ -41,9 +38,8 @@ pub fn deploy(
     });
 
     // Cache
-    let cache = specific.occurrences_of("nocache") == 0;
     verb!(verbosity, 1, "Cache: {}", cache);
-    let cache_directory = or_err!(parse_path(specific.value_of("cache_directory").unwrap()));
+    let cache_directory = or_err!(parse_path(&cache_directory.as_os_str().to_string_lossy().to_string()));
     if cache {
         verb!(
             verbosity,
@@ -51,7 +47,7 @@ pub fn deploy(
             "Creating cache directory at {:?}",
             cache_directory
         );
-        if act && fs::create_dir_all(&cache_directory).is_err() {
+        if opt.act && fs::create_dir_all(&cache_directory).is_err() {
             println!("Failed to create cache directory.");
             process::exit(1);
         }
@@ -65,10 +61,9 @@ pub fn deploy(
             &from,
             &to,
             &variables,
-            verbosity,
-            act,
             cache,
             &cache_directory,
+            &opt,
         )
         {
             println!("{}", msg);
@@ -80,13 +75,14 @@ fn deploy_file(
     from: &Path,
     to: &Path,
     variables: &Table,
-    verbosity: u64,
-    act: bool,
     cache: bool,
     cache_directory: &Path,
+    opt: &args::GlobalOptions,
 ) -> Result<(), ::std::io::Error> {
+    let verbosity = opt.verbose;
+
     // Create target directory
-    if act {
+    if opt.act {
         let to_parent = to.parent().unwrap_or(to);
         fs::create_dir_all(to_parent)?;
     }
@@ -100,10 +96,9 @@ fn deploy_file(
                 &from.join(&entry),
                 &to.join(&entry),
                 variables,
-                verbosity,
-                act,
                 cache,
                 cache_directory,
+                opt,
             )?;
         }
         return Ok(());
@@ -115,19 +110,18 @@ fn deploy_file(
             from,
             to_cache,
             variables,
-            verbosity,
-            act,
             false,
             cache_directory,
+            opt,
         )?;
         verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
-        if act {
+        if opt.act {
             copy_if_changed(to_cache, to, verbosity)?;
         }
     } else {
         verb!(verbosity, 1, "Templating {:?} to {:?}", from, to);
         let perms = meta_from.permissions();
-        if act {
+        if opt.act {
             let mut f_from = fs::File::open(from)?;
             let mut content = String::new();
             let mut f_to = fs::File::create(to)?;
@@ -148,22 +142,19 @@ fn deploy_file(
     Ok(())
 }
 
-fn load_configuration(
-    matches: &clap::ArgMatches<'static>,
-    verbosity: u64,
-) -> Result<(Table, Table), String> {
-    verb!(verbosity, 3, "Deploy args: {:?}", matches);
+fn load_configuration(opt: &args::GlobalOptions) -> Result<(Table, Table), String> {
+    let verbosity = opt.verbose;
 
     // Load files
-    let files: Table = parse::load_file(matches.value_of("files").unwrap())?;
+    let files: Table = parse::load_file(&opt.files)?;
     verb!(verbosity, 2, "Files: {:?}", files);
 
     // Load variables
-    let mut variables: Table = parse::load_file(matches.value_of("variables").unwrap())?;
+    let mut variables: Table = parse::load_file(&opt.variables)?;
     verb!(verbosity, 2, "Variables: {:?}", variables);
 
     // Load secrets
-    let mut secrets: Table = parse::load_file(matches.value_of("secrets").unwrap())
+    let mut secrets: Table = parse::load_file(&opt.secrets)
         .unwrap_or_default();
     verb!(verbosity, 2, "Secrets: {:?}", secrets);
 
@@ -185,7 +176,7 @@ fn substitute_variables(content: String, variables: &Table) -> String {
     content.to_string()
 }
 
-fn copy_if_changed(from: &Path, to: &Path, verbosity: u64) -> Result<(), ::std::io::Error> {
+fn copy_if_changed(from: &Path, to: &Path, verbosity: u32) -> Result<(), ::std::io::Error> {
     let mut content_from = Vec::new();
     let mut content_to = Vec::new();
 

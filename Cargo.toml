@@ -10,7 +10,8 @@ categories = ["command-line-utilities"]
 license = "WTFPL"
 
 [dependencies]
-clap = "2.26.*"
 toml = "0.4.*"
 serde = "1.0.*"
 ansi_term = "0.9.*"
+structopt = "*"
+clap = "*"

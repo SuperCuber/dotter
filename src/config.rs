@@ -1,39 +1,29 @@
-use clap;
 use parse;
+
+use args::{Target, TargetType, Action, ActionEnum, GlobalOptions};
+
 use toml::value::Table;
 use std::process;
 
 pub fn config(
-    matches: &clap::ArgMatches<'static>,
-    specific: &clap::ArgMatches<'static>,
-    verbosity: u64,
-    act: bool,
+    target: Target,
+    action: Action,
+    opt: GlobalOptions,
 ) {
-    verb!(verbosity, 3, "Config args: {:?}", matches);
-    let filename = match (
-        specific.occurrences_of("file"),
-        specific.occurrences_of("variable"),
-        specific.occurrences_of("secret"),
-    ) {
-        (1, 0, 0) => matches.value_of("files").unwrap(),
-        (0, 1, 0) => matches.value_of("variables").unwrap(),
-        (0, 0, 1) => matches.value_of("secrets").unwrap(),
-        _ => unreachable!(),
-    };
-    verb!(verbosity, 1, "Operating on file {}", filename);
+    let verbosity = opt.verbose;
 
-    let mut parsed: Table = or_err!(parse::load_file(filename));
+    let filename = match target.as_type() {
+        TargetType::File => opt.files,
+        TargetType::Variable => opt.variables,
+        TargetType::Secret => opt.secrets,
+    };
+    verb!(verbosity, 1, "Operating on file {:?}", filename);
+
+    let mut parsed: Table = or_err!(parse::load_file(&filename));
     verb!(verbosity, 2, "Loaded data: {:?}", parsed);
 
-    match (
-        specific.occurrences_of("add"),
-        specific.occurrences_of("remove"),
-        specific.occurrences_of("display"),
-    ) {
-        (1, 0, 0) => {
-            let mut pair = specific.values_of("add").unwrap();
-            let key = String::from(pair.next().unwrap());
-            let value = pair.next().unwrap();
+    match action.as_enum() {
+        ActionEnum::Add { from: key, to: value } => {
             let value = ::toml::Value::String(String::from(value));
             verb!(
                 verbosity,
@@ -43,13 +33,12 @@ pub fn config(
                 value,
                 pretty_print(&parsed)
             );
-            if act {
+            if opt.act {
                 parsed.insert(key, value);
             }
             verb!(verbosity, 1, "After: {}", pretty_print(&parsed));
         }
-        (0, 1, 0) => {
-            let key = specific.value_of("remove").unwrap();
+        ActionEnum::Remove(key) => {
             verb!(
                 verbosity,
                 1,
@@ -57,18 +46,17 @@ pub fn config(
                 key,
                 pretty_print(&parsed)
             );
-            if act {
-                parsed.remove(key);
+            if opt.act {
+                parsed.remove(&key);
             }
             verb!(verbosity, 1, "After: {:?}", pretty_print(&parsed));
         }
-        (0, 0, 1) => {
+        ActionEnum::Display => {
             println!("{}", pretty_print(&parsed));
         }
-        _ => unreachable!(),
     }
 
-    or_err!(parse::save_file(filename, &parsed));
+    or_err!(parse::save_file(&filename, &parsed));
 }
 
 fn pretty_print(table: &Table) -> String {
