@@ -3,9 +3,10 @@ extern crate serde;
 extern crate toml;
 extern crate ansi_term;
 extern crate structopt;
-
+extern crate env_logger;
 #[macro_use]
-mod macros;
+extern crate log;
+
 mod args;
 mod config;
 mod deploy;
@@ -18,15 +19,20 @@ use std::process;
 fn main() {
     // Parse arguments
     let opt = args::get_options();
-    let verbosity = opt.global_options.verbose;
 
-    verb!(verbosity, 3, "{:?}", opt);
+    if opt.global_options.act {
+        env_logger::init();
+    } else {
+        env_logger::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    }
+
+    debug!("Loaded options: {:?}", opt);
 
     // Change dir
     let dir = &opt.global_options.directory;
-    verb!(verbosity, 1, "Changing directory to {:?}", dir);
+    info!("Changing directory to {:?}", dir);
     if env::set_current_dir(dir).is_err() {
-        println!("Error: Couldn't set current directory to {:?}", dir);
+        error!("Couldn't set current directory to {:?}", dir);
         process::exit(1);
     }
 

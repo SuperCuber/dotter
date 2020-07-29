@@ -9,13 +9,11 @@ use std::io::{Read, Write, Seek};
 use std::path::Path;
 use std::process;
 
-use filesystem::{parse_path, relativize};
+use filesystem::{canonicalize, relativize};
 
 pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
-    let verbosity = opt.verbose;
-
     // Configuration
-    verb!(verbosity, 1, "Loading configuration...");
+    info!("Loading configuration...");
 
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
     let conf = loop {
@@ -24,39 +22,47 @@ pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
         }
         if let Some(new_parent) = parent.parent().map(|p| p.into()) {
             parent = new_parent;
-            verb!(verbosity, 1, "Current directory failed, going one up to {}", parent.to_string_lossy());
+            warn!("Current directory failed, going one up to {:?}", parent);
         } else {
-            verb!(verbosity, 1, "Reached root.");
+            warn!("Reached root.");
             break None;
         }
         ::std::env::set_current_dir(&parent).expect("Move a directory up");
     };
 
     let (files, variables) = conf.unwrap_or_else(|| {
-        println!("Failed to find configuration in current or parent directories.");
+        error!("Failed to find configuration in current or parent directories.");
         process::exit(1);
     });
 
     // Cache
-    verb!(verbosity, 1, "Cache: {}", cache);
-    let cache_directory = or_err!(parse_path(&cache_directory.as_os_str().to_string_lossy().to_string()));
+    debug!("Cache: {}", cache);
     if cache {
-        verb!(
-            verbosity,
-            1,
-            "Creating cache directory at {:?}",
-            cache_directory
-        );
+        info!("Creating cache directory at {:?}", &cache_directory);
         if opt.act && fs::create_dir_all(&cache_directory).is_err() {
-            println!("Failed to create cache directory.");
+            error!("Failed to create cache directory.");
             process::exit(1);
         }
     }
 
     // Deploy files
     for pair in files {
-        let from = or_err!(parse_path(&pair.0));
-        let to = or_err!(parse_path(pair.1.as_str().unwrap()));
+        let from = canonicalize(&pair.0).unwrap_or_else(|err| {
+            error!("Failed to canonicalize path {:?}: {}", &pair.0, err);
+            process::exit(1);
+        });
+        let to = {
+            if let Some(to) = pair.1.as_str() {
+                to
+            } else {
+                error!("In file pair {} -> {}, target isn't a string. Skipping.", pair.0, pair.1);
+                continue;
+            }
+        };
+        let to = canonicalize(to).unwrap_or_else(|err| {
+            error!("Failed to canonicalize path {:?}: {}", to, err);
+            process::exit(1);
+        });
         if let Err(msg) = deploy_file(
             &from,
             &to,
@@ -66,7 +72,7 @@ pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
             &opt,
         )
         {
-            println!("{}", msg);
+            warn!("Failed to deploy {:?} -> {:?}: {}", &from, &to, msg);
         }
     }
 }
@@ -79,8 +85,6 @@ fn deploy_file(
     cache_directory: &Path,
     opt: &args::GlobalOptions,
 ) -> Result<(), ::std::io::Error> {
-    let verbosity = opt.verbose;
-
     // Create target directory
     if opt.act {
         let to_parent = to.parent().unwrap_or(to);
@@ -114,12 +118,12 @@ fn deploy_file(
             cache_directory,
             opt,
         )?;
-        verb!(verbosity, 1, "Copying {:?} to {:?}", to_cache, to);
+        info!("Copying {:?} to {:?}", to_cache, to);
         if opt.act {
-            copy_if_changed(to_cache, to, verbosity)?;
+            copy_if_changed(to_cache, to)?;
         }
     } else {
-        verb!(verbosity, 1, "Templating {:?} to {:?}", from, to);
+        info!("Templating {:?} to {:?}", from, to);
         let perms = meta_from.permissions();
         if opt.act {
             let mut f_from = fs::File::open(from)?;
@@ -143,24 +147,22 @@ fn deploy_file(
 }
 
 fn load_configuration(opt: &args::GlobalOptions) -> Result<(Table, Table), String> {
-    let verbosity = opt.verbose;
-
     // Load files
     let files: Table = parse::load_file(&opt.files)?;
-    verb!(verbosity, 2, "Files: {:?}", files);
+    debug!("Files: {:?}", files);
 
     // Load variables
     let mut variables: Table = parse::load_file(&opt.variables)?;
-    verb!(verbosity, 2, "Variables: {:?}", variables);
+    debug!("Variables: {:?}", variables);
 
     // Load secrets
     let mut secrets: Table = parse::load_file(&opt.secrets)
         .unwrap_or_default();
-    verb!(verbosity, 2, "Secrets: {:?}", secrets);
+    debug!("Secrets: {:?}", secrets);
 
     variables.append(&mut secrets); // Secrets is now empty
 
-    verb!(verbosity, 2, "Variables with secrets: {:?}", variables);
+    debug!("Variables with secrets: {:?}", variables);
 
     Ok((files, variables))
 }
@@ -168,15 +170,23 @@ fn load_configuration(opt: &args::GlobalOptions) -> Result<(Table, Table), Strin
 fn substitute_variables(content: String, variables: &Table) -> String {
     let mut content = content;
     for variable in variables {
+        let value = {
+            if let Some(value) = variable.1.as_str() {
+                value
+            } else {
+                error!("In variable pair {} -> {}, value isn't a string. Skipping.", variable.0, variable.1);
+                continue;
+            }
+        };
         content = content.replace(
             &["{{ ", variable.0, " }}"].concat(),
-            variable.1.as_str().unwrap(),
+            value,
         );
     }
     content.to_string()
 }
 
-fn copy_if_changed(from: &Path, to: &Path, verbosity: u32) -> Result<(), ::std::io::Error> {
+fn copy_if_changed(from: &Path, to: &Path) -> Result<(), ::std::io::Error> {
     let mut content_from = Vec::new();
     let mut content_to = Vec::new();
 
@@ -192,22 +202,10 @@ fn copy_if_changed(from: &Path, to: &Path, verbosity: u32) -> Result<(), ::std::
     let copy = copy || content_from != content_to;
 
     if copy {
-        verb!(
-            verbosity,
-            2,
-            "File {:?} differs from {:?}, copying.",
-            from,
-            to
-        );
+        info!("File {:?} differs from {:?}, copying.", from, to);
         fs::File::create(to)?.write_all(&content_from)?;
     } else {
-        verb!(
-            verbosity,
-            2,
-            "File {:?} is the same as {:?}, not copying.",
-            from,
-            to
-        );
+        info!("File {:?} is the same as {:?}, not copying.", from, to);
     }
 
     Ok(())

@@ -11,29 +11,17 @@ where
     T: DeserializeOwned,
 {
     let mut buf = String::new();
-    let mut f = File::open(filename).or_else(|_| {
-        Err(format!("Error: Couldn't open {:?}", filename))
-    })?;
-    f.read_to_string(&mut buf).or_else(|_| {
-        Err(format!("Error: Couldn't read {:?}", filename))
-    })?;
-    Ok(toml::from_str::<T>(&buf).or_else(|_| {
-        Err(format!("Error: Couldn't parse {:?}", filename))
-    })?)
+    let mut f = File::open(filename).or_else(|_| { Err("open") })?;
+    f.read_to_string(&mut buf).or_else(|_| { Err("read") })?;
+    Ok(toml::from_str::<T>(&buf).or_else(|_| { Err("parse") })?)
 }
 
 pub fn save_file<T>(filename: &Path, data: &T) -> Result<(), String>
 where
     T: Serialize,
 {
-    let mut f = File::create(filename).or_else(|_| {
-        Err(format!("Error: Couldn't open {:?}", filename))
-    })?;
-    let buf = toml::to_string(data).or_else(|_| {
-        Err("Error: Couldn't serialize data.")
-    })?;
-    f.write(buf.as_bytes()).or_else(|_| {
-        Err(format!("Error: Couldn't write to {:?}", filename))
-    })?;
+    let mut f = File::create(filename).or_else(|_| { Err("open") })?;
+    let buf = toml::to_string(data).or_else(|_| { Err("serialize") })?;
+    f.write(buf.as_bytes()).or_else(|_| { Err("write") })?;
     Ok(())
 }

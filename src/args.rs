@@ -31,11 +31,8 @@ pub struct GlobalOptions {
     #[structopt(short, long, default_value="dotter_settings/secrets.toml")]
     pub secrets: PathBuf,
 
-    /// Print information about what's being done. Repeat for more information.
-    #[structopt(short, long, parse(from_occurrences))]
-    pub verbose: u32,
-
-    /// Dry run - don't do anything, only print information. Implies -v at least once.
+    /// Dry run - don't do anything, only print information.
+    /// Implies RUST_LOG=info unless specificed otherwise.
     #[structopt(long = "dry_run", parse(from_flag = std::ops::Not::not))]
     pub act: bool,
 }
@@ -137,14 +134,5 @@ impl Action {
 }
 
 pub fn get_options() -> Options {
-    let mut opt = Options::from_args();
-
-    // Do the "implies" relation between verbose and dry_run
-    opt.global_options.verbose = if opt.global_options.act {
-        opt.global_options.verbose
-    } else {
-        std::cmp::max(1, opt.global_options.verbose)
-    };
-
-    opt
+    Options::from_args()
 }

@@ -1,14 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process;
 
-pub fn parse_path(path: &str) -> Result<PathBuf, String> {
+pub fn canonicalize(path: &str) -> Result<PathBuf, String> {
     let command = format!("realpath -ms {}", path);
 
     let output = process::Command::new("sh").arg("-c").arg(&command).output();
-    if output.is_err() {
-        return Err(format!("Couldn't get output of command {}", &command));
-    }
-    let output = output.unwrap();
+    let output = output.map_err(|_| format!("Couldn't get output of command {}", &command))?;
 
     if !output.stderr.is_empty() {
         let msg = format!(
