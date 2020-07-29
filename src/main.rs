@@ -1,7 +1,6 @@
 extern crate clap;
 extern crate serde;
 extern crate toml;
-extern crate ansi_term;
 extern crate structopt;
 extern crate env_logger;
 #[macro_use]
