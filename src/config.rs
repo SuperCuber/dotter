@@ -25,7 +25,7 @@ pub fn config(
 
     match action.as_enum() {
         ActionEnum::Add { from: key, to: value } => {
-            let value = ::toml::Value::String(String::from(value));
+            let value = ::toml::Value::String(value);
             info!("Inserting {} -> {:?}.", key, value);
             debug!("Before: {}", pretty_print(&parsed));
             if opt.act {

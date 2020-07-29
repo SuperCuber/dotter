@@ -183,7 +183,7 @@ fn substitute_variables(content: String, variables: &Table) -> String {
             value,
         );
     }
-    content.to_string()
+    content
 }
 
 fn copy_if_changed(from: &Path, to: &Path) -> Result<(), ::std::io::Error> {

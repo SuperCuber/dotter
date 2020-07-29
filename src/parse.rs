@@ -11,17 +11,17 @@ where
     T: DeserializeOwned,
 {
     let mut buf = String::new();
-    let mut f = File::open(filename).or_else(|_| { Err("open") })?;
-    f.read_to_string(&mut buf).or_else(|_| { Err("read") })?;
-    Ok(toml::from_str::<T>(&buf).or_else(|_| { Err("parse") })?)
+    let mut f = File::open(filename).map_err(|_| "open")?;
+    f.read_to_string(&mut buf).map_err(|_| "read")?;
+    Ok(toml::from_str::<T>(&buf).map_err(|_| "parse")?)
 }
 
 pub fn save_file<T>(filename: &Path, data: &T) -> Result<(), String>
 where
     T: Serialize,
 {
-    let mut f = File::create(filename).or_else(|_| { Err("open") })?;
-    let buf = toml::to_string(data).or_else(|_| { Err("serialize") })?;
-    f.write(buf.as_bytes()).or_else(|_| { Err("write") })?;
+    let mut f = File::create(filename).map_err(|_| "open")?;
+    let buf = toml::to_string(data).map_err(|_| "serialize")?;
+    f.write(buf.as_bytes()).map_err(|_| "write")?;
     Ok(())
 }
