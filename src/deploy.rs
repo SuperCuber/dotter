@@ -1,6 +1,6 @@
 use parse;
 
-use args;
+use args::Options;
 
 use toml::value::Table;
 
@@ -11,13 +11,13 @@ use std::process;
 
 use filesystem::{canonicalize, relativize};
 
-pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
+pub fn deploy(opt: Options) {
     // Configuration
     info!("Loading configuration...");
 
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
     let conf = loop {
-        if let Ok(conf) = load_configuration(&opt) {
+        if let Ok(conf) = load_configuration(&opt.local_config, &opt.global_config) {
             break Some(conf);
         }
         if let Some(new_parent) = parent.parent().map(|p| p.into()) {
@@ -36,10 +36,10 @@ pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
     });
 
     // Cache
-    debug!("Cache: {}", cache);
-    if cache {
-        info!("Creating cache directory at {:?}", &cache_directory);
-        if opt.act && fs::create_dir_all(&cache_directory).is_err() {
+    debug!("Cache: {}", opt.cache);
+    if opt.cache {
+        info!("Creating cache directory at {:?}", &opt.cache_directory);
+        if opt.act && fs::create_dir_all(&opt.cache_directory).is_err() {
             error!("Failed to create cache directory.");
             process::exit(1);
         }
@@ -66,7 +66,7 @@ pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
             error!("Failed to canonicalize path {:?}: {}", to, err);
             process::exit(1);
         });
-        if let Err(msg) = deploy_file(&from, &to, &variables, cache, &cache_directory, &opt) {
+        if let Err(msg) = deploy_file(&from, &to, &variables, opt.cache, &opt.cache_directory, opt.act) {
             warn!("Failed to deploy {:?} -> {:?}: {}", &from, &to, msg);
         }
     }
@@ -78,10 +78,10 @@ fn deploy_file(
     variables: &Table,
     cache: bool,
     cache_directory: &Path,
-    opt: &args::GlobalOptions,
+    act: bool,
 ) -> Result<(), ::std::io::Error> {
     // Create target directory
-    if opt.act {
+    if act {
         let to_parent = to.parent().unwrap_or(to);
         fs::create_dir_all(to_parent)?;
     }
@@ -97,7 +97,7 @@ fn deploy_file(
                 variables,
                 cache,
                 cache_directory,
-                opt,
+                act
             )?;
         }
         return Ok(());
@@ -105,15 +105,15 @@ fn deploy_file(
 
     if cache {
         let to_cache = &cache_directory.join(relativize(to));
-        deploy_file(from, to_cache, variables, false, cache_directory, opt)?;
+        deploy_file(from, to_cache, variables, false, cache_directory, act)?;
         info!("Copying {:?} to {:?}", to_cache, to);
-        if opt.act {
+        if act {
             copy_if_changed(to_cache, to)?;
         }
     } else {
         info!("Templating {:?} to {:?}", from, to);
         let perms = meta_from.permissions();
-        if opt.act {
+        if act {
             let mut f_from = fs::File::open(from)?;
             let mut content = String::new();
             let mut f_to = fs::File::create(to)?;
@@ -134,24 +134,25 @@ fn deploy_file(
     Ok(())
 }
 
-fn load_configuration(opt: &args::GlobalOptions) -> Result<(Table, Table), String> {
-    // Load files
-    let files: Table = parse::load_file(&opt.files)?;
-    debug!("Files: {:?}", files);
+fn load_configuration(local_config: &Path, global_config: &Path) -> Result<(Table, Table), String> {
+    todo!()
+    // // Load files
+    // let files: Table = parse::load_file(&opt.files)?;
+    // debug!("Files: {:?}", files);
 
-    // Load variables
-    let mut variables: Table = parse::load_file(&opt.variables)?;
-    debug!("Variables: {:?}", variables);
+    // // Load variables
+    // let mut variables: Table = parse::load_file(&opt.variables)?;
+    // debug!("Variables: {:?}", variables);
 
-    // Load secrets
-    let mut secrets: Table = parse::load_file(&opt.secrets).unwrap_or_default();
-    debug!("Secrets: {:?}", secrets);
+    // // Load secrets
+    // let mut secrets: Table = parse::load_file(&opt.secrets).unwrap_or_default();
+    // debug!("Secrets: {:?}", secrets);
 
-    variables.append(&mut secrets); // Secrets is now empty
+    // variables.append(&mut secrets); // Secrets is now empty
 
-    debug!("Variables with secrets: {:?}", variables);
+    // debug!("Variables with secrets: {:?}", variables);
 
-    Ok((files, variables))
+    // Ok((files, variables))
 }
 
 fn substitute_variables(content: String, variables: &Table) -> String {
