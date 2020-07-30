@@ -1,15 +1,11 @@
 use parse;
 
-use args::{Target, TargetType, Action, ActionEnum, GlobalOptions};
+use args::{Action, ActionEnum, GlobalOptions, Target, TargetType};
 
-use toml::value::Table;
 use std::process;
+use toml::value::Table;
 
-pub fn config(
-    target: Target,
-    action: Action,
-    opt: GlobalOptions,
-) {
+pub fn config(target: Target, action: Action, opt: GlobalOptions) {
     let filename = match target.as_type() {
         TargetType::File => opt.files,
         TargetType::Variable => opt.variables,
@@ -24,7 +20,10 @@ pub fn config(
     info!("Loaded data: {:?}", parsed);
 
     match action.as_enum() {
-        ActionEnum::Add { from: key, to: value } => {
+        ActionEnum::Add {
+            from: key,
+            to: value,
+        } => {
             let value = ::toml::Value::String(value);
             info!("Inserting {} -> {:?}.", key, value);
             debug!("Before: {}", pretty_print(&parsed));

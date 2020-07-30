@@ -1,6 +1,6 @@
-use std::path::Path;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::Path;
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;

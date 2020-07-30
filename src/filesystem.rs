@@ -1,7 +1,7 @@
 use shellexpand;
 
 use std::path::{Path, PathBuf};
-use std::{io, fs};
+use std::{fs, io};
 
 pub fn canonicalize<P: AsRef<Path>>(path: P) -> Result<PathBuf, io::Error> {
     fs::canonicalize(shellexpand::tilde(&path.as_ref().to_string_lossy()).into_owned())
@@ -49,5 +49,4 @@ mod tests {
     fn test_relativize_absolute_multiple() {
         test_relativize("/foo/bar/baz", "foo/bar/baz");
     }
-
 }

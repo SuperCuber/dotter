@@ -5,7 +5,7 @@ use args;
 use toml::value::Table;
 
 use std::fs;
-use std::io::{Read, Write, Seek};
+use std::io::{Read, Seek, Write};
 use std::path::Path;
 use std::process;
 
@@ -55,7 +55,10 @@ pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
             if let Some(to) = pair.1.as_str() {
                 to
             } else {
-                error!("In file pair {} -> {}, target isn't a string. Skipping.", pair.0, pair.1);
+                error!(
+                    "In file pair {} -> {}, target isn't a string. Skipping.",
+                    pair.0, pair.1
+                );
                 continue;
             }
         };
@@ -63,15 +66,7 @@ pub fn deploy(cache_directory: &Path, cache: bool, opt: args::GlobalOptions) {
             error!("Failed to canonicalize path {:?}: {}", to, err);
             process::exit(1);
         });
-        if let Err(msg) = deploy_file(
-            &from,
-            &to,
-            &variables,
-            cache,
-            &cache_directory,
-            &opt,
-        )
-        {
+        if let Err(msg) = deploy_file(&from, &to, &variables, cache, &cache_directory, &opt) {
             warn!("Failed to deploy {:?} -> {:?}: {}", &from, &to, msg);
         }
     }
@@ -110,14 +105,7 @@ fn deploy_file(
 
     if cache {
         let to_cache = &cache_directory.join(relativize(to));
-        deploy_file(
-            from,
-            to_cache,
-            variables,
-            false,
-            cache_directory,
-            opt,
-        )?;
+        deploy_file(from, to_cache, variables, false, cache_directory, opt)?;
         info!("Copying {:?} to {:?}", to_cache, to);
         if opt.act {
             copy_if_changed(to_cache, to)?;
@@ -156,8 +144,7 @@ fn load_configuration(opt: &args::GlobalOptions) -> Result<(Table, Table), Strin
     debug!("Variables: {:?}", variables);
 
     // Load secrets
-    let mut secrets: Table = parse::load_file(&opt.secrets)
-        .unwrap_or_default();
+    let mut secrets: Table = parse::load_file(&opt.secrets).unwrap_or_default();
     debug!("Secrets: {:?}", secrets);
 
     variables.append(&mut secrets); // Secrets is now empty
@@ -174,14 +161,14 @@ fn substitute_variables(content: String, variables: &Table) -> String {
             if let Some(value) = variable.1.as_str() {
                 value
             } else {
-                error!("In variable pair {} -> {}, value isn't a string. Skipping.", variable.0, variable.1);
+                error!(
+                    "In variable pair {} -> {}, value isn't a string. Skipping.",
+                    variable.0, variable.1
+                );
                 continue;
             }
         };
-        content = content.replace(
-            &["{{ ", variable.0, " }}"].concat(),
-            value,
-        );
+        content = content.replace(&["{{ ", variable.0, " }}"].concat(), value);
     }
     content
 }
@@ -255,5 +242,4 @@ mod tests {
         table_insert(table, "foo", "bar");
         test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar {{ baz }}");
     }
-
 }
