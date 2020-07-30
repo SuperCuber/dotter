@@ -1,9 +1,7 @@
-use parse;
-
+use config;
 use args::Options;
 
-use toml::value::Table;
-
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Read, Seek, Write};
 use std::path::Path;
@@ -17,17 +15,22 @@ pub fn deploy(opt: Options) {
 
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
     let conf = loop {
-        if let Ok(conf) = load_configuration(&opt.local_config, &opt.global_config) {
-            break Some(conf);
+        match config::load_configuration(&opt.local_config, &opt.global_config) {
+            Ok(conf) => break Some(conf),
+            Err(e) => {
+                if let Some(new_parent) = parent.parent().map(|p| p.into()) {
+                    parent = new_parent;
+                    warn!(
+                        "Current directory failed on step: {}, going one up to {:?}",
+                        e, parent
+                    );
+                } else {
+                    warn!("Reached root.");
+                    break None;
+                }
+                ::std::env::set_current_dir(&parent).expect("Move a directory up");
+            }
         }
-        if let Some(new_parent) = parent.parent().map(|p| p.into()) {
-            parent = new_parent;
-            warn!("Current directory failed, going one up to {:?}", parent);
-        } else {
-            warn!("Reached root.");
-            break None;
-        }
-        ::std::env::set_current_dir(&parent).expect("Move a directory up");
     };
 
     let (files, variables) = conf.unwrap_or_else(|| {
@@ -48,25 +51,21 @@ pub fn deploy(opt: Options) {
     // Deploy files
     for pair in files {
         let from = canonicalize(&pair.0).unwrap_or_else(|err| {
-            error!("Failed to canonicalize path {:?}: {}", &pair.0, err);
+            error!("Failed to canonicalize path {:?}: {}", pair.0, err);
             process::exit(1);
         });
-        let to = {
-            if let Some(to) = pair.1.as_str() {
-                to
-            } else {
-                error!(
-                    "In file pair {} -> {}, target isn't a string. Skipping.",
-                    pair.0, pair.1
-                );
-                continue;
-            }
-        };
-        let to = canonicalize(to).unwrap_or_else(|err| {
-            error!("Failed to canonicalize path {:?}: {}", to, err);
+        let to = canonicalize(&pair.1).unwrap_or_else(|err| {
+            error!("Failed to canonicalize path {:?}: {}", pair.1, err);
             process::exit(1);
         });
-        if let Err(msg) = deploy_file(&from, &to, &variables, opt.cache, &opt.cache_directory, opt.act) {
+        if let Err(msg) = deploy_file(
+            &from,
+            &to,
+            &variables,
+            opt.cache,
+            &opt.cache_directory,
+            opt.act,
+        ) {
             warn!("Failed to deploy {:?} -> {:?}: {}", &from, &to, msg);
         }
     }
@@ -75,7 +74,7 @@ pub fn deploy(opt: Options) {
 fn deploy_file(
     from: &Path,
     to: &Path,
-    variables: &Table,
+    variables: &BTreeMap<String, String>,
     cache: bool,
     cache_directory: &Path,
     act: bool,
@@ -97,7 +96,7 @@ fn deploy_file(
                 variables,
                 cache,
                 cache_directory,
-                act
+                act,
             )?;
         }
         return Ok(());
@@ -134,42 +133,10 @@ fn deploy_file(
     Ok(())
 }
 
-fn load_configuration(local_config: &Path, global_config: &Path) -> Result<(Table, Table), String> {
-    todo!()
-    // // Load files
-    // let files: Table = parse::load_file(&opt.files)?;
-    // debug!("Files: {:?}", files);
-
-    // // Load variables
-    // let mut variables: Table = parse::load_file(&opt.variables)?;
-    // debug!("Variables: {:?}", variables);
-
-    // // Load secrets
-    // let mut secrets: Table = parse::load_file(&opt.secrets).unwrap_or_default();
-    // debug!("Secrets: {:?}", secrets);
-
-    // variables.append(&mut secrets); // Secrets is now empty
-
-    // debug!("Variables with secrets: {:?}", variables);
-
-    // Ok((files, variables))
-}
-
-fn substitute_variables(content: String, variables: &Table) -> String {
+fn substitute_variables(content: String, variables: &BTreeMap<String, String>) -> String {
     let mut content = content;
     for variable in variables {
-        let value = {
-            if let Some(value) = variable.1.as_str() {
-                value
-            } else {
-                error!(
-                    "In variable pair {} -> {}, value isn't a string. Skipping.",
-                    variable.0, variable.1
-                );
-                continue;
-            }
-        };
-        content = content.replace(&["{{ ", variable.0, " }}"].concat(), value);
+        content = content.replace(&["{{ ", variable.0, " }}"].concat(), variable.1);
     }
     content
 }
@@ -202,29 +169,29 @@ fn copy_if_changed(from: &Path, to: &Path) -> Result<(), ::std::io::Error> {
 #[cfg(test)]
 mod tests {
     use super::substitute_variables;
-    use super::Table;
+    use super::BTreeMap;
 
-    fn table_insert(table: &mut Table, key: &str, value: &str) {
+    fn table_insert(table: &mut BTreeMap<String, String>, key: &str, value: &str) {
         table.insert(
             String::from(key),
-            ::toml::Value::String(String::from(value)),
+            String::from(value),
         );
     }
 
-    fn test_substitute_variables(table: &Table, content: &str, expected: &str) {
+    fn test_substitute_variables(table: &BTreeMap<String, String>, content: &str, expected: &str) {
         assert_eq!(substitute_variables(String::from(content), table), expected);
     }
 
     #[test]
     fn test_substitute_variables1() {
-        let table = &mut Table::new();
+        let table = &mut BTreeMap::new();
         table_insert(table, "foo", "bar");
         test_substitute_variables(table, "{{ foo }}", "bar");
     }
 
     #[test]
     fn test_substitute_variables2() {
-        let table = &mut Table::new();
+        let table = &mut BTreeMap::new();
         table_insert(table, "foo", "bar");
         table_insert(table, "baz", "idk");
         test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar idk");
@@ -232,14 +199,14 @@ mod tests {
 
     #[test]
     fn test_substitute_variables_invalid() {
-        let table = &mut Table::new();
+        let table = &mut BTreeMap::new();
         table_insert(table, "foo", "bar");
         test_substitute_variables(table, "{{ baz }}", "{{ baz }}");
     }
 
     #[test]
     fn test_substitute_variables_mixed() {
-        let table = &mut Table::new();
+        let table = &mut BTreeMap::new();
         table_insert(table, "foo", "bar");
         test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar {{ baz }}");
     }

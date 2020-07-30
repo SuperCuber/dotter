@@ -27,7 +27,7 @@ pub struct Options {
     pub cache: bool,
 
     /// Directory to cache into.
-    #[structopt(short = "d", long, default_value = "dotter/cache")]
+    #[structopt(short, long, default_value = "dotter/cache")]
     pub cache_directory: PathBuf,
 }
 
