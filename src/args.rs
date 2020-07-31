@@ -10,11 +10,11 @@ pub struct Options {
     pub directory: PathBuf,
 
     /// Location of the global configuration
-    #[structopt(short, long, default_value = "dotter/global.toml")]
+    #[structopt(short, long, default_value = "dotter_settings/global.toml")]
     pub global_config: PathBuf,
 
     /// Location of the local configuration
-    #[structopt(short, long, default_value = "dotter/local.toml")]
+    #[structopt(short, long, default_value = "dotter_settings/local.toml")]
     pub local_config: PathBuf,
 
     /// Dry run - don't do anything, only print information.
@@ -27,7 +27,7 @@ pub struct Options {
     pub cache: bool,
 
     /// Directory to cache into.
-    #[structopt(short, long, default_value = "dotter/cache")]
+    #[structopt(short, long, default_value = "dotter_cache")]
     pub cache_directory: PathBuf,
 }
 

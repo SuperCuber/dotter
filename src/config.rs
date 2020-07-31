@@ -21,10 +21,10 @@ fn pretty_print(table: &Table) -> String {
 fn normalize_package_table(mut package: Table) -> Table {
     package
         .entry("files".into())
-        .or_insert(toml::Value::Table(Table::new()));
+        .or_insert_with(|| toml::Value::Table(Table::new()));
     package
         .entry("variables".into())
-        .or_insert(toml::Value::Table(Table::new()));
+        .or_insert_with(|| toml::Value::Table(Table::new()));
     package
 }
 
@@ -97,7 +97,7 @@ fn parse_configuration_table(
                 for (from, to) in files_table.iter() {
                     if to.is_str() {
                         files.insert(from.to_string(), to.as_str().unwrap().to_string());
-                    } else if to.is_bool() && to.as_bool().unwrap() == false {
+                    } else if to.is_bool() && !to.as_bool().unwrap() {
                         continue;
                     } else {
                         warn!(
@@ -114,7 +114,7 @@ fn parse_configuration_table(
                 for (from, to) in variables_table.iter() {
                     if to.is_str() {
                         variables.insert(from.to_string(), to.as_str().unwrap().to_string());
-                    } else if to.is_bool() && to.as_bool().unwrap() == false {
+                    } else if to.is_bool() && to.as_bool().unwrap() {
                         continue;
                     } else {
                         warn!(
@@ -135,17 +135,17 @@ pub fn load_configuration(
     local_config: &Path,
     global_config: &Path,
 ) -> Result<(BTreeMap<String, String>, BTreeMap<String, String>), String> {
-    let global: Table = filesystem::load_file(global_config)?;
+    let global: Table = filesystem::load_file(global_config).map_err(|e| format!("global: {}", e))?;
     debug!("Global: {:?}", global);
 
-    let local: Table = filesystem::load_file(local_config)?;
+    let local: Table = filesystem::load_file(local_config).map_err(|e| format!("local: {}", e))?;
     debug!("Local: {:?}", local);
 
     let packages = local
         .get("packages")
         .and_then(|v| v.as_array())
         .and_then(|v| {
-            v.into_iter()
+            v.iter()
                 .map(|i| i.as_str())
                 .collect::<Option<Vec<&str>>>()
         })
@@ -179,6 +179,7 @@ pub fn load_configuration(
         }
         first_package
     };
+    debug!("Final configuration: {:?}", configuration);
 
     Ok(configuration)
 }
