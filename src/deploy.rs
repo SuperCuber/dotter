@@ -2,12 +2,11 @@ use handlebars::{Handlebars, TemplateRenderError};
 
 use std::fs;
 use std::io::{Read, Seek, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 
 use args::Options;
 use config;
-use filesystem::{canonicalize, relativize};
 
 pub fn deploy(opt: Options) {
     // Configuration
@@ -30,18 +29,11 @@ pub fn deploy(opt: Options) {
     }
 
     // Deploy files
-    for pair in files {
-        let from = canonicalize(&pair.0).unwrap_or_else(|err| {
-            error!("Failed to canonicalize path {:?}: {}", pair.0, err);
-            process::exit(1);
-        });
-        let to = canonicalize(&pair.1).unwrap_or_else(|err| {
-            error!("Failed to canonicalize path {:?}: {}", pair.1, err);
-            process::exit(1);
-        });
+    for (from, to) in files {
+        let to = shellexpand::tilde(&to).into_owned();
         if let Err(msg) = deploy_file(
-            &from,
-            &to,
+            &PathBuf::from(&from),
+            &PathBuf::from(&to),
             &variables,
             opt.cache,
             &opt.cache_directory,
@@ -84,7 +76,7 @@ fn deploy_file(
     }
 
     if cache {
-        let to_cache = &cache_directory.join(relativize(to));
+        let to_cache = &cache_directory.join(from);
         deploy_file(from, to_cache, variables, false, cache_directory, act)?;
         info!("Copying {:?} to {:?}", to_cache, to);
         if act {
