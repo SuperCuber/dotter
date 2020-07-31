@@ -1,42 +1,23 @@
-use config;
-use args::Options;
+use handlebars::{Handlebars, TemplateRenderError};
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Read, Seek, Write};
 use std::path::Path;
 use std::process;
 
+use args::Options;
+use config;
 use filesystem::{canonicalize, relativize};
 
 pub fn deploy(opt: Options) {
     // Configuration
     info!("Loading configuration...");
 
-    let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
-    let conf = loop {
-        match config::load_configuration(&opt.local_config, &opt.global_config) {
-            Ok(conf) => break Some(conf),
-            Err(e) => {
-                if let Some(new_parent) = parent.parent().map(|p| p.into()) {
-                    parent = new_parent;
-                    warn!(
-                        "Current directory failed on step: {}, going one up to {:?}",
-                        e, parent
-                    );
-                } else {
-                    warn!("Reached root.");
-                    break None;
-                }
-                ::std::env::set_current_dir(&parent).expect("Move a directory up");
-            }
-        }
-    };
-
-    let (files, variables) = conf.unwrap_or_else(|| {
-        error!("Failed to find configuration in current or parent directories.");
-        process::exit(1);
-    });
+    let (files, variables) = config::load_configuration(&opt.local_config, &opt.global_config)
+        .unwrap_or_else(|| {
+            error!("Failed to find configuration in current or parent directories.");
+            process::exit(1);
+        });
 
     // Cache
     debug!("Cache: {}", opt.cache);
@@ -74,7 +55,7 @@ pub fn deploy(opt: Options) {
 fn deploy_file(
     from: &Path,
     to: &Path,
-    variables: &BTreeMap<String, String>,
+    variables: &config::Variables,
     cache: bool,
     cache_directory: &Path,
     act: bool,
@@ -119,8 +100,14 @@ fn deploy_file(
             if f_from.read_to_string(&mut content).is_ok() {
                 // UTF-8 Compatible file
                 let content = substitute_variables(content, variables);
-                f_to.write_all(content.as_bytes())?;
+                match content {
+                    Ok(content) => f_to.write_all(content.as_bytes())?,
+                    Err(error) => {
+                        warn!("Error rendering file {:?}: {}", from, error);
+                    }
+                }
             } else {
+                warn!("File {:?} is incompatible with UTF-8, copying byte-for-byte instead of rendering.", from);
                 // Binary file or with invalid chars
                 f_from.seek(::std::io::SeekFrom::Start(0))?;
                 let mut content = Vec::new();
@@ -133,12 +120,11 @@ fn deploy_file(
     Ok(())
 }
 
-fn substitute_variables(content: String, variables: &BTreeMap<String, String>) -> String {
-    let mut content = content;
-    for variable in variables {
-        content = content.replace(&["{{ ", variable.0, " }}"].concat(), variable.1);
-    }
-    content
+fn substitute_variables(
+    content: String,
+    variables: &config::Variables,
+) -> Result<String, TemplateRenderError> {
+    Handlebars::new().render_template(&content, variables)
 }
 
 fn copy_if_changed(from: &Path, to: &Path) -> Result<(), ::std::io::Error> {
@@ -168,30 +154,30 @@ fn copy_if_changed(from: &Path, to: &Path) -> Result<(), ::std::io::Error> {
 
 #[cfg(test)]
 mod tests {
+    use super::config;
     use super::substitute_variables;
-    use super::BTreeMap;
 
-    fn table_insert(table: &mut BTreeMap<String, String>, key: &str, value: &str) {
-        table.insert(
-            String::from(key),
-            String::from(value),
-        );
+    fn table_insert(table: &mut config::Variables, key: &str, value: &str) {
+        table.insert(String::from(key), toml::Value::String(String::from(value)));
     }
 
-    fn test_substitute_variables(table: &BTreeMap<String, String>, content: &str, expected: &str) {
-        assert_eq!(substitute_variables(String::from(content), table), expected);
+    fn test_substitute_variables(table: &config::Variables, content: &str, expected: &str) {
+        assert_eq!(
+            substitute_variables(String::from(content), table).unwrap(),
+            expected
+        );
     }
 
     #[test]
     fn test_substitute_variables1() {
-        let table = &mut BTreeMap::new();
+        let table = &mut config::Variables::new();
         table_insert(table, "foo", "bar");
         test_substitute_variables(table, "{{ foo }}", "bar");
     }
 
     #[test]
     fn test_substitute_variables2() {
-        let table = &mut BTreeMap::new();
+        let table = &mut config::Variables::new();
         table_insert(table, "foo", "bar");
         table_insert(table, "baz", "idk");
         test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar idk");
@@ -199,15 +185,43 @@ mod tests {
 
     #[test]
     fn test_substitute_variables_invalid() {
-        let table = &mut BTreeMap::new();
+        let table = &mut config::Variables::new();
         table_insert(table, "foo", "bar");
-        test_substitute_variables(table, "{{ baz }}", "{{ baz }}");
+        test_substitute_variables(table, "{{ baz }}", "");
     }
 
     #[test]
     fn test_substitute_variables_mixed() {
-        let table = &mut BTreeMap::new();
+        let table = &mut config::Variables::new();
         table_insert(table, "foo", "bar");
-        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar {{ baz }}");
+        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar ");
+    }
+
+    #[test]
+    fn test_substitute_variables_deep() {
+        let table = &mut config::Variables::new();
+        let mut person = config::Variables::new();
+        person.insert("name".into(), "Jack".into());
+        person.insert("family".into(), "Black".into());
+        table.insert("person".into(), person.into());
+        test_substitute_variables(
+            table,
+            "Hello, {{person.name}} {{person.family}}!",
+            "Hello, Jack Black!",
+        );
+    }
+
+    #[test]
+    fn test_substitute_variables_nonstring() {
+        let table = &mut config::Variables::new();
+        let mut person = config::Variables::new();
+        person.insert("name".into(), "Jonny".into());
+        person.insert("age".into(), 5.into());
+        table.insert("person".into(), person.into());
+        test_substitute_variables(
+            table,
+            "{{person.name}} can{{#if (lt person.age 18)}}not{{/if}} drink alcohol",
+            "Jonny cannot drink alcohol",
+        );
     }
 }

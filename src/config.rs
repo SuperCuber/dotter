@@ -1,9 +1,12 @@
-use toml::value::Table;
 use filesystem;
+use toml::value::Table;
 
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process;
+
+pub type Files = BTreeMap<String, String>;
+pub type Variables = Table;
 
 /// Panics if table's values aren't strings
 fn pretty_print(table: &Table) -> String {
@@ -86,13 +89,11 @@ fn merge_configuration_tables(global: Table, local: Table) -> Result<Table, Stri
 }
 
 // Returns a tuple of files and variables
-fn parse_configuration_table(
-    table: Table,
-) -> BTreeMap<String, (BTreeMap<String, String>, BTreeMap<String, String>)> {
+fn parse_configuration_table(table: Table) -> BTreeMap<String, (Files, Variables)> {
     table
         .iter()
         .map(|(package_key, package_value)| {
-            let mut files = BTreeMap::new();
+            let mut files = Files::new();
             if let Some(files_table) = package_value.get("files").and_then(|f| f.as_table()) {
                 for (from, to) in files_table.iter() {
                     if to.is_str() {
@@ -108,22 +109,11 @@ fn parse_configuration_table(
                 }
             }
 
-            let mut variables = BTreeMap::new();
-            if let Some(variables_table) = package_value.get("variables").and_then(|f| f.as_table())
-            {
-                for (from, to) in variables_table.iter() {
-                    if to.is_str() {
-                        variables.insert(from.to_string(), to.as_str().unwrap().to_string());
-                    } else if to.is_bool() && to.as_bool().unwrap() {
-                        continue;
-                    } else {
-                        warn!(
-                            "In package {} variable {}, value {} is invalid.",
-                            package_key, from, to
-                        );
-                    }
-                }
-            }
+            let variables = package_value
+                .get("variables")
+                .and_then(|f| f.as_table())
+                .map(|f| f.to_owned())
+                .unwrap_or_else(Variables::new);
 
             (package_key.to_string(), (files, variables))
         })
@@ -131,11 +121,12 @@ fn parse_configuration_table(
 }
 
 /// Returns a tuple of (files, variables) if successful
-pub fn load_configuration(
+fn try_load_configuration(
     local_config: &Path,
     global_config: &Path,
-) -> Result<(BTreeMap<String, String>, BTreeMap<String, String>), String> {
-    let global: Table = filesystem::load_file(global_config).map_err(|e| format!("global: {}", e))?;
+) -> Result<(Files, Variables), String> {
+    let global: Table =
+        filesystem::load_file(global_config).map_err(|e| format!("global: {}", e))?;
     debug!("Global: {:?}", global);
 
     let local: Table = filesystem::load_file(local_config).map_err(|e| format!("local: {}", e))?;
@@ -144,11 +135,7 @@ pub fn load_configuration(
     let packages = local
         .get("packages")
         .and_then(|v| v.as_array())
-        .and_then(|v| {
-            v.iter()
-                .map(|i| i.as_str())
-                .collect::<Option<Vec<&str>>>()
-        })
+        .and_then(|v| v.iter().map(|i| i.as_str()).collect::<Option<Vec<&str>>>())
         .unwrap_or_else(|| {
             error!("Failed to get array of packages (strings) from local configuration");
             process::exit(1);
@@ -184,3 +171,24 @@ pub fn load_configuration(
     Ok(configuration)
 }
 
+pub fn load_configuration(local_config: &Path, global_config: &Path) -> Option<(Files, Variables)> {
+    let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
+    loop {
+        match try_load_configuration(local_config, global_config) {
+            Ok(conf) => break Some(conf),
+            Err(e) => {
+                if let Some(new_parent) = parent.parent().map(|p| p.into()) {
+                    parent = new_parent;
+                    warn!(
+                        "Current directory failed on step: {}, going one up to {:?}",
+                        e, parent
+                    );
+                } else {
+                    warn!("Reached root.");
+                    break None;
+                }
+                ::std::env::set_current_dir(&parent).expect("Move a directory up");
+            }
+        }
+    }
+}
