@@ -10,11 +10,12 @@ categories = ["command-line-utilities"]
 license = "WTFPL"
 
 [dependencies]
-toml = "0.4.*"
-serde = "1.0.*"
-structopt = "0.3.*"
 clap = "2.33.*"
 env_logger = "0.7.*"
+handlebars = { version = "3.3.*", features = ["script_helper"] }
 log = "0.4.*"
+meval = "0.2.*"
+serde = "1.0.*"
 shellexpand = "1.1.*"
-handlebars = "3.3.*"
+structopt = "0.3.*"
+toml = "0.4.*"

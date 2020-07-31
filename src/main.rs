@@ -1,8 +1,9 @@
 extern crate clap;
 extern crate env_logger;
+extern crate handlebars;
 #[macro_use]
 extern crate log;
-extern crate handlebars;
+extern crate meval;
 extern crate serde;
 extern crate shellexpand;
 extern crate structopt;
@@ -12,6 +13,7 @@ mod args;
 mod config;
 mod deploy;
 mod filesystem;
+mod handlebars_helpers;
 
 use std::env;
 use std::process;

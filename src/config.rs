@@ -7,6 +7,7 @@ use std::process;
 
 pub type Files = BTreeMap<String, String>;
 pub type Variables = Table;
+pub type Helpers = BTreeMap<String, String>;
 
 fn normalize_package_table(mut package: Table) -> Table {
     package
@@ -111,10 +112,33 @@ fn parse_configuration_table(table: Table) -> BTreeMap<String, (Files, Variables
 fn try_load_configuration(
     local_config: &Path,
     global_config: &Path,
-) -> Result<(Files, Variables), String> {
-    let global: Table =
+) -> Result<(Files, Variables, Helpers), String> {
+    let mut global: Table =
         filesystem::load_file(global_config).map_err(|e| format!("global: {}", e))?;
+
+    // Get helpers, remove it from global so it isn't processed as a package
+    let helpers = global
+        .remove("helpers".into())
+        .unwrap_or(Helpers::new().into())
+        .as_table()
+        .unwrap_or_else(|| {
+            error!("'helpers' in global configuration is not a table");
+            process::exit(1);
+        })
+        .into_iter()
+        .map(|(helper_name, helper_location)| {
+            Some((
+                helper_name.to_string(),
+                helper_location.as_str()?.to_string(),
+            ))
+        })
+        .collect::<Option<Helpers>>()
+        .unwrap_or_else(|| {
+            error!("Some helper locations are not a string");
+            process::exit(1);
+        });
     debug!("Global: {:?}", global);
+    debug!("Helpers: {:?}", helpers);
 
     let local: Table = filesystem::load_file(local_config).map_err(|e| format!("local: {}", e))?;
     debug!("Local: {:?}", local);
@@ -155,10 +179,13 @@ fn try_load_configuration(
     };
     debug!("Final configuration: {:?}", configuration);
 
-    Ok(configuration)
+    Ok((configuration.0, configuration.1, helpers))
 }
 
-pub fn load_configuration(local_config: &Path, global_config: &Path) -> Option<(Files, Variables)> {
+pub fn load_configuration(
+    local_config: &Path,
+    global_config: &Path,
+) -> Option<(Files, Variables, Helpers)> {
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
     loop {
         match try_load_configuration(local_config, global_config) {

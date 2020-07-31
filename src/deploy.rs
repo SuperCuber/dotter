@@ -7,13 +7,14 @@ use std::process;
 
 use args::Options;
 use config;
+use handlebars_helpers;
 
 pub fn deploy(opt: Options) {
     // Configuration
     info!("Loading configuration...");
 
-    let (files, variables) = config::load_configuration(&opt.local_config, &opt.global_config)
-        .unwrap_or_else(|| {
+    let (files, variables, helpers) =
+        config::load_configuration(&opt.local_config, &opt.global_config).unwrap_or_else(|| {
             error!("Failed to find configuration in current or parent directories.");
             process::exit(1);
         });
@@ -28,12 +29,18 @@ pub fn deploy(opt: Options) {
         }
     }
 
+    // Prepare handlebars instance
+    let mut handlebars = Handlebars::new();
+    handlebars_helpers::register_rust_helpers(&mut handlebars);
+    handlebars_helpers::register_script_helpers(&mut handlebars, helpers);
+
     // Deploy files
     for (from, to) in files {
         let to = shellexpand::tilde(&to).into_owned();
         if let Err(msg) = deploy_file(
             &PathBuf::from(&from),
             &PathBuf::from(&to),
+            &handlebars,
             &variables,
             opt.cache,
             &opt.cache_directory,
@@ -47,6 +54,7 @@ pub fn deploy(opt: Options) {
 fn deploy_file(
     from: &Path,
     to: &Path,
+    handlebars: &Handlebars,
     variables: &config::Variables,
     cache: bool,
     cache_directory: &Path,
@@ -66,6 +74,7 @@ fn deploy_file(
             deploy_file(
                 &from.join(&entry),
                 &to.join(&entry),
+                handlebars,
                 variables,
                 cache,
                 cache_directory,
@@ -77,7 +86,15 @@ fn deploy_file(
 
     if cache {
         let to_cache = &cache_directory.join(from);
-        deploy_file(from, to_cache, variables, false, cache_directory, act)?;
+        deploy_file(
+            from,
+            to_cache,
+            handlebars,
+            variables,
+            false,
+            cache_directory,
+            act,
+        )?;
         info!("Copying {:?} to {:?}", to_cache, to);
         if act {
             copy_if_changed(to_cache, to)?;
@@ -88,14 +105,17 @@ fn deploy_file(
         if act {
             let mut f_from = fs::File::open(from)?;
             let mut content = String::new();
-            let mut f_to = fs::File::create(to)?;
             if f_from.read_to_string(&mut content).is_ok() {
                 // UTF-8 Compatible file
-                let content = substitute_variables(content, variables);
+                let content = substitute_variables(content, handlebars, variables);
                 match content {
-                    Ok(content) => f_to.write_all(content.as_bytes())?,
+                    Ok(content) => {
+                        let mut f_to = fs::File::create(to)?;
+                        f_to.write_all(content.as_bytes())?;
+                        f_to.set_permissions(perms)?;
+                    }
                     Err(error) => {
-                        warn!("Error rendering file {:?}: {}", from, error);
+                        error!("Error rendering file {:?}: {}", from, error);
                     }
                 }
             } else {
@@ -104,9 +124,10 @@ fn deploy_file(
                 f_from.seek(::std::io::SeekFrom::Start(0))?;
                 let mut content = Vec::new();
                 f_from.read_to_end(&mut content)?;
+                let mut f_to = fs::File::create(to)?;
                 f_to.write_all(&content)?;
+                f_to.set_permissions(perms)?;
             }
-            f_to.set_permissions(perms)?;
         }
     }
     Ok(())
@@ -114,9 +135,10 @@ fn deploy_file(
 
 fn substitute_variables(
     content: String,
+    handlebars: &Handlebars,
     variables: &config::Variables,
 ) -> Result<String, TemplateRenderError> {
-    Handlebars::new().render_template(&content, variables)
+    handlebars.render_template(&content, variables)
 }
 
 fn copy_if_changed(from: &Path, to: &Path) -> Result<(), ::std::io::Error> {
