@@ -36,15 +36,6 @@ where
     Ok(toml::from_str::<T>(&buf).map_err(|_| "parse")?)
 }
 
-pub fn save_file<T>(filename: &Path, data: &T) -> Result<(), String>
-where
-    T: Serialize,
-{
-    let mut f = File::create(filename).map_err(|_| "open")?;
-    let buf = toml::to_string(data).map_err(|_| "serialize")?;
-    f.write(buf.as_bytes()).map_err(|_| "write")?;
-    Ok(())
-}
 #[cfg(test)]
 mod tests {
     use super::relativize;
