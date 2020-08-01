@@ -31,6 +31,7 @@ pub fn deploy(opt: Options) {
 
     // Prepare handlebars instance
     let mut handlebars = Handlebars::new();
+    handlebars.register_escape_fn(|s| s.to_string());
     handlebars_helpers::register_rust_helpers(&mut handlebars);
     handlebars_helpers::register_script_helpers(&mut handlebars, helpers);
 
