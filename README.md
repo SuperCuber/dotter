@@ -11,6 +11,10 @@ However, there are several issues with that barebones approach:
 
 Dotter aims to solve all those problems by providing a flexible configuration and automatic templating or symlinking to the target locations.
 
+⚠️ **THIS PROJECT IS UNDER HEAVY DEVELOPMENT**. I use it regularly myself so it's reasonably tested, but expect bugs to happen.
+If you find a bug, please open an issue describing how to reproduce it, and it will get fixed.\
+I create Releases often so make sure you check whether the bug was fixed in the latest one!
+
 # Installation
 Download the binary for your platform from the latest release and then put it in your `$PATH` or in your dotfile repository (then you'd run it with `./dotter`).
 
