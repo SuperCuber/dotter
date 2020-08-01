@@ -158,7 +158,7 @@ The ones that currently exist:
 - `math` - used like `{{math font_size "*" 2}}`. Executed by [meval-rs](https://github.com/rekka/meval-rs#supported-expressions).
 
 ## Caching, and Templated vs Untemplated
-TODO
+TODO: This functionality will be reworked soon (see [issue #6](https://github.com/SuperCuber/dotter/issues/6)) so I won't document it yet.
 
 # Usage
 Now that you've configured all the global and local file sections, you can simply run `dotter` from within your repository.\
