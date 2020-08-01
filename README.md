@@ -120,7 +120,7 @@ font_size = 18
 For the initial configuration, you might want to have a single `always` package that contains just a `files` section, then select it in `local.toml`.
 You can always break it up into smaller packages later!
 
-For an example of a repository that uses dotter, check out [my dotfiles](github.com/SuperCuber/dotfiles). The folder of interest is `dotter_settings`.
+For an example of a repository that uses dotter, check out [my dotfiles](https://github.com/SuperCuber/dotfiles). The folder of interest is `dotter_settings`.
 
 ## Templating
 Dotter uses [Handlebars](https://handlebarsjs.com/guide/) as its rendering engine.
