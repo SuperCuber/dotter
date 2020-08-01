@@ -28,6 +28,7 @@ Alternatively, Dotter is on [crates.io](crates.io/crates/dotter), so run `cargo 
   - Commit and push, you now have a dotfiles repo!
 - In your dotfiles repo, create a folder `dotter_settings` and two files: `global.toml` and `local.toml`.
 - Add `local.toml` to your `.gitignore` - that file contains the machine-specific configuration, so there's no point uploading it.
+  - A different approach would be to have several `local.toml`s in your git repo - then select the appropriate one using the `-l` flag.
 - When installing, I recommend downloading the binaries (windows and linux) into the root of your repository.\
   That way, wherever your dotfiles are, Dotter also is.
 - On Linux, make sure `dotter` has execute permissions with `chmod +x dotter`, then you can run it with `./dotter`
@@ -48,11 +49,16 @@ color_hex2rgb = "dotter_settings/helpers/color_hex2rgb.rhai"
 # A package contains two sections - "files" and "variables".
 # Both of those sections are optional - you can have only one if you want.
 
-# The 'files' section is a mapping between the location of the file in the
-# repository and its location in the filesystem (where the program expects it)
+# The 'files' section is a mapping between the path of the file relative to
+# the repository root and its location in the filesystem (where the program
+# expects it)
+# In this case, say your repository is at `~/.dotfiles`, it will map
+# `~/.dotfiles/zsh/zprofile` to `~/.zprofile`,
+# and `~/.dotfiles/zshrc` to `~/.zshrc`
+# To clarify, folders in the repository don't have to correspond to packages.
 # On Windows, '~' is expanded to 'C:\Users\<USERNAME>\'
 [zsh.files]
-zprofile = "~/.zprofile"
+"zsh/zprofile" = "~/.zprofile"
 zshrc = "~/.zshrc"
 
 # The 'variables' section contains constants that the templated files
@@ -168,7 +174,29 @@ TODO: This functionality will be reworked soon (see [issue #6](https://github.co
 Now that you've configured all the global and local file sections, you can simply run `dotter` from within your repository.\
 All the files will be deployed to their target locations.
 
-Check out `dotter -h` for the commandline flags that Dotter supports.
+Check out `dotter -h` for the commandline flags that Dotter supports:
+
+```
+Dotter 0.5.2
+A small dotfile manager.
+
+USAGE:
+    dotter.exe [FLAGS] [OPTIONS]
+
+FLAGS:
+        --dry_run     Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
+                      otherwise
+        --no-cache    Don't use a cache (caching is used in order to avoid touching files that didn't change)
+    -h, --help        Prints help information
+    -V, --version     Prints version information
+
+OPTIONS:
+    -c, --cache-directory <cache-directory>    Directory to cache into [default: dotter_cache]
+    -d, --directory <directory>                Do all operations relative to this directory [default: .]
+    -g, --global-config <global-config>        Location of the global configuration [default:
+                                               dotter_settings/global.toml]
+    -l, --local-config <local-config>          Location of the local configuration [default: dotter_settings/local.toml]
+```
 
 Dotter uses the `env_logger` rust library for displaying errors and warnings. To configure logging level, use the `RUST_LOG` environment variable. The options are, in order of least verbose to most verbose: `error`, `warn`, `info`, `debug`, `trace`. The default is `error`.
 
