@@ -29,7 +29,8 @@ pub fn deploy(opt: Options) {
     let mut desired_templates = config::FilesPath::new();
 
     // On Windows, you need developer mode to create symlinks.
-    let symlinks_enabled = if filesystem::symlinks_enabled(&opt.cache_directory.join("dotter_test")) {
+    let symlinks_enabled = if filesystem::symlinks_enabled(&opt.cache_directory.join("dotter_test"))
+    {
         true
     } else {
         error!(
@@ -123,7 +124,10 @@ fn delete_symlink(act: bool, symlink: &FileDescription) -> bool {
             false
         }
         FileCompareState::Missing => {
-            warn!("Symlink in target location {:?} does not exist. Removing from cache anyways.", &symlink.target);
+            warn!(
+                "Symlink in target location {:?} does not exist. Removing from cache anyways.",
+                &symlink.target
+            );
             true
         }
     }
@@ -144,7 +148,10 @@ fn delete_template(act: bool, template: &FileDescription) -> bool {
             false
         }
         FileCompareState::Missing => {
-            warn!("Template in target location {:?} does not exist. Removing from cache anyways.", &template.target);
+            warn!(
+                "Template in target location {:?} does not exist. Removing from cache anyways.",
+                &template.target
+            );
             true
         }
     }
@@ -177,7 +184,10 @@ fn create_template(
         if act {
             fs::create_dir_all(template.cache.parent().expect("template target has parent"))
                 .expect("create parent directory in cache");
-            let rendered = match handlebars.render_template(&fs::read_to_string(&template.source).expect("read template source file"), variables) {
+            let rendered = match handlebars.render_template(
+                &fs::read_to_string(&template.source).expect("read template source file"),
+                variables,
+            ) {
                 Ok(rendered) => rendered,
                 Err(e) => {
                     error!(
@@ -189,7 +199,10 @@ fn create_template(
             };
 
             if let Err(e) = fs::write(&template.cache, rendered) {
-                error!("Failed to write rendered template to cache file {:?} because {}", &template.cache, e);
+                error!(
+                    "Failed to write rendered template to cache file {:?} because {}",
+                    &template.cache, e
+                );
                 return false;
             }
 
@@ -235,22 +248,29 @@ fn update_template(
     match filesystem::compare_template(&template.target, &template.cache) {
         FileCompareState::Equal => {
             if act {
-            let rendered = match handlebars.render_template(&fs::read_to_string(&template.source).expect("read template source file"), variables) {
-                Ok(rendered) => rendered,
-                Err(e) => {
+                let rendered = match handlebars.render_template(
+                    &fs::read_to_string(&template.source).expect("read template source file"),
+                    variables,
+                ) {
+                    Ok(rendered) => rendered,
+                    Err(e) => {
+                        error!(
+                            "Failed to render template file {:?} because {}",
+                            template.source, e
+                        );
+                        return;
+                    }
+                };
+
+                if let Err(e) = fs::write(&template.cache, rendered) {
                     error!(
-                        "Failed to render template file {:?} because {}",
-                        template.source, e
+                        "Failed to write rendered template to cache file {:?} because {}",
+                        &template.cache, e
                     );
                     return;
                 }
-            };
-
-            if let Err(e) = fs::write(&template.cache, rendered) {
-                error!("Failed to write rendered template to cache file {:?} because {}", &template.cache, e);
-                return;
-            }
-                fs::copy(&template.cache, &template.target).expect("copy template from cache to target");
+                fs::copy(&template.cache, &template.target)
+                    .expect("copy template from cache to target");
             }
         }
         FileCompareState::Changed => {

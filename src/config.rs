@@ -204,10 +204,13 @@ fn expand_directories(files: Files) -> io::Result<FilesPath> {
 fn expand_directory(source: &Path, target: &Path) -> io::Result<FilesPath> {
     // TODO: might wanna swap all this to expects and unwraps or some other in-place crash
     // because otherwise error reporting is really undescriptive
-    if fs::metadata(source).unwrap_or_else(|e| {
-        error!("Failed to read metadata of {:?}: {}", source, e);
-        process::exit(1);
-    }).is_file() {
+    if fs::metadata(source)
+        .unwrap_or_else(|e| {
+            error!("Failed to read metadata of {:?}: {}", source, e);
+            process::exit(1);
+        })
+        .is_file()
+    {
         let mut map = FilesPath::new();
         map.insert(source.into(), target.into());
         Ok(map)

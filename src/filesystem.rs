@@ -62,9 +62,13 @@ pub fn compare_symlink(link: &Path, target: &Path) -> FileCompareState {
 
 pub fn compare_template(target: &Path, cache: &Path) -> FileCompareState {
     match fs::read_to_string(target) {
-        Ok(content) => if content == fs::read_to_string(cache).expect("read template in cache") {
-            FileCompareState::Equal
-        } else { FileCompareState::Changed }
+        Ok(content) => {
+            if content == fs::read_to_string(cache).expect("read template in cache") {
+                FileCompareState::Equal
+            } else {
+                FileCompareState::Changed
+            }
+        }
         Err(e) => {
             if e.raw_os_error() == Some(2) {
                 return FileCompareState::Missing;
@@ -79,10 +83,9 @@ pub fn real_path(path: &Path) -> PathBuf {
     let path = PathBuf::from(path);
     let path = shellexpand::tilde(&path.to_string_lossy()).to_string();
     let path = std::fs::canonicalize(&path).unwrap_or_else(|e| {
-            error!("Failed to canonicalize {:?}: {}", path, e);
-            process::exit(1);
-        },
-    );
+        error!("Failed to canonicalize {:?}: {}", path, e);
+        process::exit(1);
+    });
     platform_dunce(path)
 }
 
@@ -123,10 +126,10 @@ pub fn delete_parents(path: &Path, ask: bool) {
 mod filesystem_impl {
     use dunce;
 
-    use std::process;
-    use std::os::windows::fs;
     use std::fs::remove_file;
+    use std::os::windows::fs;
     use std::path::{Path, PathBuf};
+    use std::process;
 
     pub fn make_symlink(link: &Path, target: &Path) {
         if let Err(e) = fs::symlink_file(target, link) {
@@ -135,19 +138,27 @@ mod filesystem_impl {
     }
 
     pub fn symlinks_enabled(test_file_path: &Path) -> bool {
-        debug!("Testing whether symlinks enabled on path {:?}", test_file_path);
+        debug!(
+            "Testing whether symlinks enabled on path {:?}",
+            test_file_path
+        );
         let _ = remove_file(&test_file_path);
         match fs::symlink_file("test.txt", &test_file_path) {
             Ok(()) => {
                 remove_file(&test_file_path).expect("remove test file");
                 true
-            },
+            }
             Err(e) => {
                 // os error 1314: A required privilege is not held by the client.
                 if e.raw_os_error() != Some(1314) {
-                    error!("Failed to create test symlink at path {:?} because {}", test_file_path, e);
+                    error!(
+                        "Failed to create test symlink at path {:?} because {}",
+                        test_file_path, e
+                    );
                     process::exit(1);
-                } else { false }
+                } else {
+                    false
+                }
             }
         }
     }
