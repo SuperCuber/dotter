@@ -51,15 +51,9 @@ pub enum LoadConfigFailType {
 
     #[error("Failed to inspect source files")]
     InvalidSourceTree { source: anyhow::Error },
-
-    #[error("Failed to expand path {path}")]
-    ExpandPath {
-        path: PathBuf,
-        source: anyhow::Error,
-    },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct Package {
     #[serde(default)]
     files: Files,
@@ -112,7 +106,7 @@ fn try_load_configuration(
         let mut configuration_packages = merged_config.packages.into_iter();
         let mut first_package = configuration_packages
             .next()
-            .expect("at least one package")
+            .unwrap_or_else(|| (String::new(), Package::default()))
             .1;
         for (_, v) in configuration_packages {
             first_package.files.extend(v.files);
@@ -192,19 +186,14 @@ pub fn load_configuration(
             Err(e) => break Err(e),
         }
     }?;
-    let files: Result<Files, LoadConfigFailType> = files
+
+    let files = files
         .into_iter()
         .map(|(k, v)| {
-            Ok((
-                k,
-                filesystem::real_path(&v).map_err(|e| LoadConfigFailType::ExpandPath {
-                    path: v.into(),
-                    source: e,
-                })?,
-            ))
+            (k, shellexpand::tilde(&v.to_string_lossy()).to_string().into())
         })
         .collect();
-    Ok((files?, variables, helpers))
+    Ok((files, variables, helpers))
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

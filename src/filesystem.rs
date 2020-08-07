@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
-use shellexpand;
 
 use toml;
 
@@ -142,10 +141,6 @@ pub fn compare_template(target: &Path, cache: &Path) -> Result<FileCompareState>
 }
 
 pub fn real_path(path: &Path) -> Result<PathBuf> {
-    let path = PathBuf::from(path);
-    debug!("Before shellexpand: {:?}", path);
-    let path = shellexpand::tilde(&path.to_string_lossy()).to_string();
-    debug!("Shellexpanded: {:?}", path);
     let path = std::fs::canonicalize(&path)?;
     Ok(platform_dunce(path))
 }
@@ -201,7 +196,7 @@ mod filesystem_impl {
     use std::path::{Path, PathBuf};
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
-        Ok(fs::symlink_file(target, link)?)
+        Ok(fs::symlink_file(super::real_path(target).context("Failed to get real path of source file")?, link).context("Failed to create symlink")?)
     }
 
     pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
@@ -243,7 +238,7 @@ mod filesystem_impl {
     use std::path::{Path, PathBuf};
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
-        Ok(fs::symlink(target, link)?)
+        Ok(fs::symlink(target, super::real_path(link).context("Failed to get real path of source file")?).context("Failed to create symlink")?)
     }
 
     pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
