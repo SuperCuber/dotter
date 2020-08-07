@@ -2,10 +2,11 @@ use filesystem;
 use toml::value::Table;
 
 use std::collections::BTreeMap;
-use std::path::Path;
-use std::process;
+use std::path::{Path, PathBuf};
+use std::{fs, io, process};
 
 pub type Files = BTreeMap<String, String>;
+pub type FilesPath = BTreeMap<PathBuf, PathBuf>;
 pub type Variables = Table;
 pub type Helpers = BTreeMap<String, String>;
 
@@ -112,7 +113,7 @@ fn parse_configuration_table(table: Table) -> BTreeMap<String, (Files, Variables
 fn try_load_configuration(
     local_config: &Path,
     global_config: &Path,
-) -> Result<(Files, Variables, Helpers), String> {
+) -> Result<(FilesPath, Variables, Helpers), String> {
     let mut global: Table =
         filesystem::load_file(global_config).map_err(|e| format!("global: {}", e))?;
 
@@ -165,7 +166,7 @@ fn try_load_configuration(
         parse_configuration_table(merge_configuration_tables(global, local)?);
 
     // Merge all the packages
-    let configuration = {
+    let (files, variables) = {
         let mut configuration_packages = configuration_packages.into_iter();
         let mut first_package = configuration_packages
             .next()
@@ -177,15 +178,56 @@ fn try_load_configuration(
         }
         first_package
     };
-    debug!("Final configuration: {:?}", configuration);
 
-    Ok((configuration.0, configuration.1, helpers))
+    let files = expand_directories(files).unwrap_or_else(|e| {
+        error!(
+            "Failed to expand directory sources into their children: {}",
+            e
+        );
+        process::exit(1);
+    });
+    debug!("Expanded files: {:?}", files);
+
+    debug!("Final configuration: {:?}", (&files, &variables, &helpers));
+
+    Ok((files, variables, helpers))
+}
+
+fn expand_directories(files: Files) -> io::Result<FilesPath> {
+    let expanded = files
+        .into_iter()
+        .map(|(from, to)| expand_directory(&PathBuf::from(from), &PathBuf::from(to)))
+        .collect::<io::Result<Vec<FilesPath>>>()?;
+    Ok(expanded.into_iter().flatten().collect::<FilesPath>())
+}
+
+/// If a file is given, it will return a map of one element
+/// Otherwise, returns recursively all the children and their targets
+///  in relation to parent target
+fn expand_directory(source: &Path, target: &Path) -> io::Result<FilesPath> {
+    // TODO: might wanna swap all this to expects and unwraps or some other in-place crash
+    // because otherwise error reporting is really undescriptive
+    if fs::metadata(source)?.is_file() {
+        let mut map = FilesPath::new();
+        map.insert(source.into(), target.into());
+        Ok(map)
+    } else {
+        let expanded = fs::read_dir(source)?
+            .map(|child| -> io::Result<FilesPath> {
+                let child = child?.file_name();
+                let child_source = PathBuf::from(source).join(&child);
+                let child_target = PathBuf::from(target).join(&child);
+                expand_directory(&child_source, &child_target)
+            })
+            .collect::<io::Result<Vec<FilesPath>>>()?;
+        Ok(expanded.into_iter().flatten().collect())
+    }
 }
 
 pub fn load_configuration(
     local_config: &Path,
     global_config: &Path,
-) -> Option<(Files, Variables, Helpers)> {
+) -> Option<(FilesPath, Variables, Helpers)> {
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
     loop {
         match try_load_configuration(local_config, global_config) {
@@ -205,4 +247,42 @@ pub fn load_configuration(
             }
         }
     }
+}
+
+/// Returns tuple of (existing_symlinks, existing_templates)
+pub fn load_cache(cache: &Path) -> (FilesPath, FilesPath) {
+    let file: Table = filesystem::load_file(cache).unwrap_or_else(|e| {
+        error!("Failed to load cache file {:?}: {}", cache, e);
+        process::exit(1);
+    });
+
+    let symlinks = file
+        .get("symlinks")
+        .and_then(|v| v.as_table())
+        .expect("symlinks table in cache file")
+        .to_owned()
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                PathBuf::from(k),
+                PathBuf::from(v.as_str().expect("value is string")),
+            )
+        })
+        .collect::<FilesPath>();
+
+    let templates = file
+        .get("templates")
+        .and_then(|v| v.as_table())
+        .expect("symlinks table in cache file")
+        .to_owned()
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                PathBuf::from(k),
+                PathBuf::from(v.as_str().expect("value is string")),
+            )
+        })
+        .collect::<FilesPath>();
+
+    (symlinks, templates)
 }

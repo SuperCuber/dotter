@@ -1,242 +1,255 @@
 use handlebars::{Handlebars, TemplateRenderError};
 
-use std::fs;
-use std::io::{Read, Seek, Write};
+use std::collections::BTreeSet;
+use std::fs::File;
+use std::io::{self, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process;
 
 use args::Options;
-use config;
+use config::{self, FilesPath};
 use handlebars_helpers;
 
 pub fn deploy(opt: Options) {
     // Configuration
     info!("Loading configuration...");
 
+    // Throughout this function I'll be referencing steps, those were described in issue #6
+
+    // Step 1
     let (files, variables, helpers) =
         config::load_configuration(&opt.local_config, &opt.global_config).unwrap_or_else(|| {
             error!("Failed to find configuration in current or parent directories.");
             process::exit(1);
         });
 
-    // Cache
-    debug!("Cache: {}", opt.cache);
-    if opt.cache {
-        info!("Creating cache directory at {:?}", &opt.cache_directory);
-        if opt.act && fs::create_dir_all(&opt.cache_directory).is_err() {
-            error!("Failed to create cache directory.");
-            process::exit(1);
+    // Step 2-3
+    let mut desired_symlinks = config::FilesPath::new();
+    let mut desired_templates = config::FilesPath::new();
+
+    for (source, target) in files {
+        if is_template(&source) {
+            desired_templates.insert(source, target);
+        } else {
+            desired_symlinks.insert(source, target);
         }
+    }
+
+    // Step 4
+    let (existing_symlinks, existing_templates) = config::load_cache(todo!("cache file option"));
+
+    let state = FileState::new(
+        desired_symlinks,
+        desired_templates,
+        existing_symlinks,
+        existing_templates,
+        opt.cache_directory,
+    );
+
+    // Step 5+6
+    let (deleted_symlinks, deleted_templates) = state.deleted_files();
+    for deleted_symlink in deleted_symlinks {
+        delete_symlink(deleted_symlink);
+    }
+    for deleted_template in deleted_templates {
+        delete_template(deleted_template);
     }
 
     // Prepare handlebars instance
     let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string());
+    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
     handlebars_helpers::register_rust_helpers(&mut handlebars);
     handlebars_helpers::register_script_helpers(&mut handlebars, helpers);
 
-    // Deploy files
-    for (from, to) in files {
-        let to = shellexpand::tilde(&to).into_owned();
-        if let Err(msg) = deploy_file(
-            &PathBuf::from(&from),
-            &PathBuf::from(&to),
-            &handlebars,
-            &variables,
-            opt.cache,
-            &opt.cache_directory,
-            opt.act,
-        ) {
-            warn!("Failed to deploy {:?} -> {:?}: {}", &from, &to, msg);
-        }
+    // Step 7+8
+    let (new_symlinks, new_templates) = state.new_files();
+    for new_symlink in new_symlinks {
+        create_symlink(new_symlink);
+    }
+    for new_template in new_templates {
+        create_template(new_template, &handlebars, &variables);
+    }
+
+    // Step 9+10
+    let (old_symlinks, old_templates) = state.old_files();
+    for old_symlink in old_symlinks {
+        update_symlink(old_symlink);
+    }
+    for old_template in old_templates {
+        update_template(old_template, &handlebars, &variables);
     }
 }
 
-fn deploy_file(
-    from: &Path,
-    to: &Path,
-    handlebars: &Handlebars,
-    variables: &config::Variables,
-    cache: bool,
-    cache_directory: &Path,
-    act: bool,
-) -> Result<(), ::std::io::Error> {
-    // Create target directory
-    if act {
-        let to_parent = to.parent().unwrap_or(to);
-        fs::create_dir_all(to_parent)?;
-    }
-
-    // If directory, recurse in
-    let meta_from = fs::metadata(from)?;
-    if meta_from.file_type().is_dir() {
-        for entry in fs::read_dir(from)? {
-            let entry = entry?.file_name();
-            deploy_file(
-                &from.join(&entry),
-                &to.join(&entry),
-                handlebars,
-                variables,
-                cache,
-                cache_directory,
-                act,
-            )?;
-        }
-        return Ok(());
-    }
-
-    if cache {
-        let to_cache = &cache_directory.join(from);
-        deploy_file(
-            from,
-            to_cache,
-            handlebars,
-            variables,
-            false,
-            cache_directory,
-            act,
-        )?;
-        info!("Copying {:?} to {:?}", to_cache, to);
-        if act {
-            copy_if_changed(to_cache, to)?;
-        }
+fn is_template(source: &Path) -> bool {
+    let mut file = File::open(source).unwrap_or_else(|e| {
+        error!("Failed to open file {:?} because {}", source, e);
+        process::exit(1);
+    });
+    let mut buf = String::new();
+    if let Err(_) = file.read_to_string(&mut buf) {
+        warn!("File {:?} is not valid UTF-8 - not templating", source);
+        false
     } else {
-        info!("Templating {:?} to {:?}", from, to);
-        let perms = meta_from.permissions();
-        if act {
-            let mut f_from = fs::File::open(from)?;
-            let mut content = String::new();
-            if f_from.read_to_string(&mut content).is_ok() {
-                // UTF-8 Compatible file
-                let content = substitute_variables(content, handlebars, variables);
-                match content {
-                    Ok(content) => {
-                        let mut f_to = fs::File::create(to)?;
-                        f_to.write_all(content.as_bytes())?;
-                        f_to.set_permissions(perms)?;
-                    }
-                    Err(error) => {
-                        error!("Error rendering file {:?}: {}", from, error);
-                    }
-                }
-            } else {
-                warn!("File {:?} is incompatible with UTF-8, copying byte-for-byte instead of rendering.", from);
-                // Binary file or with invalid chars
-                f_from.seek(::std::io::SeekFrom::Start(0))?;
-                let mut content = Vec::new();
-                f_from.read_to_end(&mut content)?;
-                let mut f_to = fs::File::create(to)?;
-                f_to.write_all(&content)?;
-                f_to.set_permissions(perms)?;
-            }
-        }
+        buf.contains("{{")
     }
-    Ok(())
 }
 
-fn substitute_variables(
-    content: String,
-    handlebars: &Handlebars,
-    variables: &config::Variables,
-) -> Result<String, TemplateRenderError> {
-    handlebars.render_template(&content, variables)
+struct FileState {
+    desired_symlinks: BTreeSet<FileDescription>,
+    desired_templates: BTreeSet<FileDescription>,
+    existing_symlinks: BTreeSet<FileDescription>,
+    existing_templates: BTreeSet<FileDescription>,
 }
 
-fn copy_if_changed(from: &Path, to: &Path) -> Result<(), ::std::io::Error> {
-    let mut content_from = Vec::new();
-    let mut content_to = Vec::new();
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+struct FileDescription {
+    source: PathBuf,
+    target: PathBuf,
+    cache: PathBuf,
+}
 
-    let mut copy = false;
-
-    fs::File::open(from)?.read_to_end(&mut content_from)?;
-    if let Ok(mut f_to) = fs::File::open(to) {
-        f_to.read_to_end(&mut content_to)?;
-    } else {
-        copy = true;
+impl FileState {
+    fn new(
+        desired_symlinks: FilesPath,
+        desired_templates: FilesPath,
+        existing_symlinks: FilesPath,
+        existing_templates: FilesPath,
+        cache_dir: PathBuf,
+    ) -> FileState {
+        FileState {
+            desired_symlinks: Self::files_to_set(desired_symlinks, &cache_dir),
+            desired_templates: Self::files_to_set(desired_templates, &cache_dir),
+            existing_symlinks: Self::files_to_set(existing_symlinks, &cache_dir),
+            existing_templates: Self::files_to_set(existing_templates, &cache_dir),
+        }
     }
 
-    let copy = copy || content_from != content_to;
-
-    if copy {
-        info!("File {:?} differs from {:?}, copying.", from, to);
-        fs::File::create(to)?.write_all(&content_from)?;
-    } else {
-        info!("File {:?} is the same as {:?}, not copying.", from, to);
+    fn files_to_set(files: FilesPath, cache_dir: &Path) -> BTreeSet<FileDescription> {
+        files
+            .into_iter()
+            .map(|(source, target)| FileDescription {
+                source: source.clone(),
+                target,
+                cache: cache_dir.join(source),
+            })
+            .collect()
     }
 
-    Ok(())
+    fn deleted_files(&self) -> (Vec<FileDescription>, Vec<FileDescription>) {
+        (
+            self.existing_symlinks
+                .difference(&self.desired_symlinks)
+                .cloned()
+                .collect(),
+            self.existing_templates
+                .difference(&self.desired_templates)
+                .cloned()
+                .collect(),
+        )
+    }
+    fn new_files(&self) -> (Vec<FileDescription>, Vec<FileDescription>) {
+        (
+            self.desired_symlinks
+                .difference(&self.existing_symlinks)
+                .cloned()
+                .collect(),
+            self.desired_templates
+                .difference(&self.existing_templates)
+                .cloned()
+                .collect(),
+        )
+    }
+    fn old_files(&self) -> (Vec<FileDescription>, Vec<FileDescription>) {
+        (
+            self.desired_symlinks
+                .intersection(&self.existing_symlinks)
+                .cloned()
+                .collect(),
+            self.existing_templates
+                .intersection(&self.existing_templates)
+                .cloned()
+                .collect(),
+        )
+    }
+    fn serialize(&self) -> (config::Files, config::Files) {
+        todo!()
+    } // Step 11
 }
 
 #[cfg(test)]
-mod tests {
-    use super::config;
-    use super::substitute_variables;
+mod test {
+    use super::{FileDescription, FileState, FilesPath, PathBuf};
 
-    fn table_insert(table: &mut config::Variables, key: &str, value: &str) {
-        table.insert(String::from(key), toml::Value::String(String::from(value)));
-    }
+    #[test]
+    fn test_file_state_symlinks_only() {
+        // Testing symlinks only is enough for me because the logic should be the same
+        let mut existing_symlinks = FilesPath::new();
+        existing_symlinks.insert("file1s".into(), "file1t".into()); // Same
+        existing_symlinks.insert("file2s".into(), "file2t".into()); // Deleted
+        existing_symlinks.insert("file3s".into(), "file3t".into()); // Target change
 
-    fn test_substitute_variables(table: &config::Variables, content: &str, expected: &str) {
+        let mut desired_symlinks = FilesPath::new();
+        desired_symlinks.insert("file1s".into(), "file1t".into()); // Same
+        desired_symlinks.insert("file3s".into(), "file0t".into()); // Target change
+        desired_symlinks.insert("file5s".into(), "file5t".into()); // New
+
+        let state = FileState::new(
+            desired_symlinks,
+            FilesPath::new(),
+            existing_symlinks,
+            FilesPath::new(),
+            "cache".into(),
+        );
+
         assert_eq!(
-            substitute_variables(String::from(content), table).unwrap(),
-            expected
+            state.deleted_files(),
+            (
+                vec![
+                    FileDescription {
+                        source: "file2s".into(),
+                        target: "file2t".into(),
+                        cache: PathBuf::from("cache").join("file2s"),
+                    },
+                    FileDescription {
+                        source: "file3s".into(),
+                        target: "file3t".into(),
+                        cache: PathBuf::from("cache").join("file3s"),
+                    }
+                ],
+                Vec::new()
+            ),
+            "deleted files correct"
         );
-    }
-
-    #[test]
-    fn test_substitute_variables1() {
-        let table = &mut config::Variables::new();
-        table_insert(table, "foo", "bar");
-        test_substitute_variables(table, "{{ foo }}", "bar");
-    }
-
-    #[test]
-    fn test_substitute_variables2() {
-        let table = &mut config::Variables::new();
-        table_insert(table, "foo", "bar");
-        table_insert(table, "baz", "idk");
-        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar idk");
-    }
-
-    #[test]
-    fn test_substitute_variables_invalid() {
-        let table = &mut config::Variables::new();
-        table_insert(table, "foo", "bar");
-        test_substitute_variables(table, "{{ baz }}", "");
-    }
-
-    #[test]
-    fn test_substitute_variables_mixed() {
-        let table = &mut config::Variables::new();
-        table_insert(table, "foo", "bar");
-        test_substitute_variables(table, "{{ foo }} {{ baz }}", "bar ");
-    }
-
-    #[test]
-    fn test_substitute_variables_deep() {
-        let table = &mut config::Variables::new();
-        let mut person = config::Variables::new();
-        person.insert("name".into(), "Jack".into());
-        person.insert("family".into(), "Black".into());
-        table.insert("person".into(), person.into());
-        test_substitute_variables(
-            table,
-            "Hello, {{person.name}} {{person.family}}!",
-            "Hello, Jack Black!",
+        assert_eq!(
+            state.new_files(),
+            (
+                vec![
+                    FileDescription {
+                        source: "file3s".into(),
+                        target: "file0t".into(),
+                        cache: PathBuf::from("cache").join("file3s")
+                    },
+                    FileDescription {
+                        source: "file5s".into(),
+                        target: "file5t".into(),
+                        cache: PathBuf::from("cache").join("file5s")
+                    },
+                ],
+                Vec::new()
+            ),
+            "new files correct"
         );
-    }
-
-    #[test]
-    fn test_substitute_variables_nonstring() {
-        let table = &mut config::Variables::new();
-        let mut person = config::Variables::new();
-        person.insert("name".into(), "Jonny".into());
-        person.insert("age".into(), 5.into());
-        table.insert("person".into(), person.into());
-        test_substitute_variables(
-            table,
-            "{{person.name}} can{{#if (lt person.age 18)}}not{{/if}} drink alcohol",
-            "Jonny cannot drink alcohol",
+        assert_eq!(
+            state.old_files(),
+            (
+                vec![FileDescription {
+                    source: "file1s".into(),
+                    target: "file1t".into(),
+                    cache: PathBuf::from("cache").join("file1s"),
+                }],
+                Vec::new()
+            ),
+            "old files correct"
         );
     }
 }
