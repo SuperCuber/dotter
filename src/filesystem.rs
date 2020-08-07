@@ -1,7 +1,8 @@
+use anyhow::{Context, Result};
+
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process;
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -9,36 +10,97 @@ use shellexpand;
 
 use toml;
 
-pub fn load_file<T>(filename: &Path) -> Result<T, String>
+#[derive(Error, Debug)]
+pub enum FileLoadError {
+    #[error("Failed to open file {filename}")]
+    Open {
+        filename: PathBuf,
+        source: io::Error,
+    },
+
+    #[error("Failed to read opened file {filename}")]
+    Read {
+        filename: PathBuf,
+        source: io::Error,
+    },
+
+    #[error("Failed to parse file {filename}")]
+    Parse {
+        filename: PathBuf,
+        source: toml::de::Error,
+    },
+}
+
+pub fn load_file<T>(filename: &Path) -> Result<T, FileLoadError>
 where
     T: DeserializeOwned,
 {
     let mut buf = String::new();
-    let mut f = File::open(filename).map_err(|_| "open")?;
-    f.read_to_string(&mut buf).map_err(|_| "read")?;
-    Ok(toml::from_str::<T>(&buf).map_err(|_| "parse")?)
+    let mut f = File::open(filename).map_err(|e| FileLoadError::Open {
+        filename: filename.into(),
+        source: e,
+    })?;
+    f.read_to_string(&mut buf)
+        .map_err(|e| FileLoadError::Read {
+            filename: filename.into(),
+            source: e,
+        })?;
+    toml::from_str::<T>(&buf).map_err(|e| FileLoadError::Parse {
+        filename: filename.into(),
+        source: e,
+    })
 }
 
-pub fn save_file<T>(filename: &Path, data: T) -> Result<(), String>
+#[derive(Error, Debug)]
+pub enum FileSaveError {
+    #[error("Failed to write file {filename}")]
+    Write {
+        filename: PathBuf,
+        source: io::Error,
+    },
+
+    #[error("Failed to serialize data")]
+    Serialize(#[from] toml::ser::Error),
+}
+
+pub fn save_file<T>(filename: &Path, data: T) -> Result<(), FileSaveError>
 where
     T: Serialize,
 {
-    let data = toml::to_string(&data).map_err(|_| "serialize")?;
-    fs::write(filename, &data).map_err(|_| "write")?;
+    let data = toml::to_string(&data)?;
+    fs::write(filename, &data).map_err(|e| FileSaveError::Write {
+        filename: filename.into(),
+        source: e,
+    })?;
     Ok(())
 }
 
+#[derive(Debug, PartialEq)]
 pub enum FileCompareState {
     Equal,
     Missing,
     Changed,
 }
 
-pub fn compare_symlink(link: &Path, target: &Path) -> FileCompareState {
-    match fs::symlink_metadata(link) {
+impl FileCompareState {
+    pub fn forced(self) -> Self {
+        match self {
+            FileCompareState::Equal => FileCompareState::Equal,
+            FileCompareState::Missing => FileCompareState::Missing,
+            FileCompareState::Changed => FileCompareState::Equal,
+        }
+    }
+}
+
+pub fn compare_symlink(link: &Path, target: &Path) -> Result<FileCompareState> {
+    let target = real_path(target).context(format!("Get canonical path of {:?}", target))?;
+    Ok(match fs::symlink_metadata(link) {
         Ok(metadata) => {
             if metadata.file_type().is_symlink() {
-                if fs::read_link(link).expect("read symlink contents") == target {
+                if fs::read_link(link)
+                    .context(format!("Failed to read target of link {:?}", link))?
+                    == target
+                {
                     FileCompareState::Equal
                 } else {
                     FileCompareState::Changed
@@ -49,21 +111,21 @@ pub fn compare_symlink(link: &Path, target: &Path) -> FileCompareState {
         }
         Err(e) => {
             if e.raw_os_error() == Some(2) {
-                return FileCompareState::Missing;
+                FileCompareState::Missing
+            } else {
+                return Err(e).context(format!("Failed to read metadata of file {:?}", link));
             }
-            error!(
-                "Couldn't check whether {:?} is a symlink because {}",
-                link, e
-            );
-            process::exit(1);
         }
-    }
+    })
 }
 
-pub fn compare_template(target: &Path, cache: &Path) -> FileCompareState {
-    match fs::read_to_string(target) {
+pub fn compare_template(target: &Path, cache: &Path) -> Result<FileCompareState> {
+    Ok(match fs::read_to_string(target) {
         Ok(content) => {
-            if content == fs::read_to_string(cache).expect("read template in cache") {
+            if content
+                == fs::read_to_string(cache)
+                    .context(format!("Failed to read content of file {:?}", target))?
+            {
                 FileCompareState::Equal
             } else {
                 FileCompareState::Changed
@@ -71,22 +133,21 @@ pub fn compare_template(target: &Path, cache: &Path) -> FileCompareState {
         }
         Err(e) => {
             if e.raw_os_error() == Some(2) {
-                return FileCompareState::Missing;
+                FileCompareState::Missing
+            } else {
+                return Err(e).context(format!("Failed to read metadata of file {:?}", target));
             }
-            error!("Failed to read file {:?} because {}", target, e);
-            process::exit(1);
         }
-    }
+    })
 }
 
-pub fn real_path(path: &Path) -> PathBuf {
+pub fn real_path(path: &Path) -> Result<PathBuf> {
     let path = PathBuf::from(path);
+    debug!("Before shellexpand: {:?}", path);
     let path = shellexpand::tilde(&path.to_string_lossy()).to_string();
-    let path = std::fs::canonicalize(&path).unwrap_or_else(|e| {
-        error!("Failed to canonicalize {:?}: {}", path, e);
-        process::exit(1);
-    });
-    platform_dunce(path)
+    debug!("Shellexpanded: {:?}", path);
+    let path = std::fs::canonicalize(&path)?;
+    Ok(platform_dunce(path))
 }
 
 pub fn ask_boolean(prompt: &str) -> bool {
@@ -101,14 +162,19 @@ pub fn ask_boolean(prompt: &str) -> bool {
     buf.to_lowercase() == "y"
 }
 
-pub fn delete_parents(path: &Path, ask: bool) {
-    let mut path = path.parent().expect("path has parent");
+pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
+    let mut path = path
+        .parent()
+        .context(format!("Failed to get parent of {:?}", path))?;
     while path.is_dir()
         && path
             .read_dir()
-            .expect("read directory")
-            .collect::<Vec<_>>()
-            .is_empty()
+            .context(format!(
+                "Failed to read the contents of directory {:?}",
+                path
+            ))?
+            .next()
+            .is_none()
     {
         if !ask
             || ask_boolean(&format!(
@@ -116,14 +182,18 @@ pub fn delete_parents(path: &Path, ask: bool) {
                 path
             ))
         {
-            fs::remove_dir(path).expect("delete directory");
+            fs::remove_dir(path).context(format!("Failed to remove directory {:?}", path))?;
         }
-        path = path.parent().expect("path has parent"); // I do not expect to reach root from this loop
+        path = path
+            .parent()
+            .context(format!("Failed to get parent of {:?}", path))?; // I do not expect to reach root from this loop
     }
+    Ok(())
 }
 
 #[cfg(windows)]
 mod filesystem_impl {
+    use anyhow::{Context, Result};
     use dunce;
 
     use std::fs::remove_file;
@@ -131,10 +201,8 @@ mod filesystem_impl {
     use std::path::{Path, PathBuf};
     use std::process;
 
-    pub fn make_symlink(link: &Path, target: &Path) {
-        if let Err(e) = fs::symlink_file(target, link) {
-            error!("Failed to create symlink at {:?} because {}", target, e);
-        }
+    pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
+        Ok(fs::symlink_file(target, link)?)
     }
 
     pub fn symlinks_enabled(test_file_path: &Path) -> bool {
@@ -145,19 +213,19 @@ mod filesystem_impl {
         let _ = remove_file(&test_file_path);
         match fs::symlink_file("test.txt", &test_file_path) {
             Ok(()) => {
-                remove_file(&test_file_path).expect("remove test file");
+                remove_file(&test_file_path)
+                    .context(format!("Failed to remove test file {:?}", test_file_path))?;
                 true
             }
             Err(e) => {
                 // os error 1314: A required privilege is not held by the client.
-                if e.raw_os_error() != Some(1314) {
-                    error!(
-                        "Failed to create test symlink at path {:?} because {}",
-                        test_file_path, e
-                    );
-                    process::exit(1);
+                if e.raw_os_error() == Some(1314) {
+                    true
                 } else {
-                    false
+                    Err(e).context(format!(
+                        "Failed to create test symlink at {:?}",
+                        test_file_path
+                    ))?;
                 }
             }
         }
@@ -170,12 +238,13 @@ mod filesystem_impl {
 
 #[cfg(unix)]
 mod filesystem_impl {
+    use anyhow::Result;
+
     use std::os::unix::fs;
     use std::path::{Path, PathBuf};
-    pub fn make_symlink(link: &Path, target: &Path) {
-        if let Err(e) = fs::symlink(target, link) {
-            error!("Failed to create symlink at {:?} because {}", target, e);
-        }
+
+    pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
+        Ok(fs::symlink(target, link)?)
     }
 
     pub fn symlinks_enabled(_test_file_path: &Path) -> bool {
