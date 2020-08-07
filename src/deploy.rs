@@ -28,7 +28,7 @@ pub fn deploy(opt: Options) -> Result<()> {
     let mut desired_templates = config::Files::new();
 
     // On Windows, you need developer mode to create symlinks.
-    let symlinks_enabled = if filesystem::symlinks_enabled(&opt.cache_directory.join("dotter_test"))
+    let symlinks_enabled = if filesystem::symlinks_enabled(&opt.cache_directory.join("dotter_test")).context("Failed to check whether symlinks are enabled")?
     {
         true
     } else {

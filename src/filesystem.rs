@@ -199,13 +199,12 @@ mod filesystem_impl {
     use std::fs::remove_file;
     use std::os::windows::fs;
     use std::path::{Path, PathBuf};
-    use std::process;
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
         Ok(fs::symlink_file(target, link)?)
     }
 
-    pub fn symlinks_enabled(test_file_path: &Path) -> bool {
+    pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
         debug!(
             "Testing whether symlinks enabled on path {:?}",
             test_file_path
@@ -215,17 +214,17 @@ mod filesystem_impl {
             Ok(()) => {
                 remove_file(&test_file_path)
                     .context(format!("Failed to remove test file {:?}", test_file_path))?;
-                true
+                Ok(true)
             }
             Err(e) => {
                 // os error 1314: A required privilege is not held by the client.
                 if e.raw_os_error() == Some(1314) {
-                    true
+                    Ok(true)
                 } else {
                     Err(e).context(format!(
                         "Failed to create test symlink at {:?}",
                         test_file_path
-                    ))?;
+                    ))
                 }
             }
         }
@@ -247,8 +246,8 @@ mod filesystem_impl {
         Ok(fs::symlink(target, link)?)
     }
 
-    pub fn symlinks_enabled(_test_file_path: &Path) -> bool {
-        true
+    pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
+        Ok(true)
     }
 
     pub fn platform_dunce(path: PathBuf) -> PathBuf {
@@ -263,7 +262,7 @@ mod filesystem_impl {
         panic!("Unsupported platform: neither unix nor windows");
     }
 
-    pub fn symlinks_enabled(_test_file_path: &Path) -> bool {
+    pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
         panic!("Unsupported platform: neither unix nor windows");
     }
 
