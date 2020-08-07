@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use args::Options;
-use config::{self, FilesPath};
+use config::{self, FilesPath, Variables};
 use handlebars_helpers;
 
 pub fn deploy(opt: Options) {
@@ -36,7 +36,7 @@ pub fn deploy(opt: Options) {
     }
 
     // Step 4
-    let (existing_symlinks, existing_templates) = config::load_cache(todo!("cache file option"));
+    let (existing_symlinks, existing_templates) = config::load_cache(&opt.cache_file);
 
     let state = FileState::new(
         desired_symlinks,
@@ -49,10 +49,10 @@ pub fn deploy(opt: Options) {
     // Step 5+6
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
     for deleted_symlink in deleted_symlinks {
-        delete_symlink(deleted_symlink);
+        delete_symlink(opt.act, deleted_symlink);
     }
     for deleted_template in deleted_templates {
-        delete_template(deleted_template);
+        delete_template(opt.act, deleted_template);
     }
 
     // Prepare handlebars instance
@@ -64,21 +64,28 @@ pub fn deploy(opt: Options) {
     // Step 7+8
     let (new_symlinks, new_templates) = state.new_files();
     for new_symlink in new_symlinks {
-        create_symlink(new_symlink);
+        create_symlink(opt.act, new_symlink);
     }
     for new_template in new_templates {
-        create_template(new_template, &handlebars, &variables);
+        create_template(opt.act, new_template, &handlebars, &variables);
     }
 
     // Step 9+10
     let (old_symlinks, old_templates) = state.old_files();
     for old_symlink in old_symlinks {
-        update_symlink(old_symlink);
+        update_symlink(opt.act, old_symlink);
     }
     for old_template in old_templates {
-        update_template(old_template, &handlebars, &variables);
+        update_template(opt.act, old_template, &handlebars, &variables);
     }
 }
+
+fn delete_symlink(act: bool, new_symlink : FileDescription) { }
+fn delete_template(act: bool, new_symlink : FileDescription) { }
+fn create_symlink(act: bool, new_symlink : FileDescription) { }
+fn create_template(act: bool, new_symlink : FileDescription, handlebars: &Handlebars, variables: &Variables) { }
+fn update_symlink(act: bool, new_symlink : FileDescription) { }
+fn update_template(act: bool, new_symlink: FileDescription, handlebars: &Handlebars, variables: &Variables) { }
 
 fn is_template(source: &Path) -> bool {
     let mut file = File::open(source).unwrap_or_else(|e| {

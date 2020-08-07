@@ -22,12 +22,12 @@ pub struct Options {
     #[structopt(long = "dry_run", parse(from_flag = std::ops::Not::not))]
     pub act: bool,
 
-    /// Don't use a cache (caching is used in order to avoid touching files that didn't change)
-    #[structopt(long="no-cache", parse(from_flag = std::ops::Not::not))]
-    pub cache: bool,
+    /// Location of cache file
+    #[structopt(long, default_value = "dotter_settings/cache.toml")]
+    pub cache_file: PathBuf,
 
     /// Directory to cache into.
-    #[structopt(short, long, default_value = "dotter_cache")]
+    #[structopt(long, default_value = "dotter_settings/cache")]
     pub cache_directory: PathBuf,
 }
 
