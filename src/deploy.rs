@@ -119,7 +119,7 @@ fn delete_symlink(act: bool, symlink: &FileDescription) -> bool {
             true
         }
         FileCompareState::Changed => {
-            warn!("Symlink in target location {:?} does not point at source file {:?} - probably modified by user. Skipping.", &symlink.target, &symlink.source);
+            error!("Symlink in target location {:?} does not point at source file {:?} - probably modified by user. Skipping.", &symlink.target, &symlink.source);
             false
         }
         FileCompareState::Missing => {
@@ -140,7 +140,7 @@ fn delete_template(act: bool, template: &FileDescription) -> bool {
             true
         }
         FileCompareState::Changed => {
-            warn!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
+            error!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
             false
         }
         FileCompareState::Missing => {
@@ -159,7 +159,7 @@ fn create_symlink(act: bool, symlink: &FileDescription) -> bool {
         }
         true
     } else {
-        warn!(
+        error!(
             "Target {:?} of file {:?} already exists - skipping",
             symlink.target, symlink.source
         );
@@ -177,17 +177,22 @@ fn create_template(
         if act {
             fs::create_dir_all(template.cache.parent().expect("template target has parent"))
                 .expect("create parent directory in cache");
-            if let Err(e) = handlebars.render_template_source_to_write(
-                &mut File::open(&template.source).expect("open source file"),
-                variables,
-                File::create(&template.cache).expect("create cache file"),
-            ) {
-                error!(
-                    "Failed to render template file {:?} because {}",
-                    template.source, e
-                );
-                process::exit(1);
+            let rendered = match handlebars.render_template(&fs::read_to_string(&template.source).expect("read template source file"), variables) {
+                Ok(rendered) => rendered,
+                Err(e) => {
+                    error!(
+                        "Failed to render template file {:?} because {}",
+                        template.source, e
+                    );
+                    return false;
+                }
+            };
+
+            if let Err(e) = fs::write(&template.cache, rendered) {
+                error!("Failed to write rendered template to cache file {:?} because {}", &template.cache, e);
+                return false;
             }
+
             fs::create_dir_all(
                 template
                     .target
@@ -198,9 +203,10 @@ fn create_template(
             fs::copy(&template.cache, &template.target)
                 .expect("copy template from cache to target");
         }
+
         true
     } else {
-        warn!(
+        error!(
             "Target {:?} of file {:?} already exists - skipping",
             template.target, template.source
         );
@@ -212,7 +218,7 @@ fn update_symlink(act: bool, symlink: &FileDescription) {
     match filesystem::compare_symlink(&symlink.target, &filesystem::real_path(&symlink.source)) {
         FileCompareState::Equal => {}
         FileCompareState::Changed => {
-            warn!("Symlink at {:?} does not point to its source {:?} - probably changed by user. Skipping.", symlink.target, symlink.source);
+            error!("Symlink at {:?} does not point to its source {:?} - probably changed by user. Skipping.", symlink.target, symlink.source);
         }
         FileCompareState::Missing => {
             create_symlink(act, symlink);
@@ -229,24 +235,29 @@ fn update_template(
     match filesystem::compare_template(&template.target, &template.cache) {
         FileCompareState::Equal => {
             if act {
-                if let Err(e) = handlebars.render_template_source_to_write(
-                    &mut File::open(&template.source).expect("open source file"),
-                    variables,
-                    File::create(&template.cache).expect("create cache file"),
-                ) {
+            let rendered = match handlebars.render_template(&fs::read_to_string(&template.source).expect("read template source file"), variables) {
+                Ok(rendered) => rendered,
+                Err(e) => {
                     error!(
                         "Failed to render template file {:?} because {}",
                         template.source, e
                     );
-                    process::exit(1);
+                    return;
                 }
+            };
+
+            if let Err(e) = fs::write(&template.cache, rendered) {
+                error!("Failed to write rendered template to cache file {:?} because {}", &template.cache, e);
+                return;
+            }
                 fs::copy(&template.cache, &template.target).expect("copy template from cache to target");
             }
         }
         FileCompareState::Changed => {
-            warn!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
+            error!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
         }
         FileCompareState::Missing => {
+            debug!("Missing target of update_template, calling create_template");
             create_template(act, template, handlebars, variables);
         }
     }

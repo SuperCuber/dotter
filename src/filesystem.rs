@@ -167,7 +167,7 @@ mod filesystem_impl {
         }
     }
 
-    pub fn symlinks_enabled() -> bool {
+    pub fn symlinks_enabled(_test_file_path: &Path) -> bool {
         true
     }
 
@@ -183,7 +183,7 @@ mod filesystem_impl {
         panic!("Unsupported platform: neither unix nor windows");
     }
 
-    pub fn symlinks_enabled() -> bool {
+    pub fn symlinks_enabled(_test_file_path: &Path) -> bool {
         panic!("Unsupported platform: neither unix nor windows");
     }
 
