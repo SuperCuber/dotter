@@ -232,7 +232,7 @@ mod filesystem_impl {
 
 #[cfg(unix)]
 mod filesystem_impl {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
 
     use std::os::unix::fs;
     use std::path::{Path, PathBuf};
