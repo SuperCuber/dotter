@@ -286,3 +286,39 @@ pub fn load_cache(cache: &Path) -> (FilesPath, FilesPath) {
 
     (symlinks, templates)
 }
+
+pub fn save_cache(cache_file: &Path, symlinks: FilesPath, templates: FilesPath) {
+    let mut data = Table::default();
+    data.insert(
+        "symlinks".into(),
+        symlinks
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.to_string_lossy().to_string(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .into(),
+    );
+    data.insert(
+        "templates".into(),
+        templates
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k.to_string_lossy().to_string(),
+                    v.to_string_lossy().to_string(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>()
+            .into(),
+    );
+
+    if let Err(e) = filesystem::save_file(cache_file, data) {
+        error!("Failed to save cache file {:?} because {}", cache_file, e);
+        process::exit(1);
+    }
+}
+
