@@ -1,3 +1,6 @@
+#[cfg(windows)]
+extern crate dunce;
+
 extern crate clap;
 extern crate env_logger;
 extern crate handlebars;

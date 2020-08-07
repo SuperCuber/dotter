@@ -180,10 +180,7 @@ fn try_load_configuration(
     };
 
     let files = expand_directories(files).unwrap_or_else(|e| {
-        error!(
-            "Failed to expand directory sources into their children: {}",
-            e
-        );
+        error!("Failed to recurse directory in sources: {}", e);
         process::exit(1);
     });
     debug!("Expanded files: {:?}", files);
@@ -252,8 +249,12 @@ pub fn load_configuration(
 /// Returns tuple of (existing_symlinks, existing_templates)
 pub fn load_cache(cache: &Path) -> (FilesPath, FilesPath) {
     let file: Table = filesystem::load_file(cache).unwrap_or_else(|e| {
-        error!("Failed to load cache file {:?}: {}", cache, e);
-        process::exit(1);
+        warn!("Failed to load cache file {:?}: {}", cache, e);
+        warn!("Assuming empty cache file...");
+        let mut table = Table::new();
+        table.insert("symlinks".into(), Table::new().into());
+        table.insert("templates".into(), Table::new().into());
+        table
     });
 
     let symlinks = file
@@ -283,6 +284,9 @@ pub fn load_cache(cache: &Path) -> (FilesPath, FilesPath) {
             )
         })
         .collect::<FilesPath>();
+
+    debug!("Cache symlinks: {:?}", symlinks);
+    debug!("Cache templates: {:?}", templates);
 
     (symlinks, templates)
 }
@@ -321,4 +325,3 @@ pub fn save_cache(cache_file: &Path, symlinks: FilesPath, templates: FilesPath) 
         process::exit(1);
     }
 }
-

@@ -19,3 +19,6 @@ serde = "1.0.*"
 shellexpand = "1.1.*"
 structopt = "0.3.*"
 toml = "0.4.*"
+
+[target.'cfg(windows)'.dependencies]
+dunce = "1.0.1"

@@ -8,7 +8,7 @@ use std::process;
 
 use args::Options;
 use config::{self, FilesPath, Variables};
-use filesystem;
+use filesystem::{self, FileCompareState};
 use handlebars_helpers;
 
 pub fn deploy(opt: Options) {
@@ -28,11 +28,23 @@ pub fn deploy(opt: Options) {
     let mut desired_symlinks = config::FilesPath::new();
     let mut desired_templates = config::FilesPath::new();
 
+    // On Windows, you need developer mode to create symlinks.
+    let symlinks_enabled = if filesystem::symlinks_enabled(&opt.cache_directory.join("dotter_test")) {
+        true
+    } else {
+        error!(
+            "No permission to create symbolic links.\n
+On Windows, in order to create symbolic links you need to enable Developer Mode.\n
+Proceeding by copying instead of symlinking."
+        );
+        false
+    };
+
     for (source, target) in files {
-        if is_template(&source) {
-            desired_templates.insert(source, target);
-        } else {
+        if symlinks_enabled && !is_template(&source) {
             desired_symlinks.insert(source, target);
+        } else {
+            desired_templates.insert(source, target);
         }
     }
 
@@ -40,20 +52,27 @@ pub fn deploy(opt: Options) {
     let (existing_symlinks, existing_templates) = config::load_cache(&opt.cache_file);
 
     let state = FileState::new(
-        desired_symlinks.clone(),
-        desired_templates.clone(),
-        existing_symlinks,
-        existing_templates,
+        desired_symlinks,
+        desired_templates,
+        existing_symlinks.clone(),
+        existing_templates.clone(),
         opt.cache_directory,
     );
+
+    let mut actual_symlinks = existing_symlinks.clone();
+    let mut actual_templates = existing_templates.clone();
 
     // Step 5+6
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
     for deleted_symlink in deleted_symlinks {
-        delete_symlink(opt.act, deleted_symlink);
+        if delete_symlink(opt.act, &deleted_symlink) && opt.act {
+            actual_symlinks.remove(&deleted_symlink.source);
+        }
     }
     for deleted_template in deleted_templates {
-        delete_template(opt.act, deleted_template);
+        if delete_template(opt.act, &deleted_template) && opt.act {
+            actual_templates.remove(&deleted_template.source);
+        }
     }
 
     // Prepare handlebars instance
@@ -65,69 +84,95 @@ pub fn deploy(opt: Options) {
     // Step 7+8
     let (new_symlinks, new_templates) = state.new_files();
     for new_symlink in new_symlinks {
-        create_symlink(opt.act, new_symlink);
+        if create_symlink(opt.act, &new_symlink) && opt.act {
+            actual_symlinks.insert(new_symlink.source, new_symlink.target);
+        }
     }
     for new_template in new_templates {
-        create_template(opt.act, new_template, &handlebars, &variables);
+        if create_template(opt.act, &new_template, &handlebars, &variables) && opt.act {
+            actual_templates.insert(new_template.source, new_template.target);
+        }
     }
 
     // Step 9+10
     let (old_symlinks, old_templates) = state.old_files();
     for old_symlink in old_symlinks {
-        update_symlink(opt.act, old_symlink);
+        update_symlink(opt.act, &old_symlink);
     }
     for old_template in old_templates {
-        update_template(opt.act, old_template, &handlebars, &variables);
+        update_template(opt.act, &old_template, &handlebars, &variables);
     }
 
+    debug!("Actual symlinks: {:?}", actual_symlinks);
+    debug!("Actual templates: {:?}", actual_templates);
     // Step 11
-    config::save_cache(&opt.cache_file, desired_symlinks, desired_templates);
+    config::save_cache(&opt.cache_file, actual_symlinks, actual_templates);
 }
 
-fn delete_symlink(act: bool, symlink: FileDescription) {
-    if filesystem::symlink_equals(&symlink.target, &filesystem::real_path(&symlink.source)) {
-        if act {
-            fs::remove_file(&symlink.target).expect("remove symlink");
-            filesystem::delete_parents(&symlink.target, true);
+fn delete_symlink(act: bool, symlink: &FileDescription) -> bool {
+    match filesystem::compare_symlink(&symlink.target, &filesystem::real_path(&symlink.source)) {
+        FileCompareState::Equal => {
+            if act {
+                fs::remove_file(&symlink.target).expect("remove symlink");
+                filesystem::delete_parents(&symlink.target, true);
+            }
+            true
         }
-    } else {
-        warn!("Symlink in target location {:?} does not point at source file {:?} - probably modified by user. Skipping.", &symlink.target, &symlink.source);
+        FileCompareState::Changed => {
+            warn!("Symlink in target location {:?} does not point at source file {:?} - probably modified by user. Skipping.", &symlink.target, &symlink.source);
+            false
+        }
+        FileCompareState::Missing => {
+            warn!("Symlink in target location {:?} does not exist. Removing from cache anyways.", &symlink.target);
+            true
+        }
     }
 }
 
-fn delete_template(act: bool, template: FileDescription) {
-    if filesystem::template_equals(&template.target, &template.cache) {
-        if act {
-            fs::remove_file(&template.target).expect("remove template");
-            filesystem::delete_parents(&template.cache, false);
-            filesystem::delete_parents(&template.target, true);
+fn delete_template(act: bool, template: &FileDescription) -> bool {
+    match filesystem::compare_template(&template.target, &template.cache) {
+        FileCompareState::Equal => {
+            if act {
+                fs::remove_file(&template.target).expect("remove template");
+                filesystem::delete_parents(&template.cache, false);
+                filesystem::delete_parents(&template.target, true);
+            }
+            true
         }
-    } else {
-        warn!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
+        FileCompareState::Changed => {
+            warn!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
+            false
+        }
+        FileCompareState::Missing => {
+            warn!("Template in target location {:?} does not exist. Removing from cache anyways.", &template.target);
+            true
+        }
     }
 }
 
-fn create_symlink(act: bool, symlink: FileDescription) {
+fn create_symlink(act: bool, symlink: &FileDescription) -> bool {
     if !symlink.target.exists() {
         if act {
             fs::create_dir_all(symlink.target.parent().expect("target has parent"))
                 .expect("create parent directory for target");
             filesystem::make_symlink(&symlink.target, &filesystem::real_path(&symlink.source));
         }
+        true
     } else {
         warn!(
             "Target {:?} of file {:?} already exists - skipping",
             symlink.target, symlink.source
         );
+        false
     }
 }
 
 fn create_template(
     act: bool,
-    template: FileDescription,
+    template: &FileDescription,
     handlebars: &Handlebars,
     variables: &Variables,
-) {
+) -> bool {
     if !template.target.exists() {
         if act {
             fs::create_dir_all(template.cache.parent().expect("template target has parent"))
@@ -150,45 +195,60 @@ fn create_template(
                     .expect("template target has parent"),
             )
             .expect("create parent directory for target");
-            fs::copy(template.cache, template.target).expect("copy template from cache to target");
+            fs::copy(&template.cache, &template.target)
+                .expect("copy template from cache to target");
         }
+        true
     } else {
         warn!(
             "Target {:?} of file {:?} already exists - skipping",
             template.target, template.source
         );
+        false
     }
 }
 
-fn update_symlink(_act: bool, symlink: FileDescription) {
-    if !filesystem::symlink_equals(&symlink.target, &filesystem::real_path(&symlink.source)) {
-        warn!("Symlink at {:?} does not point to its source {:?} - probably changed by user. Skipping.", symlink.target, symlink.source);
+fn update_symlink(act: bool, symlink: &FileDescription) {
+    match filesystem::compare_symlink(&symlink.target, &filesystem::real_path(&symlink.source)) {
+        FileCompareState::Equal => {}
+        FileCompareState::Changed => {
+            warn!("Symlink at {:?} does not point to its source {:?} - probably changed by user. Skipping.", symlink.target, symlink.source);
+        }
+        FileCompareState::Missing => {
+            create_symlink(act, symlink);
+        }
     }
 }
 
 fn update_template(
     act: bool,
-    template: FileDescription,
+    template: &FileDescription,
     handlebars: &Handlebars,
     variables: &Variables,
 ) {
-    if !filesystem::template_equals(&template.target, &template.cache) {
-        if act {
-            if let Err(e) = handlebars.render_template_source_to_write(
-                &mut File::open(&template.source).expect("open source file"),
-                variables,
-                File::create(&template.cache).expect("create cache file"),
-            ) {
-                error!(
-                    "Failed to render template file {:?} because {}",
-                    template.source, e
-                );
-                process::exit(1);
+    match filesystem::compare_template(&template.target, &template.cache) {
+        FileCompareState::Equal => {
+            if act {
+                if let Err(e) = handlebars.render_template_source_to_write(
+                    &mut File::open(&template.source).expect("open source file"),
+                    variables,
+                    File::create(&template.cache).expect("create cache file"),
+                ) {
+                    error!(
+                        "Failed to render template file {:?} because {}",
+                        template.source, e
+                    );
+                    process::exit(1);
+                }
+                fs::copy(&template.cache, &template.target).expect("copy template from cache to target");
             }
-            fs::copy(template.cache, template.target).expect("copy template from cache to target");
         }
-    } else {
-        warn!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
+        FileCompareState::Changed => {
+            warn!("Template contents in target location {:?} does not equal cached contents - probably modified by user. Skipping.", &template.target);
+        }
+        FileCompareState::Missing => {
+            create_template(act, template, handlebars, variables);
+        }
     }
 }
 
