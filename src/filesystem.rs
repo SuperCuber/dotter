@@ -240,8 +240,8 @@ mod filesystem_impl {
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
         Ok(fs::symlink(
-            target,
-            super::real_path(link).context("Failed to get real path of source file")?,
+            super::real_path(target).context("Failed to get real path of source file")?,
+            link,
         )
         .context("Failed to create symlink")?)
     }

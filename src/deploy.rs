@@ -331,7 +331,7 @@ fn update_template(
 ) -> Result<UpdateAction> {
     let mut comparison = filesystem::compare_template(&template.target, &template.cache)
         .context("Failed to check whether template was changed")?;
-    if force {
+    if force && comparison == FileCompareState::Changed {
         fs::remove_file(&template.target)
             .context("Failed to delete existing target file (--force)")?;
         comparison = FileCompareState::Missing;
