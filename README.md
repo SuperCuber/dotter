@@ -156,9 +156,13 @@ Will render as:
 Jonny cannot drink alcohol
 ```
 
+**An important note** - Dotter will detect whether your source file is a template or not.\
+If it is, it will **copy** the source to the target. If it is not, it will create a **symbolic link**.
+More on that in the **Templated vs Non-Templated** section.
+
 ### Helpers
 Handlebars supports custom helpers - for example, a helper that will convert a color from hex to rgb named `hex2rgb` will be used like so: `{{hex2rgb background_color}}`.\
-The Rust implementation of handlebars supports custom helpers written in [rhai](https://github.com/jonathandturner/rhai) which is a scripting language.
+The Rust implementation of Handlebars supports custom helpers written in [rhai](https://github.com/jonathandturner/rhai) which is a scripting language.
 
 To define one yourself, add it in the optional `[helpers]` section in `global.toml` in the form of `script_name = "script_file_location"`.\
 The ones I currently use will be in the [helpers folder of my dotfiles](https://github.com/SuperCuber/dotfiles/tree/master/dotter_settings/helpers) - you can use them as examples.
@@ -167,31 +171,49 @@ Additionally, there's helpers implemented in rust.\
 The ones that currently exist:
 - `math` - used like `{{math font_size "*" 2}}`. Executed by [meval-rs](https://github.com/rekka/meval-rs#supported-expressions).
 
-## Caching, and Templated vs Untemplated
-TODO: This functionality will be reworked soon (see [issue #6](https://github.com/SuperCuber/dotter/issues/6)) so I won't document it yet.
+## Templated vs Non-Templated
+As mentioned previously, Dotter differentiates between **template** source files and **non-template** source files.
+- **Template files** - Currently, any files which have `{{` in them.\
+  The file's content in the source location will obviously differ from the desired contents in the target location.
+  This means that they have to be **copied** to the target location while rendering the template.
+- **Non-template files** - Files which do not use the templating functionality.\
+  The file's content in the source location will be the same as the target location,
+  which means they can be **symbolically linked**. This has the advantage that by modifying the target location,
+  you're automatically syncing the changes to the source location in your repository.
+
+## Caching
+Dotter uses a **cache** to detect differences between the current configuration and the state on disk.\
+This means it will handle well situations like:
+- Removing files from configuration
+- Accidentally editing the target location of a templated file
+- Changing a templated file to non-templated and vice versa
+
+By default, the cache state is stored in `dotter_settings/cache.toml` and `dotter_settings/cache/`
 
 # Usage
 Now that you've configured all the global and local file sections, you can simply run `dotter` from within your repository.\
 All the files will be deployed to their target locations.
 
-Check out `dotter -h` for the commandline flags that Dotter supports:
+Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.5.2
+Dotter 0.6.0
 A small dotfile manager.
 
 USAGE:
     dotter.exe [FLAGS] [OPTIONS]
 
 FLAGS:
-        --dry_run     Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
-                      otherwise
-        --no-cache    Don't use a cache (caching is used in order to avoid touching files that didn't change)
-    -h, --help        Prints help information
-    -V, --version     Prints version information
+        --dry-run    Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
+                     otherwise
+        --force      Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
+                     --dry-run
+    -h, --help       Prints help information
+    -V, --version    Prints version information
 
 OPTIONS:
-    -c, --cache-directory <cache-directory>    Directory to cache into [default: dotter_cache]
+        --cache-directory <cache-directory>    Directory to cache into [default: dotter_settings/cache]
+        --cache-file <cache-file>              Location of cache file [default: dotter_settings/cache.toml]
     -d, --directory <directory>                Do all operations relative to this directory [default: .]
     -g, --global-config <global-config>        Location of the global configuration [default:
                                                dotter_settings/global.toml]
