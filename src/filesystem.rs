@@ -92,52 +92,47 @@ impl FileCompareState {
 }
 
 pub fn compare_symlink(link: &Path, target: &Path) -> Result<FileCompareState> {
-    let target = real_path(target).context(format!("Get canonical path of {:?}", target))?;
-    Ok(match fs::symlink_metadata(link) {
-        Ok(metadata) => {
-            if metadata.file_type().is_symlink() {
-                if fs::read_link(link)
-                    .context(format!("Failed to read target of link {:?}", link))?
-                    == target
-                {
-                    if target.exists() {
-                        FileCompareState::Equal
-                    } else {
-                        FileCompareState::ExistsNoSource
-                    }
-                } else {
-                    FileCompareState::Changed
-                }
-            } else {
-                FileCompareState::Changed
-            }
+    let target = match real_path(target) {
+        Ok(t) => Some(t),
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
+        Err(e) => Err(e).context(format!("Get canonical path of {:?}", target))?,
+    };
+    let link_content = match fs::symlink_metadata(link) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Some(fs::read_link(link).context(format!("Failed to read target of link {:?}", link))?)
         }
-        Err(e) if e.kind() == ErrorKind::NotFound => FileCompareState::Missing,
+        Ok(_) => None,
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
         Err(e) => Err(e).context(format!("Failed to read metadata of file {:?}", link))?,
+    };
+    Ok(match (target, link_content) {
+        (Some(t), Some(l)) if t == l => FileCompareState::Equal,
+        (Some(_), Some(_)) => FileCompareState::Changed,
+        (None, Some(_)) => FileCompareState::ExistsNoSource,
+        (_, None) => FileCompareState::Missing,
     })
 }
 
 pub fn compare_template(target: &Path, cache: &Path) -> Result<FileCompareState> {
-    Ok(match fs::read_to_string(target) {
-        Ok(content) => match fs::read_to_string(cache) {
-            Ok(cache_content) => {
-                if content == cache_content {
-                    FileCompareState::Equal
-                } else {
-                    FileCompareState::Changed
-                }
-            }
-            Err(e) if e.kind() == ErrorKind::NotFound => FileCompareState::ExistsNoSource,
-            Err(e) => {
-                Err(e).context(format!("Failed to read content of cache file {:?}", cache))?
-            }
-        },
-        Err(e) if e.kind() == ErrorKind::NotFound => FileCompareState::Missing,
-        Err(e) => Err(e).context(format!("Failed to read metadata of file {:?}", target))?,
+    let target = match fs::read_to_string(target) {
+        Ok(t) => Some(t),
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
+        Err(e) => Err(e).context(format!("Failed to read content of target file {:?}", target))?,
+    };
+    let cache = match fs::read_to_string(cache) {
+        Ok(c) => Some(c),
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
+        Err(e) => Err(e).context(format!("Failed to read contents of cache file {:?}", cache))?,
+    };
+    Ok(match (target, cache) {
+        (Some(t), Some(c)) if t == c => FileCompareState::Equal,
+        (Some(_), Some(_)) => FileCompareState::Changed,
+        (Some(_), None) => FileCompareState::ExistsNoSource,
+        (None, _) => FileCompareState::Missing,
     })
 }
 
-pub fn real_path(path: &Path) -> Result<PathBuf> {
+pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
     let path = std::fs::canonicalize(&path)?;
     Ok(platform_dunce(path))
 }
