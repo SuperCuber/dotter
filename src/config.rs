@@ -31,7 +31,7 @@ fn merge_configuration_tables(mut global: GlobalConfig, mut local: LocalConfig) 
             package_global.variables.extend(package_local.variables);
 
             // Remove files with target = ""
-            package_global.files = package_global.files.into_iter().filter(|(_, v)| dbg!(v.to_string_lossy()) != "").collect();
+            package_global.files = package_global.files.into_iter().filter(|(_, v)| v.to_string_lossy() != "").collect();
         }
 
         // Insert into output
