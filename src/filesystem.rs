@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
@@ -77,16 +77,16 @@ where
 #[derive(Debug, PartialEq)]
 pub enum FileCompareState {
     Equal,
+    ExistsNoSource,
     Missing,
     Changed,
 }
 
 impl FileCompareState {
-    pub fn forced(self) -> Self {
+    pub fn ignore_changed(self) -> Self {
         match self {
-            FileCompareState::Equal => FileCompareState::Equal,
-            FileCompareState::Missing => FileCompareState::Missing,
             FileCompareState::Changed => FileCompareState::Equal,
+            other => other,
         }
     }
 }
@@ -100,7 +100,11 @@ pub fn compare_symlink(link: &Path, target: &Path) -> Result<FileCompareState> {
                     .context(format!("Failed to read target of link {:?}", link))?
                     == target
                 {
-                    FileCompareState::Equal
+                    if target.exists() {
+                        FileCompareState::Equal
+                    } else {
+                        FileCompareState::ExistsNoSource
+                    }
                 } else {
                     FileCompareState::Changed
                 }
@@ -108,35 +112,28 @@ pub fn compare_symlink(link: &Path, target: &Path) -> Result<FileCompareState> {
                 FileCompareState::Changed
             }
         }
-        Err(e) => {
-            if e.raw_os_error() == Some(2) {
-                FileCompareState::Missing
-            } else {
-                return Err(e).context(format!("Failed to read metadata of file {:?}", link));
-            }
-        }
+        Err(e) if e.kind() == ErrorKind::NotFound => FileCompareState::Missing,
+        Err(e) => Err(e).context(format!("Failed to read metadata of file {:?}", link))?,
     })
 }
 
 pub fn compare_template(target: &Path, cache: &Path) -> Result<FileCompareState> {
     Ok(match fs::read_to_string(target) {
-        Ok(content) => {
-            if content
-                == fs::read_to_string(cache)
-                    .context(format!("Failed to read content of file {:?}", target))?
-            {
-                FileCompareState::Equal
-            } else {
-                FileCompareState::Changed
+        Ok(content) => match fs::read_to_string(cache) {
+            Ok(cache_content) => {
+                if content == cache_content {
+                    FileCompareState::Equal
+                } else {
+                    FileCompareState::Changed
+                }
             }
-        }
-        Err(e) => {
-            if e.raw_os_error() == Some(2) {
-                FileCompareState::Missing
-            } else {
-                return Err(e).context(format!("Failed to read metadata of file {:?}", target));
+            Err(e) if e.kind() == ErrorKind::NotFound => FileCompareState::ExistsNoSource,
+            Err(e) => {
+                Err(e).context(format!("Failed to read content of cache file {:?}", cache))?
             }
-        }
+        },
+        Err(e) if e.kind() == ErrorKind::NotFound => FileCompareState::Missing,
+        Err(e) => Err(e).context(format!("Failed to read metadata of file {:?}", target))?,
     })
 }
 
@@ -147,14 +144,14 @@ pub fn real_path(path: &Path) -> Result<PathBuf> {
 
 pub fn ask_boolean(prompt: &str) -> bool {
     let mut buf = String::new();
-    while buf.to_lowercase() != "y" && buf.to_lowercase() != "n" {
+    while buf.to_lowercase() != "y\n" && buf.to_lowercase() != "n\n" {
         eprintln!("{}", prompt);
         io::stdin()
             .read_line(&mut buf)
             .expect("read line from stdin");
     }
 
-    buf.to_lowercase() == "y"
+    buf.to_lowercase() == "y\n"
 }
 
 pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
@@ -196,7 +193,11 @@ mod filesystem_impl {
     use std::path::{Path, PathBuf};
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
-        Ok(fs::symlink_file(super::real_path(target).context("Failed to get real path of source file")?, link).context("Failed to create symlink")?)
+        Ok(fs::symlink_file(
+            super::real_path(target).context("Failed to get real path of source file")?,
+            link,
+        )
+        .context("Failed to create symlink")?)
     }
 
     pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
@@ -238,7 +239,11 @@ mod filesystem_impl {
     use std::path::{Path, PathBuf};
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
-        Ok(fs::symlink(target, super::real_path(link).context("Failed to get real path of source file")?).context("Failed to create symlink")?)
+        Ok(fs::symlink(
+            target,
+            super::real_path(link).context("Failed to get real path of source file")?,
+        )
+        .context("Failed to create symlink")?)
     }
 
     pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {

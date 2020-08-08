@@ -31,7 +31,11 @@ fn merge_configuration_tables(mut global: GlobalConfig, mut local: LocalConfig) 
             package_global.variables.extend(package_local.variables);
 
             // Remove files with target = ""
-            package_global.files = package_global.files.into_iter().filter(|(_, v)| v.to_string_lossy() != "").collect();
+            package_global.files = package_global
+                .files
+                .into_iter()
+                .filter(|(_, v)| v.to_string_lossy() != "")
+                .collect();
         }
 
         // Insert into output
@@ -193,7 +197,10 @@ pub fn load_configuration(
     let files = files
         .into_iter()
         .map(|(k, v)| {
-            (k, shellexpand::tilde(&v.to_string_lossy()).to_string().into())
+            (
+                k,
+                shellexpand::tilde(&v.to_string_lossy()).to_string().into(),
+            )
         })
         .collect();
     Ok((files, variables, helpers))
