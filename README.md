@@ -111,10 +111,10 @@ terminal = "xfce4-terminal"
 # File target locations can be overridden in local.toml
 # This can be for example useful for applications which read from a diferent
 #  location depending on the platform.
-# Disabling files is possible by setting them to the special value `false`.
+# Disabling files is possible by setting them to the special value "".
 [i3.files]
 Xinitrc = "~/.my_Xinitrc"
-polybar = false
+polybar = ""
 
 # Actually, I want the font size on this screen to be a bit bigger.
 # Any variables defined in local.toml override variables in global.toml.
@@ -157,7 +157,7 @@ Jonny cannot drink alcohol
 ```
 
 ### Helpers
-Handlebars supports custom helpers - for example, a helper that will convert a color from hex to rgb named `hex2rgb` will be used like so: `{{hex_to_rgb background_color}}`.\
+Handlebars supports custom helpers - for example, a helper that will convert a color from hex to rgb named `hex2rgb` will be used like so: `{{hex2rgb background_color}}`.\
 The Rust implementation of handlebars supports custom helpers written in [rhai](https://github.com/jonathandturner/rhai) which is a scripting language.
 
 To define one yourself, add it in the optional `[helpers]` section in `global.toml` in the form of `script_name = "script_file_location"`.\

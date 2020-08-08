@@ -294,7 +294,9 @@ fn update_template(
                     )
                     .context("Failed to render template")?;
 
-                fs::write(&template.cache, rendered).context("Failed to write rendered template")?;
+                fs::create_dir_all(&template.cache.parent().context("Failed to get parent of cache file")?)
+                    .context("Failed to create parent for cache file")?;
+                fs::write(&template.cache, rendered).context("Failed to write rendered template to cache")?;
                 fs::copy(&template.cache, &template.target)
                     .context("Failed to copy template from cache to target")?;
             }
