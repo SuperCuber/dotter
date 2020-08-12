@@ -101,7 +101,7 @@ pub fn compare_symlink(link: &Path, target: &Path) -> Result<FileCompareState> {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             Some(fs::read_link(link).context(format!("Failed to read target of link {:?}", link))?)
         }
-        Ok(_) => None,
+        Ok(_) => return Ok(FileCompareState::Changed),
         Err(e) if e.kind() == ErrorKind::NotFound => None,
         Err(e) => Err(e).context(format!("Failed to read metadata of file {:?}", link))?,
     };
