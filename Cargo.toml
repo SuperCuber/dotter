@@ -1,6 +1,6 @@
 [package]
 name = "dotter"
-version = "0.6.3"
+version = "0.6.4"
 authors = ["SuperCuber <amit.gold00@gmail.com>"]
 description = "A small dotfile manager"
 repository = "https://www.github.com/SuperCuber/dotter"
