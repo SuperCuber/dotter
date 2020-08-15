@@ -162,6 +162,7 @@ Proceeding by copying instead of symlinking."
                     "Templated file {:?} already exists in target location. Skipping",
                     new_template.target
                 );
+                actual_templates.insert(new_template.source, new_template.target);
             }
             // New template is in cache which means cache is corrupted. Bail.
             UpdateAction::Updated | UpdateAction::SkippedBecauseChanged => {
