@@ -84,6 +84,20 @@ pub enum SymlinkComparison {
     BothMissing,
 }
 
+impl std::fmt::Display for SymlinkComparison {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        use self::SymlinkComparison::*;
+        match self {
+            Identical => "target points at source",
+            OnlySourceExists => "source exists, target missing",
+            OnlyTargetExists => "source missing, target exists",
+            TargetNotSymlink => "target isn't a symlink",
+            Changed => "target isn't point at source",
+            BothMissing => "source and target are missing",
+        }.fmt(f)
+    }
+}
+
 pub fn compare_symlink(source: &Path, link: &Path) -> Result<SymlinkComparison> {
     let source = match real_path(source) {
         Ok(s) => Some(s),
@@ -115,6 +129,19 @@ pub enum TemplateComparison {
     OnlyTargetExists,
     Changed,
     BothMissing,
+}
+
+impl std::fmt::Display for TemplateComparison {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        use self::TemplateComparison::*;
+        match self {
+            Identical => "target and cache's contents are equal",
+            OnlyCacheExists => "cache exists, target missing",
+            OnlyTargetExists => "cache missing, target exists",
+            Changed => "target and cache's contents differ",
+            BothMissing => "cache and target are missing",
+        }.fmt(f)
+    }
 }
 
 pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateComparison> {

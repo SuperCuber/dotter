@@ -173,7 +173,7 @@ fn delete_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("Failed to detect symlink's current state")?;
-    info!("Current state: {:?}", comparison);
+    info!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::OnlySourceExists | SymlinkComparison::BothMissing => {
@@ -222,7 +222,7 @@ fn delete_template(act: bool, template: &FileDescription, force: bool) -> Result
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
         .context("Failed to detect templated file's current state")?;
-    info!("Current state: {:?}", comparison);
+    info!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::OnlyCacheExists => {
@@ -279,7 +279,7 @@ fn create_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("Failed to detect symlink's current state")?;
-    info!("Current state: {:?}", comparison);
+    info!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
@@ -337,7 +337,7 @@ fn create_template(
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
         .context("Failed to detect templated file's current state")?;
-    info!("Current state: {:?}", comparison);
+    info!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::OnlyCacheExists
@@ -370,7 +370,7 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("Failed to detect symlink's current state")?;
-    info!("Current state: {:?}", comparison);
+    info!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
@@ -442,6 +442,7 @@ fn update_template(
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
         .context("Failed to detect templated file's current state")?;
+    info!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {

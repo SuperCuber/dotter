@@ -30,11 +30,17 @@ fn main() -> Result<()> {
     // Parse arguments
     let opt = args::get_options();
 
-    if opt.act {
-        env_logger::init();
+    let default = if opt.act && opt.force {
+        "warn"
+    } else if opt.act && !opt.force {
+        "error"
+    } else if !opt.act && opt.force {
+        unreachable!()
     } else {
-        env_logger::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    }
+        "info"
+    };
+
+    env_logger::from_env(env_logger::Env::default().default_filter_or(default)).init();
 
     debug!("Loaded options: {:?}", opt);
 
