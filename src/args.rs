@@ -31,7 +31,7 @@ pub struct Options {
     pub cache_directory: PathBuf,
 
     /// Force - instead of skipping, overwrite target files if their content is unexpected.
-    /// Overrides --dry-run
+    /// Overrides --dry-run and implies RUST_LOG=warn unless specified otherwise.
     #[structopt(long)]
     pub force: bool,
 }
