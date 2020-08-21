@@ -1,7 +1,6 @@
 #[cfg(windows)]
 extern crate dunce;
 
-#[macro_use]
 extern crate anyhow;
 extern crate clap;
 extern crate env_logger;
