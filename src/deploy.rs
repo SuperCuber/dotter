@@ -607,12 +607,15 @@ impl FileState {
 
 fn display_error(error: anyhow::Error) {
     let mut chain = error.chain();
-    error!("Error: {}", chain.next().unwrap());
-    error!("Caused by:");
+    let mut error_message = format!("{}\nCaused by:\n", chain.next().unwrap());
 
     for e in chain {
-        error!("    {}", e);
+        error_message.push_str(&format!("    {}\n", e));
     }
+    // Remove last \n
+    error_message.pop();
+
+    error!("{}", error_message);
 }
 
 #[cfg(test)]

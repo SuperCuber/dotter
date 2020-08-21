@@ -40,7 +40,11 @@ fn main() -> Result<()> {
         "info"
     };
 
-    env_logger::from_env(env_logger::Env::default().default_filter_or(default)).init();
+    env_logger::from_env(env_logger::Env::default().default_filter_or(default))
+        .format_timestamp(None)
+        .format_module_path(false)
+        .format_indent(Some(8))
+        .init();
 
     debug!("Loaded options: {:?}", opt);
 
