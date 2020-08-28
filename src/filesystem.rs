@@ -94,7 +94,8 @@ impl std::fmt::Display for SymlinkComparison {
             TargetNotSymlink => "target isn't a symlink",
             Changed => "target isn't point at source",
             BothMissing => "source and target are missing",
-        }.fmt(f)
+        }
+        .fmt(f)
     }
 }
 
@@ -115,7 +116,13 @@ pub fn compare_symlink(source: &Path, link: &Path) -> Result<SymlinkComparison> 
     };
 
     Ok(match (source, link_content) {
-        (Some(s), Some(l)) => if s == l { SymlinkComparison::Identical } else { SymlinkComparison::Changed },
+        (Some(s), Some(l)) => {
+            if s == l {
+                SymlinkComparison::Identical
+            } else {
+                SymlinkComparison::Changed
+            }
+        }
         (None, Some(_)) => SymlinkComparison::OnlyTargetExists,
         (Some(_), None) => SymlinkComparison::OnlySourceExists,
         (None, None) => SymlinkComparison::BothMissing,
@@ -140,7 +147,8 @@ impl std::fmt::Display for TemplateComparison {
             OnlyTargetExists => "cache missing, target exists",
             Changed => "target and cache's contents differ",
             BothMissing => "cache and target are missing",
-        }.fmt(f)
+        }
+        .fmt(f)
     }
 }
 
@@ -148,7 +156,10 @@ pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateCompariso
     let target = match fs::read_to_string(target) {
         Ok(t) => Some(t),
         Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context(format!("Failed to read content of target file {:?}", target))?,
+        Err(e) => Err(e).context(format!(
+            "Failed to read content of target file {:?}",
+            target
+        ))?,
     };
 
     let cache = match fs::read_to_string(cache) {
@@ -158,7 +169,13 @@ pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateCompariso
     };
 
     Ok(match (target, cache) {
-        (Some(t), Some(c)) => if t == c { TemplateComparison::Identical } else { TemplateComparison::Changed },
+        (Some(t), Some(c)) => {
+            if t == c {
+                TemplateComparison::Identical
+            } else {
+                TemplateComparison::Changed
+            }
+        }
         (Some(_), None) => TemplateComparison::OnlyTargetExists,
         (None, Some(_)) => TemplateComparison::OnlyCacheExists,
         (None, None) => TemplateComparison::BothMissing,

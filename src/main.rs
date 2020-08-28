@@ -1,6 +1,7 @@
 #[cfg(windows)]
 extern crate dunce;
 
+#[macro_use]
 extern crate anyhow;
 extern crate clap;
 extern crate env_logger;
@@ -53,6 +54,11 @@ fn main() -> Result<()> {
     env::set_current_dir(&opt.directory)
         .with_context(|| format!("Failed to set current directory to {:?}", opt.directory))?;
 
-    deploy::deploy(opt).context("Failed to deploy")?;
+    if opt.undeploy {
+        deploy::undeploy(opt).context("Failed to undeploy")?;
+    } else {
+        deploy::deploy(opt).context("Failed to deploy")?;
+    }
+
     Ok(())
 }

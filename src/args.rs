@@ -34,6 +34,11 @@ pub struct Options {
     /// Overrides --dry-run
     #[structopt(long)]
     pub force: bool,
+
+    /// Un-deploy - delete all deployed files in their target locations.
+    /// Note that this operates on all files that are currently in cache.
+    #[structopt(long)]
+    pub undeploy: bool,
 }
 
 pub fn get_options() -> Options {

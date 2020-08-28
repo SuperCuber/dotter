@@ -212,14 +212,14 @@ pub struct Cache {
     pub templates: Files,
 }
 
-pub fn load_cache(cache: &Path) -> Result<Cache> {
-    let cache: Cache = match filesystem::load_file(cache) {
-        Ok(cache) => cache,
-        Err(filesystem::FileLoadError::Open { .. }) => Cache::default(),
+pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
+    let cache = match filesystem::load_file(cache) {
+        Ok(cache) => Some(cache),
+        Err(filesystem::FileLoadError::Open { .. }) => None,
         Err(e) => Err(e).context("Failed to load cache file")?,
     };
 
-    debug!("Cache {:?}", cache);
+    debug!("Cache: {:?}", cache);
 
     Ok(cache)
 }

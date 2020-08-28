@@ -12,6 +12,80 @@ use config::{self, Files, Variables};
 use filesystem::{self, SymlinkComparison, TemplateComparison};
 use handlebars_helpers;
 
+pub fn undeploy(opt: Options) -> Result<()> {
+    info!("Loading cache...");
+
+    let cache = match config::load_cache(&opt.cache_file)? {
+        Some(cache) => cache,
+        None => bail!("Failed to load cache: File not found"),
+    };
+
+    let config::Cache {
+        symlinks: existing_symlinks,
+        templates: existing_templates,
+    } = cache;
+
+    debug!("Existing symlinks: {:?}", existing_symlinks);
+    debug!("Existing templates: {:?}", existing_templates);
+
+    let state = FileState::new(
+        Files::new(),
+        Files::new(),
+        existing_symlinks.clone(),
+        existing_templates.clone(),
+        opt.cache_directory,
+    );
+    debug!("File state: {:#?}", state);
+
+    let (deleted_symlinks, deleted_templates) = state.deleted_files(); // Only those will exist
+
+    let mut actual_symlinks = existing_symlinks;
+    let mut actual_templates = existing_templates;
+    let mut suggest_force = false;
+
+    for symlink in deleted_symlinks {
+        match delete_symlink(opt.act, &symlink, opt.force) {
+            Ok(true) => {
+                actual_symlinks.remove(&symlink.source);
+            }
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => display_error(e.context(format!("Failed to delete symlink {}", symlink))),
+        }
+    }
+
+    for template in deleted_templates {
+        match delete_template(opt.act, &template, opt.force) {
+            Ok(true) => {
+                actual_templates.remove(&template.source);
+            }
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => display_error(e.context(format!("Failed to delete template {}", template))),
+        }
+    }
+
+    if suggest_force {
+        println!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+    }
+
+    if opt.act {
+        // Should be empty if everything went well, but if some things were skipped this contains
+        // them.
+        config::save_cache(
+            &opt.cache_file,
+            config::Cache {
+                symlinks: actual_symlinks,
+                templates: actual_templates,
+            },
+        )?;
+    }
+
+    Ok(())
+}
+
 pub fn deploy(opt: Options) -> Result<()> {
     // Configuration
     info!("Loading configuration...");
@@ -52,10 +126,18 @@ Proceeding by copying instead of symlinking."
     }
 
     // Step 4
+    let cache = match config::load_cache(&opt.cache_file)? {
+        Some(cache) => cache,
+        None => {
+            warn!("Cache file not found. Assuming cache is empty.");
+            Default::default()
+        }
+    };
+
     let config::Cache {
         symlinks: existing_symlinks,
         templates: existing_templates,
-    } = config::load_cache(&opt.cache_file)?;
+    } = cache;
 
     let state = FileState::new(
         desired_symlinks,
@@ -82,7 +164,9 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context( format!("Failed to delete symlink {}", deleted_symlink))),
+            Err(e) => {
+                display_error(e.context(format!("Failed to delete symlink {}", deleted_symlink)))
+            }
         }
     }
     for deleted_template in deleted_templates {
@@ -93,7 +177,9 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context( format!("Failed to delete template {}", deleted_template))),
+            Err(e) => {
+                display_error(e.context(format!("Failed to delete template {}", deleted_template)))
+            }
         }
     }
 
@@ -115,7 +201,7 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context( format!("Failed to create symlink {}", new_symlink))),
+            Err(e) => display_error(e.context(format!("Failed to create symlink {}", new_symlink))),
         }
     }
     for new_template in new_templates {
@@ -126,7 +212,9 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context( format!("Failed to create template {}", new_template))),
+            Err(e) => {
+                display_error(e.context(format!("Failed to create template {}", new_template)))
+            }
         }
     }
 
@@ -136,13 +224,13 @@ Proceeding by copying instead of symlinking."
     debug!("Old templates: {:?}", old_templates);
     for old_symlink in old_symlinks {
         if let Err(e) = update_symlink(opt.act, &old_symlink, opt.force) {
-            display_error(e.context( format!("Failed to update symlink {}", old_symlink)));
+            display_error(e.context(format!("Failed to update symlink {}", old_symlink)));
         }
     }
     for old_template in old_templates {
         if let Err(e) = update_template(opt.act, &old_template, &handlebars, &variables, opt.force)
         {
-            display_error(e.context( format!("Failed to update template {}", old_template)));
+            display_error(e.context(format!("Failed to update template {}", old_template)));
         }
     }
 
@@ -263,10 +351,11 @@ fn delete_template(act: bool, template: &FileDescription, force: bool) -> Result
             info!("Performing deletion");
             if act {
                 fs::remove_file(&template.target).context("Failed to remove target file")?;
+                filesystem::delete_parents(&template.target, true)
+                    .context("Failed to delete parent directory in target location")?;
+                fs::remove_file(&template.cache).context("Failed to remove cache file")?;
                 filesystem::delete_parents(&template.cache, false)
                     .context("Failed to delete parent directory in cache")?;
-                filesystem::delete_parents(&template.target, true)
-                    .context("Failed to delete target directory in filesystem")?;
             }
             Ok(true)
         }
@@ -343,17 +432,26 @@ fn create_template(
         TemplateComparison::OnlyCacheExists
         | TemplateComparison::Identical
         | TemplateComparison::Changed => {
-            error!("Creating template {} but cache file already exists. Cache is CORRUPTED.", template);
+            error!(
+                "Creating template {} but cache file already exists. Cache is CORRUPTED.",
+                template
+            );
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(false)
         }
         TemplateComparison::OnlyTargetExists if !force => {
-            error!("Creating template {} but target file already exists. Skipping...", template);
+            error!(
+                "Creating template {} but target file already exists. Skipping...",
+                template
+            );
             Ok(false)
         }
         t => {
             if t == TemplateComparison::OnlyTargetExists {
-                warn!("Creating template {} but target file already exists. Forcing.", template);
+                warn!(
+                    "Creating template {} but target file already exists. Forcing.",
+                    template
+                );
             }
             info!("Performing creation");
             if act {
