@@ -228,6 +228,17 @@ pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
     Ok(())
 }
 
+pub fn copy_permissions(source: &Path, target: &Path) -> Result<()> {
+    fs::set_permissions(
+        target,
+        fs::metadata(source)
+            .context("Failed to get metadata of source")?
+            .permissions(),
+    )
+    .context("Failed to set metadata of target")?;
+    Ok(())
+}
+
 #[cfg(windows)]
 mod filesystem_impl {
     use anyhow::{Context, Result};

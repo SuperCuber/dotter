@@ -15,7 +15,8 @@ use handlebars_helpers;
 pub fn undeploy(opt: Options) -> Result<()> {
     info!("Loading cache...");
 
-    config::load_configuration(&opt.local_config, &opt.global_config).context("Failed to find configuration location")?;
+    config::load_configuration(&opt.local_config, &opt.global_config)
+        .context("Failed to find configuration location")?;
 
     let cache = match config::load_cache(&opt.cache_file)? {
         Some(cache) => cache,
@@ -605,6 +606,8 @@ fn perform_template_deployment(
     .context("Failed to create parent for target file")?;
     fs::copy(&template.cache, &template.target)
         .context("Failed to copy template from cache to target")?;
+    filesystem::copy_permissions(&template.source, &template.target)
+        .context("Failed to copy permissions from source to target")?;
     Ok(())
 }
 
