@@ -197,19 +197,21 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.7.0
+Dotter 0.7.2
 A small dotfile manager.
 
 USAGE:
-    dotter.exe [FLAGS] [OPTIONS]
+    dotter [FLAGS] [OPTIONS]
 
 FLAGS:
-        --dry-run    Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
-                     otherwise
-        --force      Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
-                     --dry-run and implies RUST_LOG=warn unless specified otherwise
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+        --dry-run     Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
+                      otherwise
+        --force       Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
+                      --dry-run and implies RUST_LOG=warn unless specified otherwise
+    -h, --help        Prints help information
+        --undeploy    Un-deploy - delete all deployed files in their target locations. Note that this operates on all
+                      files that are currently in cache
+    -V, --version     Prints version information
 
 OPTIONS:
         --cache-directory <cache-directory>    Directory to cache into [default: dotter_settings/cache]
