@@ -189,14 +189,16 @@ pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
 
 pub fn ask_boolean(prompt: &str) -> bool {
     let mut buf = String::new();
-    while buf.to_lowercase() != "y\n" && buf.to_lowercase() != "n\n" {
+    while !(buf.to_lowercase().starts_with("y") || buf.to_lowercase().starts_with("n") || buf.is_empty()) {
         eprintln!("{}", prompt);
+        buf.clear();
         io::stdin()
             .read_line(&mut buf)
             .expect("read line from stdin");
     }
 
-    buf.to_lowercase() == "y\n"
+    // If empty defaults to no
+    buf.to_lowercase().starts_with("y")
 }
 
 pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
@@ -215,7 +217,7 @@ pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
     {
         if !ask
             || ask_boolean(&format!(
-                "Directory at {:?} is now empty. Delete [y/n]? ",
+                "Directory at {:?} is now empty. Delete [y/N]? ",
                 path
             ))
         {
