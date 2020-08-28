@@ -197,7 +197,7 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.6.0
+Dotter 0.7.0
 A small dotfile manager.
 
 USAGE:
@@ -207,7 +207,7 @@ FLAGS:
         --dry-run    Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
                      otherwise
         --force      Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
-                     --dry-run
+                     --dry-run and implies RUST_LOG=warn unless specified otherwise
     -h, --help       Prints help information
     -V, --version    Prints version information
 
