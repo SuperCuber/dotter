@@ -15,6 +15,8 @@ use handlebars_helpers;
 pub fn undeploy(opt: Options) -> Result<()> {
     info!("Loading cache...");
 
+    config::load_configuration(&opt.local_config, &opt.global_config).context("Failed to find configuration location")?;
+
     let cache = match config::load_cache(&opt.cache_file)? {
         Some(cache) => cache,
         None => bail!("Failed to load cache: File not found"),
