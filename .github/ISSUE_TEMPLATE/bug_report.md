@@ -23,7 +23,7 @@ A clear and concise description of what you expected to happen.
 
 ### Actual behavior
 What actually happened.
-Include an error message using if applicable, preferably using the `RUST_LOG=trace` environment variable like so:
+Include an error message if applicable, preferably using the `RUST_LOG=trace` environment variable like so:
 ```
 export RUST_LOG=trace  # linux
 set RUST_LOG=trace  # windows
