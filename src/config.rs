@@ -47,16 +47,16 @@ fn merge_configuration_tables(mut global: GlobalConfig, mut local: LocalConfig) 
 
 #[derive(Error, Debug)]
 pub enum LoadConfigFailType {
-    #[error("Failed to find config files")]
+    #[error("find config files")]
     Find,
 
-    #[error("Failed to parse config file {file}")]
+    #[error("parse config file {file}")]
     Parse {
         file: PathBuf,
         source: filesystem::FileLoadError,
     },
 
-    #[error("Failed to inspect source files")]
+    #[error("inspect source files")]
     InvalidSourceTree { source: anyhow::Error },
 }
 
@@ -136,9 +136,7 @@ fn try_load_configuration(
 fn expand_directories(files: Files) -> Result<Files> {
     let expanded = files
         .into_iter()
-        .map(|(from, to)| {
-            expand_directory(&from, &to).context(format!("Failed to expand file {:?}", from))
-        })
+        .map(|(from, to)| expand_directory(&from, &to).context(format!("expand file {:?}", from)))
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
 }
@@ -148,7 +146,7 @@ fn expand_directories(files: Files) -> Result<Files> {
 ///  in relation to parent target
 fn expand_directory(source: &Path, target: &Path) -> Result<Files> {
     if fs::metadata(source)
-        .context(format!("Failed to read metadata of {:?}", source))?
+        .context("read file's metadata")?
         .is_file()
     {
         let mut map = Files::new();
@@ -156,13 +154,13 @@ fn expand_directory(source: &Path, target: &Path) -> Result<Files> {
         Ok(map)
     } else {
         let expanded = fs::read_dir(source)
-            .context(format!("Failed to read contents of directory {:?}", source))?
+            .context("read contents of directory")?
             .map(|child| -> Result<Files> {
                 let child = child?.file_name();
                 let child_source = PathBuf::from(source).join(&child);
                 let child_target = PathBuf::from(target).join(&child);
                 expand_directory(&child_source, &child_target)
-                    .context(format!("Failed to expand file {:?}", child_source))
+                    .context(format!("expand file {:?}", child_source))
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
@@ -188,7 +186,7 @@ pub fn load_configuration(
                     warn!("Reached root.");
                     break Err(LoadConfigFailType::Find);
                 }
-                ::std::env::set_current_dir(&parent).expect("Move a directory up");
+                ::std::env::set_current_dir(&parent).expect("Failed to move up a directory");
             }
             Err(e) => break Err(e),
         }
@@ -216,7 +214,7 @@ pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
     let cache = match filesystem::load_file(cache) {
         Ok(cache) => Some(cache),
         Err(filesystem::FileLoadError::Open { .. }) => None,
-        Err(e) => Err(e).context("Failed to load cache file")?,
+        Err(e) => Err(e).context("load cache file")?,
     };
 
     debug!("Cache: {:?}", cache);
@@ -225,7 +223,7 @@ pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
 }
 
 pub fn save_cache(cache_file: &Path, cache: Cache) -> Result<()> {
-    filesystem::save_file(cache_file, cache).context("Failed to save cache file")?;
+    filesystem::save_file(cache_file, cache)?;
 
     Ok(())
 }

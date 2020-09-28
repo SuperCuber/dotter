@@ -27,7 +27,27 @@ use std::env;
 
 use anyhow::{Context, Result};
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(e) = run() {
+        display_error(e);
+        std::process::exit(1);
+    }
+}
+
+pub(crate) fn display_error(error: anyhow::Error) {
+    let mut chain = error.chain();
+    let mut error_message = format!("Failed to {}\nCaused by:\n", chain.next().unwrap());
+
+    for e in chain {
+        error_message.push_str(&format!("    Failed to {}\n", e));
+    }
+    // Remove last \n
+    error_message.pop();
+
+    error!("{}", error_message);
+}
+
+fn run() -> Result<()> {
     // Parse arguments
     let opt = args::get_options();
 
@@ -47,17 +67,17 @@ fn main() -> Result<()> {
         .format_indent(Some(8))
         .init();
 
-    debug!("Loaded options: {:?}", opt);
+    trace!("Loaded options: {:?}", opt);
 
     // Change dir
     info!("Changing directory to {:?}", &opt.directory);
     env::set_current_dir(&opt.directory)
-        .with_context(|| format!("Failed to set current directory to {:?}", opt.directory))?;
+        .with_context(|| format!("set current directory to {:?}", opt.directory))?;
 
     if opt.undeploy {
-        deploy::undeploy(opt).context("Failed to undeploy")?;
+        deploy::undeploy(opt).context("undeploy")?;
     } else {
-        deploy::deploy(opt).context("Failed to deploy")?;
+        deploy::deploy(opt).context("deploy")?;
     }
 
     Ok(())

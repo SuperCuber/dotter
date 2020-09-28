@@ -11,19 +11,19 @@ use toml;
 
 #[derive(Error, Debug)]
 pub enum FileLoadError {
-    #[error("Failed to open file {filename}")]
+    #[error("open file {filename}")]
     Open {
         filename: PathBuf,
         source: io::Error,
     },
 
-    #[error("Failed to read opened file {filename}")]
+    #[error("read opened file {filename}")]
     Read {
         filename: PathBuf,
         source: io::Error,
     },
 
-    #[error("Failed to parse file {filename}")]
+    #[error("parse file {filename}")]
     Parse {
         filename: PathBuf,
         source: toml::de::Error,
@@ -52,13 +52,13 @@ where
 
 #[derive(Error, Debug)]
 pub enum FileSaveError {
-    #[error("Failed to write file {filename}")]
+    #[error("write file {filename}")]
     Write {
         filename: PathBuf,
         source: io::Error,
     },
 
-    #[error("Failed to serialize data")]
+    #[error("serialize data")]
     Serialize(#[from] toml::ser::Error),
 }
 
@@ -103,16 +103,16 @@ pub fn compare_symlink(source: &Path, link: &Path) -> Result<SymlinkComparison> 
     let source = match real_path(source) {
         Ok(s) => Some(s),
         Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context(format!("Get canonical path of source {:?}", source))?,
+        Err(e) => Err(e).context("get canonical path of source")?,
     };
 
     let link_content = match fs::symlink_metadata(link) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
-            Some(fs::read_link(link).context(format!("Failed to read target of link {:?}", link))?)
+            Some(fs::read_link(link).context("read target of link")?)
         }
         Ok(_) => return Ok(SymlinkComparison::TargetNotSymlink),
         Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context(format!("Failed to read metadata of link {:?}", link))?,
+        Err(e) => Err(e).context("read metadata of link")?,
     };
 
     Ok(match (source, link_content) {
@@ -156,16 +156,13 @@ pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateCompariso
     let target = match fs::read_to_string(target) {
         Ok(t) => Some(t),
         Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context(format!(
-            "Failed to read content of target file {:?}",
-            target
-        ))?,
+        Err(e) => Err(e).context("read content of target file")?,
     };
 
     let cache = match fs::read_to_string(cache) {
         Ok(c) => Some(c),
         Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context(format!("Failed to read contents of cache file {:?}", cache))?,
+        Err(e) => Err(e).context("read contents of cache file")?,
     };
 
     Ok(match (target, cache) {
@@ -189,12 +186,15 @@ pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
 
 pub fn ask_boolean(prompt: &str) -> bool {
     let mut buf = String::new();
-    while !(buf.to_lowercase().starts_with("y") || buf.to_lowercase().starts_with("n") || buf.is_empty()) {
+    while !(buf.to_lowercase().starts_with("y")
+        || buf.to_lowercase().starts_with("n")
+        || buf.is_empty())
+    {
         eprintln!("{}", prompt);
         buf.clear();
         io::stdin()
             .read_line(&mut buf)
-            .expect("read line from stdin");
+            .expect("Failed to read line from stdin");
     }
 
     // If empty defaults to no
@@ -202,16 +202,11 @@ pub fn ask_boolean(prompt: &str) -> bool {
 }
 
 pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
-    let mut path = path
-        .parent()
-        .context(format!("Failed to get parent of {:?}", path))?;
+    let mut path = path.parent().context("get parent")?;
     while path.is_dir()
         && path
             .read_dir()
-            .context(format!(
-                "Failed to read the contents of directory {:?}",
-                path
-            ))?
+            .context("read the contents of parent directory")?
             .next()
             .is_none()
     {
@@ -221,11 +216,9 @@ pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
                 path
             ))
         {
-            fs::remove_dir(path).context(format!("Failed to remove directory {:?}", path))?;
+            fs::remove_dir(path).context(format!("remove directory {:?}", path))?;
         }
-        path = path
-            .parent()
-            .context(format!("Failed to get parent of {:?}", path))?; // I do not expect to reach root from this loop
+        path = path.parent().context(format!("get parent of {:?}", path))?;
     }
     Ok(())
 }
@@ -234,10 +227,10 @@ pub fn copy_permissions(source: &Path, target: &Path) -> Result<()> {
     fs::set_permissions(
         target,
         fs::metadata(source)
-            .context("Failed to get metadata of source")?
+            .context("get metadata of source")?
             .permissions(),
     )
-    .context("Failed to set metadata of target")?;
+    .context("set metadata of target")?;
     Ok(())
 }
 
@@ -252,10 +245,10 @@ mod filesystem_impl {
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
         Ok(fs::symlink_file(
-            super::real_path(target).context("Failed to get real path of source file")?,
+            super::real_path(target).context("get real path of source file")?,
             link,
         )
-        .context("Failed to create symlink")?)
+        .context("create symlink")?)
     }
 
     pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
@@ -267,7 +260,7 @@ mod filesystem_impl {
         match fs::symlink_file("test.txt", &test_file_path) {
             Ok(()) => {
                 remove_file(&test_file_path)
-                    .context(format!("Failed to remove test file {:?}", test_file_path))?;
+                    .context(format!("remove test file {:?}", test_file_path))?;
                 Ok(true)
             }
             Err(e) => {
@@ -275,10 +268,7 @@ mod filesystem_impl {
                 if e.raw_os_error() == Some(1314) {
                     Ok(false)
                 } else {
-                    Err(e).context(format!(
-                        "Failed to create test symlink at {:?}",
-                        test_file_path
-                    ))
+                    Err(e).context(format!("create test symlink at {:?}", test_file_path))
                 }
             }
         }
@@ -298,10 +288,10 @@ mod filesystem_impl {
 
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
         Ok(fs::symlink(
-            super::real_path(target).context("Failed to get real path of source file")?,
+            super::real_path(target).context("get real path of source file")?,
             link,
         )
-        .context("Failed to create symlink")?)
+        .context("create symlink")?)
     }
 
     pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {

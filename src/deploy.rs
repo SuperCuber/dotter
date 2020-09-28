@@ -7,6 +7,7 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use super::display_error;
 use args::Options;
 use config::{self, Files, Variables};
 use filesystem::{self, SymlinkComparison, TemplateComparison};
@@ -16,11 +17,11 @@ pub fn undeploy(opt: Options) -> Result<()> {
     info!("Loading cache...");
 
     config::load_configuration(&opt.local_config, &opt.global_config)
-        .context("Failed to find configuration location")?;
+        .context("find configuration location")?;
 
     let cache = match config::load_cache(&opt.cache_file)? {
         Some(cache) => cache,
-        None => bail!("Failed to load cache: File not found"),
+        None => bail!("load cache: Cannot undeploy without a cache."),
     };
 
     let config::Cache {
@@ -54,7 +55,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("Failed to delete symlink {}", symlink))),
+            Err(e) => display_error(e.context(format!("delete symlink {}", symlink))),
         }
     }
 
@@ -66,7 +67,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("Failed to delete template {}", template))),
+            Err(e) => display_error(e.context(format!("delete template {}", template))),
         }
     }
 
@@ -98,7 +99,7 @@ pub fn deploy(opt: Options) -> Result<()> {
     // Step 1
     let (files, variables, helpers) =
         config::load_configuration(&opt.local_config, &opt.global_config)
-            .context("Failed to get a configuration.")?;
+            .context("get a configuration")?;
 
     // Step 2-3
     let mut desired_symlinks = config::Files::new();
@@ -106,7 +107,7 @@ pub fn deploy(opt: Options) -> Result<()> {
 
     // On Windows, you need developer mode to create symlinks.
     let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
-        .context("Failed to check whether symlinks are enabled")?
+        .context("check whether symlinks are enabled")?
     {
         true
     } else {
@@ -167,9 +168,7 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => {
-                display_error(e.context(format!("Failed to delete symlink {}", deleted_symlink)))
-            }
+            Err(e) => display_error(e.context(format!("delete symlink {}", deleted_symlink))),
         }
     }
     for deleted_template in deleted_templates {
@@ -180,9 +179,7 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => {
-                display_error(e.context(format!("Failed to delete template {}", deleted_template)))
-            }
+            Err(e) => display_error(e.context(format!("delete template {}", deleted_template))),
         }
     }
 
@@ -204,7 +201,7 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("Failed to create symlink {}", new_symlink))),
+            Err(e) => display_error(e.context(format!("create symlink {}", new_symlink))),
         }
     }
     for new_template in new_templates {
@@ -215,9 +212,7 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => {
-                display_error(e.context(format!("Failed to create template {}", new_template)))
-            }
+            Err(e) => display_error(e.context(format!("create template {}", new_template))),
         }
     }
 
@@ -227,13 +222,13 @@ Proceeding by copying instead of symlinking."
     debug!("Old templates: {:?}", old_templates);
     for old_symlink in old_symlinks {
         if let Err(e) = update_symlink(opt.act, &old_symlink, opt.force) {
-            display_error(e.context(format!("Failed to update symlink {}", old_symlink)));
+            display_error(e.context(format!("update symlink {}", old_symlink)));
         }
     }
     for old_template in old_templates {
         if let Err(e) = update_template(opt.act, &old_template, &handlebars, &variables, opt.force)
         {
-            display_error(e.context(format!("Failed to update template {}", old_template)));
+            display_error(e.context(format!("update template {}", old_template)));
         }
     }
 
@@ -263,7 +258,7 @@ fn delete_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
     info!("Deleting symlink {}", symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
-        .context("Failed to detect symlink's current state")?;
+        .context("detect symlink's current state")?;
     info!("Current state: {}", comparison);
 
     match comparison {
@@ -298,9 +293,9 @@ fn delete_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
 
             info!("Performing deletion");
             if act {
-                fs::remove_file(&symlink.target).context("Failed to remove symlink")?;
+                fs::remove_file(&symlink.target).context("remove symlink")?;
                 filesystem::delete_parents(&symlink.target, true)
-                    .context("Failed to delete parents of symlink")?;
+                    .context("delete parents of symlink")?;
             }
             Ok(true)
         }
@@ -312,7 +307,7 @@ fn delete_template(act: bool, template: &FileDescription, force: bool) -> Result
     info!("Deleting template {}", template);
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
-        .context("Failed to detect templated file's current state")?;
+        .context("detect templated file's current state")?;
     info!("Current state: {}", comparison);
 
     match comparison {
@@ -322,9 +317,9 @@ fn delete_template(act: bool, template: &FileDescription, force: bool) -> Result
                 template
             );
             if act {
-                fs::remove_file(&template.cache).context("Failed delete template cache")?;
+                fs::remove_file(&template.cache).context("delete template cache")?;
                 filesystem::delete_parents(&template.cache, false)
-                    .context("Failed to delete parent directory in cache")?;
+                    .context("delete parent directory in cache")?;
             }
             Ok(true)
         }
@@ -353,12 +348,12 @@ fn delete_template(act: bool, template: &FileDescription, force: bool) -> Result
 
             info!("Performing deletion");
             if act {
-                fs::remove_file(&template.target).context("Failed to remove target file")?;
+                fs::remove_file(&template.target).context("delete target file")?;
                 filesystem::delete_parents(&template.target, true)
-                    .context("Failed to delete parent directory in target location")?;
-                fs::remove_file(&template.cache).context("Failed to remove cache file")?;
+                    .context("delete parent directory in target location")?;
+                fs::remove_file(&template.cache).context("delete cache file")?;
                 filesystem::delete_parents(&template.cache, false)
-                    .context("Failed to delete parent directory in cache")?;
+                    .context("delete parent directory in cache")?;
             }
             Ok(true)
         }
@@ -370,7 +365,7 @@ fn create_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
     info!("Creating symlink {}", symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
-        .context("Failed to detect symlink's current state")?;
+        .context("detect symlink's current state")?;
     info!("Current state: {}", comparison);
 
     match comparison {
@@ -393,12 +388,8 @@ fn create_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
             if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
                 warn!("Creating symlink {} but target already exists and differs from expected. Forcing.", symlink);
                 info!("Force deleting target {:?}", symlink.target);
-                std::fs::remove_file(&symlink.target).with_context(|| {
-                    format!(
-                        "Failed to remove symlink target {:?} while forcing",
-                        symlink.target
-                    )
-                })?;
+                std::fs::remove_file(&symlink.target)
+                    .context("remove symlink target while forcing")?;
             }
 
             info!("Performing creation");
@@ -407,11 +398,11 @@ fn create_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
                     &symlink
                         .target
                         .parent()
-                        .context("Failed to get parent of target file")?,
+                        .context("get parent of target file")?,
                 )
-                .context("Failed to create parent for target file")?;
+                .context("create parent for target file")?;
                 filesystem::make_symlink(&symlink.target, &symlink.source)
-                    .context("Failed to create target symlink")?;
+                    .context("create target symlink")?;
             }
             Ok(true)
         }
@@ -428,7 +419,7 @@ fn create_template(
     info!("Creating template {}", template);
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
-        .context("Failed to detect templated file's current state")?;
+        .context("detect templated file's current state")?;
     info!("Current state: {}", comparison);
 
     match comparison {
@@ -459,7 +450,7 @@ fn create_template(
             info!("Performing creation");
             if act {
                 perform_template_deployment(template, handlebars, variables)
-                    .context("Failed to perform template deployment")?;
+                    .context("perform template deployment")?;
             }
             Ok(true)
         }
@@ -470,7 +461,7 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
     info!("Updating symlink {}", symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
-        .context("Failed to detect symlink's current state")?;
+        .context("detect symlink's current state")?;
     info!("Current state: {}", comparison);
 
     match comparison {
@@ -502,12 +493,8 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
                     symlink
                 );
                 info!("Force deleting target {:?}", symlink.target);
-                std::fs::remove_file(&symlink.target).with_context(|| {
-                    format!(
-                        "Failed to remove symlink target {:?} while forcing",
-                        symlink.target
-                    )
-                })?;
+                std::fs::remove_file(&symlink.target)
+                    .context("remove symlink target while forcing")?;
             }
             if s == SymlinkComparison::OnlySourceExists {
                 warn!(
@@ -521,11 +508,11 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
                     &symlink
                         .target
                         .parent()
-                        .context("Failed to get parent of target file")?,
+                        .context("get parent of target file")?,
                 )
-                .context("Failed to create parent for target file")?;
+                .context("create parent for target file")?;
                 filesystem::make_symlink(&symlink.target, &symlink.source)
-                    .context("Failed to create target symlink")?;
+                    .context("create target symlink")?;
             }
         }
     }
@@ -542,7 +529,7 @@ fn update_template(
     info!("Updating template {}", template);
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
-        .context("Failed to detect templated file's current state")?;
+        .context("detect templated file's current state")?;
     info!("Current state: {}", comparison);
 
     match comparison {
@@ -570,7 +557,7 @@ fn update_template(
             info!("Performing update");
             if act {
                 perform_template_deployment(template, handlebars, variables)
-                    .context("Failed to perform template deployment")?;
+                    .context("perform template deployment")?;
             }
         }
     }
@@ -585,34 +572,33 @@ fn perform_template_deployment(
 ) -> Result<()> {
     let rendered = handlebars
         .render_template(
-            &fs::read_to_string(&template.source).context("Failed to read template source file")?,
+            &fs::read_to_string(&template.source).context("read template source file")?,
             variables,
         )
-        .context("Failed to render template")?;
+        .context("render template")?;
     fs::create_dir_all(
         &template
             .cache
             .parent()
-            .context("Failed to get parent of cache file")?,
+            .context("get parent of cache file")?,
     )
-    .context("Failed to create parent for cache file")?;
-    fs::write(&template.cache, rendered).context("Failed to write rendered template to cache")?;
+    .context("create parent for cache file")?;
+    fs::write(&template.cache, rendered).context("write rendered template to cache")?;
     fs::create_dir_all(
         &template
             .target
             .parent()
-            .context("Failed to get parent of target file")?,
+            .context("get parent of target file")?,
     )
-    .context("Failed to create parent for target file")?;
-    fs::copy(&template.cache, &template.target)
-        .context("Failed to copy template from cache to target")?;
+    .context("create parent for target file")?;
+    fs::copy(&template.cache, &template.target).context("copy template from cache to target")?;
     filesystem::copy_permissions(&template.source, &template.target)
-        .context("Failed to copy permissions from source to target")?;
+        .context("copy permissions from source to target")?;
     Ok(())
 }
 
 fn is_template(source: &Path) -> Result<bool> {
-    let mut file = File::open(source).context(format!("Failed to open file {:?}", source))?;
+    let mut file = File::open(source).context("open file")?;
     let mut buf = String::new();
     if file.read_to_string(&mut buf).is_err() {
         warn!("File {:?} is not valid UTF-8 - not templating", source);
@@ -706,19 +692,6 @@ impl FileState {
                 .collect(),
         )
     }
-}
-
-fn display_error(error: anyhow::Error) {
-    let mut chain = error.chain();
-    let mut error_message = format!("{}\nCaused by:\n", chain.next().unwrap());
-
-    for e in chain {
-        error_message.push_str(&format!("    {}\n", e));
-    }
-    // Remove last \n
-    error_message.pop();
-
-    error!("{}", error_message);
 }
 
 #[cfg(test)]
