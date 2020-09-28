@@ -253,7 +253,7 @@ mod filesystem_impl {
 
     pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
         debug!(
-            "Testing whether symlinks enabled on path {:?}",
+            "Testing whether symlinks are enabled on path {:?}",
             test_file_path
         );
         let _ = remove_file(&test_file_path);

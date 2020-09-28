@@ -14,24 +14,17 @@ use filesystem::{self, SymlinkComparison, TemplateComparison};
 use handlebars_helpers;
 
 pub fn undeploy(opt: Options) -> Result<()> {
-    info!("Loading cache...");
-
     config::load_configuration(&opt.local_config, &opt.global_config)
         .context("find configuration location")?;
 
-    let cache = match config::load_cache(&opt.cache_file)? {
-        Some(cache) => cache,
-        None => bail!("load cache: Cannot undeploy without a cache."),
-    };
+    let cache = config::load_cache(&opt.cache_file)?.context("load cache: Cannot undeploy without a cache.")?;
 
     let config::Cache {
         symlinks: existing_symlinks,
         templates: existing_templates,
     } = cache;
 
-    debug!("Existing symlinks: {:?}", existing_symlinks);
-    debug!("Existing templates: {:?}", existing_templates);
-
+    // Used just to transform them into FileDescription structs
     let state = FileState::new(
         Files::new(),
         Files::new(),
@@ -39,9 +32,9 @@ pub fn undeploy(opt: Options) -> Result<()> {
         existing_templates.clone(),
         opt.cache_directory,
     );
-    debug!("File state: {:#?}", state);
+    trace!("File state: {:#?}", state);
 
-    let (deleted_symlinks, deleted_templates) = state.deleted_files(); // Only those will exist
+    let (deleted_symlinks, deleted_templates) = state.deleted_files();
 
     let mut actual_symlinks = existing_symlinks;
     let mut actual_templates = existing_templates;
@@ -72,7 +65,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
     }
 
     if suggest_force {
-        println!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
     }
 
     if opt.act {
@@ -91,19 +84,12 @@ pub fn undeploy(opt: Options) -> Result<()> {
 }
 
 pub fn deploy(opt: Options) -> Result<()> {
-    // Configuration
-    info!("Loading configuration...");
-
     // Throughout this function I'll be referencing steps, those were described in issue #6
 
     // Step 1
     let (files, variables, helpers) =
         config::load_configuration(&opt.local_config, &opt.global_config)
             .context("get a configuration")?;
-
-    // Step 2-3
-    let mut desired_symlinks = config::Files::new();
-    let mut desired_templates = config::Files::new();
 
     // On Windows, you need developer mode to create symlinks.
     let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
@@ -119,6 +105,10 @@ Proceeding by copying instead of symlinking."
         false
     };
 
+    // Step 2-3
+    let mut desired_symlinks = config::Files::new();
+    let mut desired_templates = config::Files::new();
+
     for (source, target) in files {
         if symlinks_enabled
             && !is_template(&source).context(format!("check whether {:?} is a template", source))?
@@ -128,6 +118,9 @@ Proceeding by copying instead of symlinking."
             desired_templates.insert(source, target);
         }
     }
+
+    trace!("Desired symlinks: {:#?}", desired_symlinks);
+    trace!("Desired templates: {:#?}", desired_templates);
 
     // Step 4
     let cache = match config::load_cache(&opt.cache_file)? {
@@ -150,7 +143,7 @@ Proceeding by copying instead of symlinking."
         existing_templates.clone(),
         opt.cache_directory,
     );
-    debug!("File state: {:#?}", state);
+    trace!("File state: {:#?}", state);
 
     let mut actual_symlinks = existing_symlinks;
     let mut actual_templates = existing_templates;
@@ -158,8 +151,8 @@ Proceeding by copying instead of symlinking."
 
     // Step 5+6
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
-    debug!("Deleted symlinks: {:?}", deleted_symlinks);
-    debug!("Deleted templates: {:?}", deleted_templates);
+    trace!("Deleted symlinks: {:#?}", deleted_symlinks);
+    trace!("Deleted templates: {:#?}", deleted_templates);
     for deleted_symlink in deleted_symlinks {
         match delete_symlink(opt.act, &deleted_symlink, opt.force) {
             Ok(true) => {
@@ -184,15 +177,17 @@ Proceeding by copying instead of symlinking."
     }
 
     // Prepare handlebars instance
+    info!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
     handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
     handlebars_helpers::register_rust_helpers(&mut handlebars);
     handlebars_helpers::register_script_helpers(&mut handlebars, helpers);
+    trace!("Handlebars instance: {:#?}", handlebars);
 
     // Step 7+8
     let (new_symlinks, new_templates) = state.new_files();
-    debug!("New symlinks: {:?}", new_symlinks);
-    debug!("New templates: {:?}", new_templates);
+    trace!("New symlinks: {:#?}", new_symlinks);
+    trace!("New templates: {:#?}", new_templates);
     for new_symlink in new_symlinks {
         match create_symlink(opt.act, &new_symlink, opt.force) {
             Ok(true) => {
@@ -218,8 +213,8 @@ Proceeding by copying instead of symlinking."
 
     // Step 9+10
     let (old_symlinks, old_templates) = state.old_files();
-    debug!("Old symlinks: {:?}", old_symlinks);
-    debug!("Old templates: {:?}", old_templates);
+    trace!("Old symlinks: {:#?}", old_symlinks);
+    trace!("Old templates: {:#?}", old_templates);
     for old_symlink in old_symlinks {
         if let Err(e) = update_symlink(opt.act, &old_symlink, opt.force) {
             display_error(e.context(format!("update symlink {}", old_symlink)));
@@ -232,11 +227,11 @@ Proceeding by copying instead of symlinking."
         }
     }
 
-    debug!("Actual symlinks: {:?}", actual_symlinks);
-    debug!("Actual templates: {:?}", actual_templates);
+    trace!("Actual symlinks: {:#?}", actual_symlinks);
+    trace!("Actual templates: {:#?}", actual_templates);
 
     if suggest_force {
-        println!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
     }
 
     // Step 11
@@ -255,11 +250,11 @@ Proceeding by copying instead of symlinking."
 
 /// Returns true if symlink should be deleted from cache
 fn delete_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<bool> {
-    info!("Deleting symlink {}", symlink);
+    info!("Deleting symlink {}...", symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("detect symlink's current state")?;
-    info!("Current state: {}", comparison);
+    debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::OnlySourceExists | SymlinkComparison::BothMissing => {
@@ -291,7 +286,7 @@ fn delete_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
                 );
             }
 
-            info!("Performing deletion");
+            debug!("Performing deletion");
             if act {
                 fs::remove_file(&symlink.target).context("remove symlink")?;
                 filesystem::delete_parents(&symlink.target, true)
@@ -308,7 +303,7 @@ fn delete_template(act: bool, template: &FileDescription, force: bool) -> Result
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
         .context("detect templated file's current state")?;
-    info!("Current state: {}", comparison);
+    debug!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::OnlyCacheExists => {
@@ -346,7 +341,7 @@ fn delete_template(act: bool, template: &FileDescription, force: bool) -> Result
                 );
             }
 
-            info!("Performing deletion");
+            debug!("Performing deletion");
             if act {
                 fs::remove_file(&template.target).context("delete target file")?;
                 filesystem::delete_parents(&template.target, true)
@@ -366,7 +361,7 @@ fn create_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("detect symlink's current state")?;
-    info!("Current state: {}", comparison);
+    debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
@@ -387,12 +382,11 @@ fn create_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
         s => {
             if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
                 warn!("Creating symlink {} but target already exists and differs from expected. Forcing.", symlink);
-                info!("Force deleting target {:?}", symlink.target);
                 std::fs::remove_file(&symlink.target)
                     .context("remove symlink target while forcing")?;
             }
 
-            info!("Performing creation");
+            debug!("Performing creation");
             if act {
                 fs::create_dir_all(
                     &symlink
@@ -420,7 +414,7 @@ fn create_template(
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
         .context("detect templated file's current state")?;
-    info!("Current state: {}", comparison);
+    debug!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::OnlyCacheExists
@@ -447,7 +441,7 @@ fn create_template(
                     template
                 );
             }
-            info!("Performing creation");
+            debug!("Performing creation");
             if act {
                 perform_template_deployment(template, handlebars, variables)
                     .context("perform template deployment")?;
@@ -462,7 +456,7 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("detect symlink's current state")?;
-    info!("Current state: {}", comparison);
+    debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
@@ -484,7 +478,7 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
             );
         }
         SymlinkComparison::Identical => {
-            info!("Not touching symlink.");
+            debug!("Not touching symlink.");
         }
         s => {
             if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
@@ -492,7 +486,6 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
                     "Updating symlink {} but target wasn't what was expected. Forcing.",
                     symlink
                 );
-                info!("Force deleting target {:?}", symlink.target);
                 std::fs::remove_file(&symlink.target)
                     .context("remove symlink target while forcing")?;
             }
@@ -502,7 +495,7 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
                     symlink
                 );
             }
-            info!("Creating missing symlink.");
+            debug!("Creating missing symlink.");
             if act {
                 fs::create_dir_all(
                     &symlink
@@ -530,7 +523,7 @@ fn update_template(
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
         .context("detect templated file's current state")?;
-    info!("Current state: {}", comparison);
+    debug!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
@@ -554,7 +547,7 @@ fn update_template(
                 );
             }
 
-            info!("Performing update");
+            debug!("Performing update");
             if act {
                 perform_template_deployment(template, handlebars, variables)
                     .context("perform template deployment")?;

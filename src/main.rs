@@ -1,7 +1,6 @@
 #[cfg(windows)]
 extern crate dunce;
 
-#[macro_use]
 extern crate anyhow;
 extern crate clap;
 extern crate env_logger;
@@ -51,7 +50,7 @@ fn run() -> Result<()> {
     // Parse arguments
     let opt = args::get_options();
 
-    let default = if opt.act && opt.force {
+    let log_level = if opt.act && opt.force {
         "warn"
     } else if opt.act && !opt.force {
         "error"
@@ -61,13 +60,13 @@ fn run() -> Result<()> {
         "info"
     };
 
-    env_logger::from_env(env_logger::Env::default().default_filter_or(default))
+    env_logger::from_env(env_logger::Env::default().default_filter_or(log_level))
         .format_timestamp(None)
         .format_module_path(false)
         .format_indent(Some(8))
         .init();
 
-    trace!("Loaded options: {:?}", opt);
+    trace!("Loaded options: {:#?}", opt);
 
     // Change dir
     info!("Changing directory to {:?}", &opt.directory);
@@ -75,8 +74,10 @@ fn run() -> Result<()> {
         .with_context(|| format!("set current directory to {:?}", opt.directory))?;
 
     if opt.undeploy {
+        debug!("Un-Deploying...");
         deploy::undeploy(opt).context("undeploy")?;
     } else {
+        debug!("Deploying...");
         deploy::deploy(opt).context("deploy")?;
     }
 

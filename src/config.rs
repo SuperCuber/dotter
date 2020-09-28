@@ -96,17 +96,17 @@ fn try_load_configuration(
         Ok(global) => Ok(global),
     }?;
 
-    debug!("Global config: {:?}", global);
+    trace!("Global config: {:#?}", global);
 
     let local: LocalConfig =
         filesystem::load_file(local_config).map_err(|e| LoadConfigFailType::Parse {
             file: local_config.into(),
             source: e,
         })?;
-    debug!("Local config: {:?}", local);
+    trace!("Local config: {:#?}", local);
 
     let merged_config = merge_configuration_tables(global, local);
-    debug!("Merged config: {:?}", merged_config);
+    trace!("Merged config: {:#?}", merged_config);
 
     // Merge all the packages
     let Package { files, variables } = {
@@ -122,13 +122,13 @@ fn try_load_configuration(
         first_package
     };
 
+    debug!("Expanding files which are directories...");
     let files = expand_directories(files)
         .map_err(|e| LoadConfigFailType::InvalidSourceTree { source: e })?;
-    debug!("Expanded files: {:?}", files);
 
-    debug!("Final files: {:?}", files);
-    debug!("Final variables: {:?}", variables);
-    debug!("Final helpers: {:?}", merged_config.helpers);
+    trace!("Final files: {:#?}", files);
+    trace!("Final variables: {:#?}", variables);
+    trace!("Final helpers: {:?}", merged_config.helpers);
 
     Ok((files, variables, merged_config.helpers))
 }
@@ -171,6 +171,7 @@ pub fn load_configuration(
     local_config: &Path,
     global_config: &Path,
 ) -> Result<(Files, Variables, Helpers), LoadConfigFailType> {
+    debug!("Loading configuration...");
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
     let (files, variables, helpers) = loop {
         match try_load_configuration(local_config, global_config) {
@@ -191,6 +192,7 @@ pub fn load_configuration(
             Err(e) => break Err(e),
         }
     }?;
+    debug!("Loaded configuration. Expanding tildes to home directory...");
 
     let files = files
         .into_iter()
@@ -201,6 +203,8 @@ pub fn load_configuration(
             )
         })
         .collect();
+
+    trace!("Expanded files: {:#?}", files);
     Ok((files, variables, helpers))
 }
 
@@ -211,18 +215,21 @@ pub struct Cache {
 }
 
 pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
+    debug!("Loading cache...");
+
     let cache = match filesystem::load_file(cache) {
         Ok(cache) => Some(cache),
         Err(filesystem::FileLoadError::Open { .. }) => None,
         Err(e) => Err(e).context("load cache file")?,
     };
 
-    debug!("Cache: {:?}", cache);
+    trace!("Cache: {:#?}", cache);
 
     Ok(cache)
 }
 
 pub fn save_cache(cache_file: &Path, cache: Cache) -> Result<()> {
+    debug!("Saving cache...");
     filesystem::save_file(cache_file, cache)?;
 
     Ok(())

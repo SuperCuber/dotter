@@ -44,13 +44,13 @@ pub fn register_rust_helpers(handlebars: &mut Handlebars) {
 }
 
 pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: Helpers) {
+    debug!("Registering script helpers...");
     for (helper_name, helper_path) in helpers {
         if let Err(e) = handlebars.register_script_helper_file(&helper_name, &helper_path) {
             error!(
                 "Coudln't register helper script {} at path {:?} because {}",
                 helper_name, helper_path, e
             );
-            ::std::process::exit(1);
         }
     }
 }
