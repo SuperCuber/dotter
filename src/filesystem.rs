@@ -273,7 +273,7 @@ mod filesystem_impl {
             Err(e) => {
                 // os error 1314: A required privilege is not held by the client.
                 if e.raw_os_error() == Some(1314) {
-                    Ok(true)
+                    Ok(false)
                 } else {
                     Err(e).context(format!(
                         "Failed to create test symlink at {:?}",
