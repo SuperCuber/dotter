@@ -2,7 +2,7 @@
 name = "dotter"
 version = "0.7.3"
 authors = ["SuperCuber <amit.gold00@gmail.com>"]
-description = "A small dotfile manager"
+description = "A dotfile manager and templater written in rust"
 repository = "https://www.github.com/SuperCuber/dotter"
 readme = "README.md"
 keywords = ["dotter", "dotfiles", "manager"]
@@ -10,17 +10,17 @@ categories = ["command-line-utilities"]
 license = "Unlicense"
 
 [dependencies]
-anyhow = "1.0.*"
-clap = "2.33.*"
+anyhow = "1.*"
+clap = "2.*"
 env_logger = "0.7.*"
-handlebars = { version = "3.3.*", features = ["script_helper"] }
+handlebars = { version = "3.*", features = ["script_helper"] }
 log = "0.4.*"
 meval = "0.2.*"
-serde = "1.0.*"
-shellexpand = "1.1.*"
+serde = "1.*"
+shellexpand = "1.*"
 structopt = "0.3.*"
-thiserror = "1.0.*"
+thiserror = "1.*"
 toml = "0.4.*"
 
 [target.'cfg(windows)'.dependencies]
-dunce = "1.0.1"
+dunce = "1.*"

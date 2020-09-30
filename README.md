@@ -18,7 +18,7 @@ I create Releases often so make sure you check whether the bug was fixed in the 
 # Installation
 Download the binary for your platform from the latest release and then put it in your `$PATH` or in your dotfile repository (then you'd run it with `./dotter`).
 
-Alternatively, Dotter is on [crates.io](crates.io/crates/dotter), so run `cargo install dotter` after installing rust to install it that way.
+Alternatively, Dotter is on [crates.io](https://crates.io/crates/dotter), so run `cargo install dotter` after installing rust to install it that way.
 
 # Wiki
 Check out [the wiki](https://github.com/SuperCuber/dotter/wiki) for more information.
