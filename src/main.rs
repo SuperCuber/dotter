@@ -1,6 +1,7 @@
 #[cfg(windows)]
 extern crate dunce;
 
+#[macro_use]
 extern crate anyhow;
 extern crate clap;
 extern crate env_logger;
@@ -21,6 +22,7 @@ mod config;
 mod deploy;
 mod filesystem;
 mod handlebars_helpers;
+mod init;
 
 use std::env;
 
@@ -38,7 +40,7 @@ pub(crate) fn display_error(error: anyhow::Error) {
     let mut error_message = format!("Failed to {}\nCaused by:\n", chain.next().unwrap());
 
     for e in chain {
-        error_message.push_str(&format!("    Failed to {}\n", e));
+        error_message.push_str(&format!("    {}\n", e));
     }
     // Remove last \n
     error_message.pop();
@@ -73,12 +75,19 @@ fn run() -> Result<()> {
     env::set_current_dir(&opt.directory)
         .with_context(|| format!("set current directory to {:?}", opt.directory))?;
 
-    if opt.undeploy {
-        debug!("Un-Deploying...");
-        deploy::undeploy(opt).context("undeploy")?;
-    } else {
-        debug!("Deploying...");
-        deploy::deploy(opt).context("deploy")?;
+    match opt.action.unwrap_or_default() {
+        args::Action::Deploy => {
+            debug!("Deploying...");
+            deploy::deploy(opt).context("deploy")?;
+        }
+        args::Action::Undeploy => {
+            debug!("Un-Deploying...");
+            deploy::undeploy(opt).context("undeploy")?;
+        }
+        args::Action::Init => {
+            debug!("Initializing repo...");
+            init::init(opt).context("initalize directory")?;
+        }
     }
 
     Ok(())

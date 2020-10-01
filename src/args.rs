@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "Dotter", about = "A small dotfile manager.")]
+#[structopt(name = "Dotter")]
+/// A small dotfile manager.
+/// Note that flags and options have to come BEFORE subcommands.
 pub struct Options {
     /// Do all operations relative to this directory.
     #[structopt(short, long, default_value = ".")]
@@ -35,10 +37,28 @@ pub struct Options {
     #[structopt(long)]
     pub force: bool,
 
-    /// Un-deploy - delete all deployed files in their target locations.
+    #[structopt(subcommand)]
+    pub action: Option<Action>,
+}
+
+#[derive(Debug, Clone, Copy, StructOpt)]
+pub enum Action {
+    /// Deploy the files to their respective targets. This is the default subcommand.
+    Deploy,
+
+    /// Delete all deployed files from their target locations.
     /// Note that this operates on all files that are currently in cache.
-    #[structopt(long)]
-    pub undeploy: bool,
+    Undeploy,
+
+    /// Initialize global.toml with a single package containing all the files in the current
+    /// directory pointing to a dummy value and a local.toml that selects that package.
+    Init,
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Action::Deploy
+    }
 }
 
 pub fn get_options() -> Options {

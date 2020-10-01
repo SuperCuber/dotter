@@ -30,13 +30,13 @@ fn merge_configuration_tables(mut global: GlobalConfig, mut local: LocalConfig) 
             package_global.files.extend(package_local.files);
             package_global.variables.extend(package_local.variables);
 
-            // Remove files with target = ""
-            package_global.files = package_global
-                .files
-                .into_iter()
-                .filter(|(_, v)| v.to_string_lossy() != "")
-                .collect();
         }
+        // Remove files with target = ""
+        package_global.files = package_global
+            .files
+            .into_iter()
+            .filter(|(_, v)| v.to_string_lossy() != "")
+            .collect();
 
         // Insert into output
         output.packages.insert(package_name, package_global);
@@ -60,7 +60,7 @@ pub enum LoadConfigFailType {
     InvalidSourceTree { source: anyhow::Error },
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 struct Package {
     #[serde(default)]
     files: Files,
@@ -68,7 +68,7 @@ struct Package {
     variables: Table,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct GlobalConfig {
     #[serde(default)]
     helpers: Helpers,
@@ -76,7 +76,7 @@ struct GlobalConfig {
     packages: BTreeMap<String, Package>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct LocalConfig {
     packages: Vec<String>,
     #[serde(flatten)]
@@ -206,6 +206,37 @@ pub fn load_configuration(
 
     trace!("Expanded files: {:#?}", files);
     Ok((files, variables, helpers))
+}
+
+pub fn save_dummy_config(
+    files: Vec<String>,
+    local_config_path: &Path,
+    global_config_path: &Path,
+) -> Result<()> {
+    debug!("Saving dummy config...");
+    let package = Package {
+        files: files.into_iter().map(|f| (f.into(), "".into())).collect(),
+        variables: Variables::new(),
+    };
+    trace!("Default package: {:#?}", package);
+
+    let mut packages = BTreeMap::new();
+    packages.insert("default".into(), package);
+    let global_config = GlobalConfig {
+        helpers: Helpers::new(),
+        packages,
+    };
+    debug!("Saving global config...");
+    filesystem::save_file(global_config_path, global_config).context("save global config")?;
+
+    let local_config = LocalConfig {
+        packages: vec!["default".into()],
+        package_patches: BTreeMap::new(),
+    };
+    trace!("Local config: {:#?}", local_config);
+    filesystem::save_file(local_config_path, local_config).context("save local config")?;
+
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
