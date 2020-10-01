@@ -11,23 +11,14 @@ use toml;
 
 #[derive(Error, Debug)]
 pub enum FileLoadError {
-    #[error("open file {filename}")]
-    Open {
-        filename: PathBuf,
-        source: io::Error,
-    },
+    #[error("open file")]
+    Open(io::Error),
 
-    #[error("read opened file {filename}")]
-    Read {
-        filename: PathBuf,
-        source: io::Error,
-    },
+    #[error("read opened file")]
+    Read(io::Error),
 
-    #[error("parse file {filename}")]
-    Parse {
-        filename: PathBuf,
-        source: toml::de::Error,
-    },
+    #[error("parse file")]
+    Parse(toml::de::Error),
 }
 
 pub fn load_file<T>(filename: &Path) -> Result<T, FileLoadError>
@@ -35,28 +26,15 @@ where
     T: DeserializeOwned,
 {
     let mut buf = String::new();
-    let mut f = File::open(filename).map_err(|e| FileLoadError::Open {
-        filename: filename.into(),
-        source: e,
-    })?;
-    f.read_to_string(&mut buf)
-        .map_err(|e| FileLoadError::Read {
-            filename: filename.into(),
-            source: e,
-        })?;
-    toml::from_str::<T>(&buf).map_err(|e| FileLoadError::Parse {
-        filename: filename.into(),
-        source: e,
-    })
+    let mut f = File::open(filename).map_err(FileLoadError::Open)?;
+    f.read_to_string(&mut buf).map_err(FileLoadError::Read)?;
+    toml::from_str::<T>(&buf).map_err(FileLoadError::Parse)
 }
 
 #[derive(Error, Debug)]
 pub enum FileSaveError {
-    #[error("write file {filename}")]
-    Write {
-        filename: PathBuf,
-        source: io::Error,
-    },
+    #[error("write file")]
+    Write(io::Error),
 
     #[error("serialize data")]
     Serialize(#[from] toml::ser::Error),
@@ -67,10 +45,7 @@ where
     T: Serialize,
 {
     let data = toml::to_string(&data)?;
-    fs::write(filename, &data).map_err(|e| FileSaveError::Write {
-        filename: filename.into(),
-        source: e,
-    })?;
+    fs::write(filename, &data).map_err(FileSaveError::Write)?;
     Ok(())
 }
 
