@@ -13,9 +13,12 @@ jobs:
         run: cargo build --release --verbose
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           asset_path: target/release/dotter
           asset_name: dotter
+          upload_url: ${{ github.event.release.upload_url }}
   build-windows:
     runs-on: windows-latest
     steps:
@@ -24,6 +27,9 @@ jobs:
         run: cargo build --release --verbose
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           asset_path: target/release/dotter.exe
           asset_name: dotter.exe
+          upload_url: ${{ github.event.release.upload_url }}
