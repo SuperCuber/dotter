@@ -66,3 +66,8 @@ Dotter uses the `env_logger` rust library for displaying errors and warnings. To
 
 # Contributing
 Contributions to Dotter are welcome, whether in the form of a pull request or an issue (for bug repots, feature requests, or other helpful comments)
+
+# Support
+Like what I do and want to encourage me to continue?\
+You can donate a small amount via [Paypal](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=329HKDXK9UB84).\
+Donations are not expected but greatly appreciated.
