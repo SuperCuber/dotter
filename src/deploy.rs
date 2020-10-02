@@ -180,6 +180,7 @@ Proceeding by copying instead of symlinking."
     info!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
     handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
+    handlebars.set_strict_mode(true); // Report missing variables as errors
     handlebars_helpers::register_rust_helpers(&mut handlebars);
     handlebars_helpers::register_script_helpers(&mut handlebars, helpers);
     trace!("Handlebars instance: {:#?}", handlebars);
