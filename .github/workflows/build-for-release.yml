@@ -18,6 +18,7 @@ jobs:
         with:
           asset_path: target/release/dotter
           asset_name: dotter
+          asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
   build-windows:
     runs-on: windows-latest
@@ -32,4 +33,5 @@ jobs:
         with:
           asset_path: target/release/dotter.exe
           asset_name: dotter.exe
+          asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
