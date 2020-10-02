@@ -1,0 +1,27 @@
+name: Build assets for a Release
+
+on: [release]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Upload asset
+        uses: actions/upload-release-asset@v1.0.2
+        with:
+          asset_path: target/release/dotter
+          asset_name: dotter
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Upload asset
+        uses: actions/upload-release-asset@v1.0.2
+        with:
+          asset_path: target/release/dotter.exe
+          asset_name: dotter.exe
