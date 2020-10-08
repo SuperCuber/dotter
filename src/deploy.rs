@@ -17,7 +17,8 @@ pub fn undeploy(opt: Options) -> Result<()> {
     config::load_configuration(&opt.local_config, &opt.global_config)
         .context("find configuration location")?;
 
-    let cache = config::load_cache(&opt.cache_file)?.context("load cache: Cannot undeploy without a cache.")?;
+    let cache = config::load_cache(&opt.cache_file)?
+        .context("load cache: Cannot undeploy without a cache.")?;
 
     let config::Cache {
         symlinks: existing_symlinks,
@@ -217,14 +218,21 @@ Proceeding by copying instead of symlinking."
     trace!("Old symlinks: {:#?}", old_symlinks);
     trace!("Old templates: {:#?}", old_templates);
     for old_symlink in old_symlinks {
-        if let Err(e) = update_symlink(opt.act, &old_symlink, opt.force) {
-            display_error(e.context(format!("update symlink {}", old_symlink)));
+        match update_symlink(opt.act, &old_symlink, opt.force) {
+            Ok(true) => {}
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => display_error(e.context(format!("update symlink {}", old_symlink))),
         }
     }
     for old_template in old_templates {
-        if let Err(e) = update_template(opt.act, &old_template, &handlebars, &variables, opt.force)
-        {
-            display_error(e.context(format!("update template {}", old_template)));
+        match update_template(opt.act, &old_template, &handlebars, &variables, opt.force) {
+            Ok(true) => {}
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => display_error(e.context(format!("update template {}", old_template))),
         }
     }
 
@@ -404,6 +412,7 @@ fn create_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<b
     }
 }
 
+// Returns true if the template should be added to cache
 fn create_template(
     act: bool,
     template: &FileDescription,
@@ -452,7 +461,8 @@ fn create_template(
     }
 }
 
-fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<()> {
+// Returns true if the symlink wasn't skipped
+fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<bool> {
     info!("Updating symlink {}", symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
@@ -465,21 +475,25 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
                 "Updating symlink {} but source is missing. Skipping...",
                 symlink
             );
+            Ok(false)
         }
         SymlinkComparison::Changed if !force => {
             error!(
                 "Updating symlink {} but target doesn't point at source. Skipping...",
                 symlink
             );
+            Ok(false)
         }
         SymlinkComparison::TargetNotSymlink if !force => {
             error!(
                 "Updating symlink {} but target is not a symlink. Skipping...",
                 symlink
             );
+            Ok(false)
         }
         SymlinkComparison::Identical => {
             debug!("Not touching symlink.");
+            Ok(true)
         }
         s => {
             if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
@@ -508,18 +522,19 @@ fn update_symlink(act: bool, symlink: &FileDescription, force: bool) -> Result<(
                 filesystem::make_symlink(&symlink.target, &symlink.source)
                     .context("create target symlink")?;
             }
+            Ok(true)
         }
     }
-    Ok(())
 }
 
+/// Returns true if the template was not skipped
 fn update_template(
     act: bool,
     template: &FileDescription,
     handlebars: &Handlebars,
     variables: &Variables,
     force: bool,
-) -> Result<()> {
+) -> Result<bool> {
     info!("Updating template {}", template);
 
     let comparison = filesystem::compare_template(&template.target, &template.cache)
@@ -533,12 +548,14 @@ fn update_template(
                 template
             );
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
+            Ok(true)
         }
         TemplateComparison::Changed if !force => {
             error!(
                 "Updating template {} but target's contents were changed. Skipping...",
                 template
             );
+            Ok(false)
         }
         t => {
             if t == TemplateComparison::Changed {
@@ -553,10 +570,9 @@ fn update_template(
                 perform_template_deployment(template, handlebars, variables)
                     .context("perform template deployment")?;
             }
+            Ok(true)
         }
     }
-
-    Ok(())
 }
 
 fn perform_template_deployment(
