@@ -161,8 +161,8 @@ pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
 
 pub fn ask_boolean(prompt: &str) -> bool {
     let mut buf = String::new();
-    while !(buf.to_lowercase().starts_with("y")
-        || buf.to_lowercase().starts_with("n")
+    while !(buf.to_lowercase().starts_with('y')
+        || buf.to_lowercase().starts_with('n')
         || buf.is_empty())
     {
         eprintln!("{}", prompt);
@@ -173,7 +173,7 @@ pub fn ask_boolean(prompt: &str) -> bool {
     }
 
     // If empty defaults to no
-    buf.to_lowercase().starts_with("y")
+    buf.to_lowercase().starts_with('y')
 }
 
 pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
