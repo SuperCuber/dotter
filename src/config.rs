@@ -59,18 +59,14 @@ pub enum LoadConfigFailType {
     InvalidSourceTree { source: anyhow::Error },
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FileType {
-    Symbolic,
-    Template,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
+// Deserialize implemented manually
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum FileTarget {
     Automatic(PathBuf),
-    Symlink(PathBuf),
+    #[serde(skip_serializing)]
+    Symbolic(PathBuf),
+    #[serde(skip_serializing)]
     ComplexTemplate {
         target: PathBuf,
         append: Option<String>,
@@ -78,11 +74,111 @@ pub enum FileTarget {
     },
 }
 
+impl<'de> serde::Deserialize<'de> for FileTarget {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Target,
+            Append,
+            Prepend,
+            Type,
+        }
+
+        struct FileTargetVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for FileTargetVisitor {
+            type Value = FileTarget;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string or a map")
+            }
+
+            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(FileTarget::Automatic(s.into()))
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: serde::de::MapAccess<'de>,
+            {
+                let mut file_type = None;
+                let mut target = None;
+                let mut append = None;
+                let mut prepend = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Type => {
+                            if file_type.is_some() {
+                                return Err(serde::de::Error::duplicate_field("type"));
+                            }
+                            file_type = Some(map.next_value()?);
+                        }
+                        Field::Target => {
+                            if target.is_some() {
+                                return Err(serde::de::Error::duplicate_field("target"));
+                            }
+                            target = Some(map.next_value()?);
+                        }
+                        Field::Append => {
+                            if append.is_some() {
+                                return Err(serde::de::Error::duplicate_field("append"));
+                            }
+                            append = Some(map.next_value()?);
+                        }
+                        Field::Prepend => {
+                            if prepend.is_some() {
+                                return Err(serde::de::Error::duplicate_field("prepend"));
+                            }
+                            prepend = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let file_type = file_type.ok_or_else(|| serde::de::Error::missing_field("type"))?;
+                let target = target.ok_or_else(|| serde::de::Error::missing_field("target"))?;
+                let ans = match file_type {
+                    "symbolic" => {
+                        if append.is_some() || prepend.is_some() {
+                            return Err(serde::de::Error::custom(
+                                "invalid use of `append` or `prepend` on a symbolic target",
+                            ));
+                        }
+                        FileTarget::Symbolic(target)
+                    }
+                    "template" => FileTarget::ComplexTemplate {
+                        append,
+                        prepend,
+                        target,
+                    },
+                    other_type => {
+                        return Err(serde::de::Error::invalid_value(
+                            serde::de::Unexpected::Str(other_type),
+                            &"`symbolic` or `template`",
+                        ))
+                    }
+                };
+
+                Ok(ans)
+            }
+        }
+
+        deserializer.deserialize_any(FileTargetVisitor)
+    }
+}
+
 impl FileTarget {
     fn map<F: FnOnce(PathBuf) -> PathBuf>(self, func: F) -> Self {
         match self {
             FileTarget::Automatic(path) => FileTarget::Automatic(func(path)),
-            FileTarget::Symlink(path) => FileTarget::Symlink(func(path)),
+            FileTarget::Symbolic(path) => FileTarget::Symbolic(func(path)),
             FileTarget::ComplexTemplate {
                 target,
                 append,
@@ -98,7 +194,7 @@ impl FileTarget {
     pub fn path(&self) -> &Path {
         match self {
             FileTarget::Automatic(path) => &path,
-            FileTarget::Symlink(path) => &path,
+            FileTarget::Symbolic(path) => &path,
             FileTarget::ComplexTemplate { target, .. } => &target,
         }
     }
