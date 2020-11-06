@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub type Files = BTreeMap<PathBuf, PathBuf>;
+pub type Files = BTreeMap<PathBuf, FileTarget>;
 pub type Variables = Table;
 pub type Helpers = BTreeMap<String, PathBuf>;
 
@@ -34,7 +34,7 @@ fn merge_configuration_tables(mut global: GlobalConfig, mut local: LocalConfig) 
         package_global.files = package_global
             .files
             .into_iter()
-            .filter(|(_, v)| v.to_string_lossy() != "")
+            .filter(|(_, v)| v.path().to_string_lossy() != "")
             .collect();
 
         // Insert into output
@@ -57,6 +57,58 @@ pub enum LoadConfigFailType {
 
     #[error("inspect source files")]
     InvalidSourceTree { source: anyhow::Error },
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileType {
+    Symbolic,
+    Template,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum FileTarget {
+    Simple(PathBuf),
+    Complex {
+        target: PathBuf,
+        append: Option<String>,
+        prepend: Option<String>,
+        #[serde(rename = "type")]
+        file_type: Option<FileType>,
+    },
+}
+
+impl FileTarget {
+    fn map<F: FnOnce(PathBuf) -> PathBuf>(self, func: F) -> Self {
+        match self {
+            FileTarget::Simple(path) => FileTarget::Simple(func(path)),
+            FileTarget::Complex {
+                target,
+                append,
+                prepend,
+                file_type,
+            } => FileTarget::Complex {
+                target: func(target),
+                append,
+                prepend,
+                file_type,
+            },
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        match self {
+            FileTarget::Simple(path) => &path,
+            FileTarget::Complex { target, .. } => &target,
+        }
+    }
+}
+
+impl<T: Into<PathBuf>> From<T> for FileTarget {
+    fn from(input: T) -> Self {
+        FileTarget::Simple(input.into())
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -135,7 +187,9 @@ fn try_load_configuration(
 fn expand_directories(files: Files) -> Result<Files> {
     let expanded = files
         .into_iter()
-        .map(|(from, to)| expand_directory(&from, &to).context(format!("expand file {:?}", from)))
+        .map(|(from, to)| {
+            expand_directory(&from, to.path()).context(format!("expand file {:?}", from))
+        })
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
 }
@@ -198,7 +252,11 @@ pub fn load_configuration(
         .map(|(k, v)| {
             (
                 k,
-                shellexpand::tilde(&v.to_string_lossy()).to_string().into(),
+                v.map(|path| {
+                    shellexpand::tilde(&path.to_string_lossy())
+                        .to_string()
+                        .into()
+                }),
             )
         })
         .collect();
