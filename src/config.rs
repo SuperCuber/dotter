@@ -69,45 +69,44 @@ pub enum FileType {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum FileTarget {
-    Simple(PathBuf),
-    Complex {
+    Automatic(PathBuf),
+    Symlink(PathBuf),
+    ComplexTemplate {
         target: PathBuf,
         append: Option<String>,
         prepend: Option<String>,
-        #[serde(rename = "type")]
-        file_type: Option<FileType>,
     },
 }
 
 impl FileTarget {
     fn map<F: FnOnce(PathBuf) -> PathBuf>(self, func: F) -> Self {
         match self {
-            FileTarget::Simple(path) => FileTarget::Simple(func(path)),
-            FileTarget::Complex {
+            FileTarget::Automatic(path) => FileTarget::Automatic(func(path)),
+            FileTarget::Symlink(path) => FileTarget::Symlink(func(path)),
+            FileTarget::ComplexTemplate {
                 target,
                 append,
                 prepend,
-                file_type,
-            } => FileTarget::Complex {
+            } => FileTarget::ComplexTemplate {
                 target: func(target),
                 append,
                 prepend,
-                file_type,
             },
         }
     }
 
     pub fn path(&self) -> &Path {
         match self {
-            FileTarget::Simple(path) => &path,
-            FileTarget::Complex { target, .. } => &target,
+            FileTarget::Automatic(path) => &path,
+            FileTarget::Symlink(path) => &path,
+            FileTarget::ComplexTemplate { target, .. } => &target,
         }
     }
 }
 
 impl<T: Into<PathBuf>> From<T> for FileTarget {
     fn from(input: T) -> Self {
-        FileTarget::Simple(input.into())
+        FileTarget::Automatic(input.into())
     }
 }
 
