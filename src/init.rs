@@ -28,7 +28,7 @@ pub fn init(opt: Options) -> Result<()> {
             .file_name()
             .into_string()
             .map_err(|f| anyhow!("filename {:?} is not valid unicode", f))?;
-        if name.starts_with(".") {
+        if name.starts_with('.') {
             debug!("Ignored file {:?}", name);
             continue;
         }
@@ -43,8 +43,8 @@ pub fn init(opt: Options) -> Result<()> {
     config::save_cache(
         &opt.cache_file,
         config::Cache {
-            symlinks: config::Files::new(),
-            templates: config::Files::new(),
+            symlinks: Default::default(),
+            templates: Default::default(),
         },
     )
     .context("save empty cache file")?;
