@@ -43,8 +43,8 @@ pub fn init(opt: Options) -> Result<()> {
     config::save_cache(
         &opt.cache_file,
         config::Cache {
-            symlinks: config::Files::new(),
-            templates: config::Files::new(),
+            symlinks: Default::default(),
+            templates: Default::default(),
         },
     )
     .context("save empty cache file")?;

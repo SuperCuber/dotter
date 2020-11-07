@@ -280,9 +280,7 @@ fn try_load_configuration(
 fn expand_directories(files: Files) -> Result<Files> {
     let expanded = files
         .into_iter()
-        .map(|(from, to)| {
-            expand_directory(&from, to).context(format!("expand file {:?}", from))
-        })
+        .map(|(from, to)| expand_directory(&from, to).context(format!("expand file {:?}", from)))
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
 }
@@ -309,7 +307,7 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
             .map(|child| -> Result<Files> {
                 let child = child?.file_name();
                 let child_source = PathBuf::from(source).join(&child);
-                let child_target = PathBuf::from(target).join(&child);
+                let child_target = PathBuf::from(target.clone()).join(&child);
                 expand_directory(&child_source, child_target.into())
                     .context(format!("expand file {:?}", child_source))
             })
@@ -396,8 +394,8 @@ pub fn save_dummy_config(
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Cache {
-    pub symlinks: Files,
-    pub templates: Files,
+    pub symlinks: BTreeMap<PathBuf, PathBuf>,
+    pub templates: BTreeMap<PathBuf, PathBuf>,
 }
 
 pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {

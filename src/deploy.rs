@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 
 use handlebars::Handlebars;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -27,8 +27,8 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     // Used just to transform them into FileDescription structs
     let state = FileState::new(
-        Files::new(),
-        Files::new(),
+        Default::default(),
+        Default::default(),
         existing_symlinks.clone(),
         existing_templates.clone(),
         opt.cache_directory,
@@ -107,16 +107,56 @@ Proceeding by copying instead of symlinking."
     };
 
     // Step 2-3
-    let mut desired_symlinks = config::Files::new();
-    let mut desired_templates = config::Files::new();
+    let mut desired_symlinks = BTreeMap::new();
+    let mut desired_templates = BTreeMap::new();
 
     for (source, target) in files {
-        if symlinks_enabled
-            && !is_template(&source).context(format!("check whether {:?} is a template", source))?
-        {
-            desired_symlinks.insert(source, target);
-        } else {
-            desired_templates.insert(source, target);
+        match target {
+            config::FileTarget::Automatic(target) => {
+                if symlinks_enabled
+                    && !is_template(&source)
+                        .context(format!("check whether {:?} is a template", source))?
+                {
+                    desired_symlinks.insert(source, target);
+                } else {
+                    desired_templates.insert(
+                        source,
+                        TemplateDescription {
+                            target,
+                            append: None,
+                            prepend: None,
+                        },
+                    );
+                }
+            }
+            config::FileTarget::Symbolic(target) => {
+                if symlinks_enabled {
+                    desired_symlinks.insert(source, target);
+                } else {
+                    desired_templates.insert(
+                        source,
+                        TemplateDescription {
+                            target,
+                            append: None,
+                            prepend: None,
+                        },
+                    );
+                }
+            }
+            config::FileTarget::ComplexTemplate {
+                target,
+                append,
+                prepend,
+            } => {
+                desired_templates.insert(
+                    source,
+                    TemplateDescription {
+                        target,
+                        append,
+                        prepend,
+                    },
+                );
+            }
         }
     }
 
@@ -618,6 +658,19 @@ fn is_template(source: &Path) -> Result<bool> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct TemplateDescription {
+    target: PathBuf,
+    append: Option<String>,
+    prepend: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum ResolvedFileTarget {
+    Symbolic(PathBuf),
+    Template(TemplateDescription),
+}
+
 #[derive(Debug)]
 struct FileState {
     desired_symlinks: BTreeSet<FileDescription>,
@@ -629,7 +682,7 @@ struct FileState {
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct FileDescription {
     source: PathBuf,
-    target: config::FileTarget,
+    target: ResolvedFileTarget,
     cache: PathBuf,
 }
 
@@ -641,26 +694,50 @@ impl std::fmt::Display for FileDescription {
 
 impl FileState {
     fn new(
-        desired_symlinks: Files,
-        desired_templates: Files,
-        existing_symlinks: Files,
-        existing_templates: Files,
+        desired_symlinks: BTreeMap<PathBuf, PathBuf>,
+        desired_templates: BTreeMap<PathBuf, TemplateDescription>,
+        existing_symlinks: BTreeMap<PathBuf, PathBuf>,
+        existing_templates: BTreeMap<PathBuf, PathBuf>,
         cache_dir: PathBuf,
     ) -> FileState {
         FileState {
-            desired_symlinks: Self::files_to_set(desired_symlinks, &cache_dir),
-            desired_templates: Self::files_to_set(desired_templates, &cache_dir),
-            existing_symlinks: Self::files_to_set(existing_symlinks, &cache_dir),
-            existing_templates: Self::files_to_set(existing_templates, &cache_dir),
+            desired_symlinks: Self::files_to_set(
+                desired_symlinks,
+                &cache_dir,
+                ResolvedFileTarget::Symbolic,
+            ),
+            desired_templates: Self::files_to_set(
+                desired_templates,
+                &cache_dir,
+                ResolvedFileTarget::Template,
+            ),
+            existing_symlinks: Self::files_to_set(
+                existing_symlinks,
+                &cache_dir,
+                ResolvedFileTarget::Symbolic,
+            ),
+            existing_templates: Self::files_to_set(existing_templates, &cache_dir, |p| {
+                ResolvedFileTarget::Template(TemplateDescription {
+                    target: p,
+                    append: None,
+                    prepend: None,
+                })
+            }),
         }
     }
 
-    fn files_to_set(files: Files, cache_dir: &Path) -> BTreeSet<FileDescription> {
+    // fn templates_to_set
+
+    fn files_to_set<T>(
+        files: BTreeMap<PathBuf, T>,
+        cache_dir: &Path,
+        mut path_to_target: impl FnMut(T) -> ResolvedFileTarget,
+    ) -> BTreeSet<FileDescription> {
         files
             .into_iter()
             .map(|(source, target)| FileDescription {
                 source: source.clone(),
-                target,
+                target: path_to_target(target),
                 cache: cache_dir.join(source),
             })
             .collect()
@@ -706,28 +783,27 @@ impl FileState {
 
 #[cfg(test)]
 mod test {
-    use super::{FileDescription, FileState, Files, PathBuf};
+    use super::*;
 
     // TODO: test complex targets
 
     #[test]
     fn test_file_state_symlinks_only() {
-        // Testing symlinks only is enough for me because the logic should be the same
-        let mut existing_symlinks = Files::new();
+        let mut existing_symlinks = BTreeMap::<PathBuf, PathBuf>::new();
         existing_symlinks.insert("file1s".into(), "file1t".into()); // Same
         existing_symlinks.insert("file2s".into(), "file2t".into()); // Deleted
         existing_symlinks.insert("file3s".into(), "file3t".into()); // Target change
 
-        let mut desired_symlinks = Files::new();
+        let mut desired_symlinks = BTreeMap::<PathBuf, PathBuf>::new();
         desired_symlinks.insert("file1s".into(), "file1t".into()); // Same
         desired_symlinks.insert("file3s".into(), "file0t".into()); // Target change
         desired_symlinks.insert("file5s".into(), "file5t".into()); // New
 
         let state = FileState::new(
             desired_symlinks,
-            Files::new(),
+            Default::default(),
             existing_symlinks,
-            Files::new(),
+            Default::default(),
             "cache".into(),
         );
 
@@ -737,12 +813,12 @@ mod test {
                 vec![
                     FileDescription {
                         source: "file2s".into(),
-                        target: "file2t".into(),
+                        target: ResolvedFileTarget::Symbolic("file2t".into()),
                         cache: PathBuf::from("cache").join("file2s"),
                     },
                     FileDescription {
                         source: "file3s".into(),
-                        target: "file3t".into(),
+                        target: ResolvedFileTarget::Symbolic("file3t".into()),
                         cache: PathBuf::from("cache").join("file3s"),
                     }
                 ],
@@ -756,12 +832,12 @@ mod test {
                 vec![
                     FileDescription {
                         source: "file3s".into(),
-                        target: "file0t".into(),
+                        target: ResolvedFileTarget::Symbolic("file0t".into()),
                         cache: PathBuf::from("cache").join("file3s")
                     },
                     FileDescription {
                         source: "file5s".into(),
-                        target: "file5t".into(),
+                        target: ResolvedFileTarget::Symbolic("file5t".into()),
                         cache: PathBuf::from("cache").join("file5s")
                     },
                 ],
@@ -774,7 +850,7 @@ mod test {
             (
                 vec![FileDescription {
                     source: "file1s".into(),
-                    target: "file1t".into(),
+                    target: ResolvedFileTarget::Symbolic("file1t".into()),
                     cache: PathBuf::from("cache").join("file1s"),
                 }],
                 Vec::new()
@@ -782,4 +858,7 @@ mod test {
             "old files correct"
         );
     }
+
+    #[test]
+    fn test_file_state_complex() {}
 }
