@@ -31,7 +31,7 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.8.0
+Dotter 0.9.0
 A small dotfile manager. Note that flags and options have to come BEFORE subcommands
 
 USAGE:
