@@ -12,13 +12,13 @@ use toml;
 #[derive(Error, Debug)]
 pub enum FileLoadError {
     #[error("open file")]
-    Open(io::Error),
+    Open(#[source] io::Error),
 
     #[error("read opened file")]
-    Read(io::Error),
+    Read(#[source] io::Error),
 
     #[error("parse file")]
-    Parse(toml::de::Error),
+    Parse(#[source] toml::de::Error),
 }
 
 pub fn load_file<T>(filename: &Path) -> Result<T, FileLoadError>
@@ -34,10 +34,14 @@ where
 #[derive(Error, Debug)]
 pub enum FileSaveError {
     #[error("write file")]
-    Write(io::Error),
+    Write(#[source] io::Error),
 
     #[error("serialize data")]
-    Serialize(#[from] toml::ser::Error),
+    Serialize(
+        #[from]
+        #[source]
+        toml::ser::Error,
+    ),
 }
 
 pub fn save_file<T>(filename: &Path, data: T) -> Result<(), FileSaveError>

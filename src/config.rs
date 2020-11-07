@@ -59,17 +59,20 @@ pub enum LoadConfigFailType {
     InvalidSourceTree { source: anyhow::Error },
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TemplateTarget {
+    pub target: PathBuf,
+    pub append: Option<String>,
+    pub prepend: Option<String>,
+}
+
 // Deserialize implemented manually
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum FileTarget {
     Automatic(PathBuf),
     Symbolic(PathBuf),
-    ComplexTemplate {
-        target: PathBuf,
-        append: Option<String>,
-        prepend: Option<String>,
-    },
+    ComplexTemplate(TemplateTarget),
 }
 
 impl<'de> serde::Deserialize<'de> for FileTarget {
@@ -151,11 +154,11 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
                         }
                         FileTarget::Symbolic(target)
                     }
-                    "template" => FileTarget::ComplexTemplate {
+                    "template" => FileTarget::ComplexTemplate(TemplateTarget {
                         append,
                         prepend,
                         target,
-                    },
+                    }),
                     other_type => {
                         return Err(serde::de::Error::invalid_value(
                             serde::de::Unexpected::Str(other_type),
@@ -177,15 +180,10 @@ impl FileTarget {
         match self {
             FileTarget::Automatic(path) => FileTarget::Automatic(func(path)),
             FileTarget::Symbolic(path) => FileTarget::Symbolic(func(path)),
-            FileTarget::ComplexTemplate {
-                target,
-                append,
-                prepend,
-            } => FileTarget::ComplexTemplate {
-                target: func(target),
-                append,
-                prepend,
-            },
+            FileTarget::ComplexTemplate(mut t) => {
+                t.target = func(t.target);
+                FileTarget::ComplexTemplate(t)
+            }
         }
     }
 
@@ -193,7 +191,7 @@ impl FileTarget {
         match self {
             FileTarget::Automatic(path) => &path,
             FileTarget::Symbolic(path) => &path,
-            FileTarget::ComplexTemplate { target, .. } => &target,
+            FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
         }
     }
 }

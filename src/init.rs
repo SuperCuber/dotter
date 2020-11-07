@@ -28,7 +28,7 @@ pub fn init(opt: Options) -> Result<()> {
             .file_name()
             .into_string()
             .map_err(|f| anyhow!("filename {:?} is not valid unicode", f))?;
-        if name.starts_with(".") {
+        if name.starts_with('.') {
             debug!("Ignored file {:?}", name);
             continue;
         }
