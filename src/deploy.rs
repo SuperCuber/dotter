@@ -629,7 +629,7 @@ struct FileState {
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct FileDescription {
     source: PathBuf,
-    target: PathBuf,
+    target: config::FileTarget,
     cache: PathBuf,
 }
 
@@ -707,6 +707,8 @@ impl FileState {
 #[cfg(test)]
 mod test {
     use super::{FileDescription, FileState, Files, PathBuf};
+
+    // TODO: test complex targets
 
     #[test]
     fn test_file_state_symlinks_only() {

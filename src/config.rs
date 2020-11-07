@@ -60,13 +60,11 @@ pub enum LoadConfigFailType {
 }
 
 // Deserialize implemented manually
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum FileTarget {
     Automatic(PathBuf),
-    #[serde(skip_serializing)]
     Symbolic(PathBuf),
-    #[serde(skip_serializing)]
     ComplexTemplate {
         target: PathBuf,
         append: Option<String>,
@@ -283,7 +281,7 @@ fn expand_directories(files: Files) -> Result<Files> {
     let expanded = files
         .into_iter()
         .map(|(from, to)| {
-            expand_directory(&from, to.path()).context(format!("expand file {:?}", from))
+            expand_directory(&from, to).context(format!("expand file {:?}", from))
         })
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
@@ -292,22 +290,27 @@ fn expand_directories(files: Files) -> Result<Files> {
 /// If a file is given, it will return a map of one element
 /// Otherwise, returns recursively all the children and their targets
 ///  in relation to parent target
-fn expand_directory(source: &Path, target: &Path) -> Result<Files> {
+fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
     if fs::metadata(source)
         .context("read file's metadata")?
         .is_file()
     {
         let mut map = Files::new();
-        map.insert(source.into(), target.into());
+        map.insert(source.into(), target);
         Ok(map)
     } else {
+        let target = match target {
+            FileTarget::Automatic(target) => target,
+            // TODO: test this
+            _ => bail!("Complex file target not implemented for directories yet."),
+        };
         let expanded = fs::read_dir(source)
             .context("read contents of directory")?
             .map(|child| -> Result<Files> {
                 let child = child?.file_name();
                 let child_source = PathBuf::from(source).join(&child);
                 let child_target = PathBuf::from(target).join(&child);
-                expand_directory(&child_source, &child_target)
+                expand_directory(&child_source, child_target.into())
                     .context(format!("expand file {:?}", child_source))
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
