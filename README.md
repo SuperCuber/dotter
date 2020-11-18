@@ -16,9 +16,18 @@ If you find a bug, please open an issue describing how to reproduce it, and it w
 I create Releases often so make sure you check whether the bug was fixed in the latest one!
 
 # Installation
-Download the binary for your platform from the latest release and then put it in your `$PATH` or in your dotfile repository (then you'd run it with `./dotter`).
+## Arch Linux
+The following AUR packages are available:
+- [dotter-rs-bin](https://aur.archlinux.org/packages/dotter-rs-bin) for a precompiled version of the latest release
+- [dotter-rs](https://aur.archlinux.org/packages/dotter-rs) for the latest release's source that is built on your machine
+- [dotter-rs-git](https://aur.archlinux.org/packages/dotter-rs-git) for the latest commit on master that is built on your machine
 
-Alternatively, Dotter is on [crates.io](https://crates.io/crates/dotter), so run `cargo install dotter` after installing rust to install it that way.
+All of those are maintained by [orhun](https://github.com/orhun/) - huge thanks to him!
+
+## Others
+
+Download the binary for your platform from the latest release and then put it in your `$PATH` or in your dotfile repository (then you'd run it with `./dotter`).
+Alternatively, Dotter is on [crates.io](https://crates.io/crates/dotter), so if you have Rustup installed, run `cargo install dotter`.
 
 # Wiki
 Check out [the wiki](https://github.com/SuperCuber/dotter/wiki) for more information.
@@ -31,7 +40,7 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.9.0
+Dotter 0.9.1
 A small dotfile manager. Note that flags and options have to come BEFORE subcommands
 
 USAGE:
