@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build
-        run: cargo build --release --verbose
+        run: cargo build --release --locked --verbose
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
         env:
@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Build
-        run: cargo build --release --verbose
+        run: cargo build --release --locked --verbose
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
         env:
