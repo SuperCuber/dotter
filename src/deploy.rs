@@ -84,7 +84,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
     Ok(())
 }
 
-pub fn deploy(opt: Options) -> Result<()> {
+pub fn deploy(opt: &Options) -> Result<()> {
     // Throughout this function I'll be referencing steps, those were described in issue #6
 
     // Step 1
@@ -171,7 +171,7 @@ Proceeding by copying instead of symlinking."
         desired_templates,
         existing_symlinks.clone(),
         existing_templates.clone(),
-        opt.cache_directory,
+        opt.cache_directory.clone(),
     );
     trace!("File state: {:#?}", state);
 

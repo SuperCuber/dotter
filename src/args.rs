@@ -53,6 +53,10 @@ pub enum Action {
     /// Initialize global.toml with a single package containing all the files in the current
     /// directory pointing to a dummy value and a local.toml that selects that package.
     Init,
+
+    /// Run continuously, watching the repository for changes and re-deploying as soon as they
+    /// happen.
+    Watch,
 }
 
 impl Default for Action {

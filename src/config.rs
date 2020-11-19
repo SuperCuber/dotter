@@ -305,7 +305,7 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
             .map(|child| -> Result<Files> {
                 let child = child?.file_name();
                 let child_source = PathBuf::from(source).join(&child);
-                let child_target = PathBuf::from(target.clone()).join(&child);
+                let child_target = target.clone().join(&child);
                 expand_directory(&child_source, child_target.into())
                     .context(format!("expand file {:?}", child_source))
             })

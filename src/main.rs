@@ -16,6 +16,7 @@ extern crate structopt;
 #[macro_use]
 extern crate thiserror;
 extern crate toml;
+extern crate watchexec;
 
 mod args;
 mod config;
@@ -23,6 +24,7 @@ mod deploy;
 mod filesystem;
 mod handlebars_helpers;
 mod init;
+mod watch;
 
 use std::env;
 
@@ -78,7 +80,7 @@ fn run() -> Result<()> {
     match opt.action.unwrap_or_default() {
         args::Action::Deploy => {
             debug!("Deploying...");
-            deploy::deploy(opt).context("deploy")?;
+            deploy::deploy(&opt).context("deploy")?;
         }
         args::Action::Undeploy => {
             debug!("Un-Deploying...");
@@ -87,6 +89,10 @@ fn run() -> Result<()> {
         args::Action::Init => {
             debug!("Initializing repo...");
             init::init(opt).context("initalize directory")?;
+        }
+        args::Action::Watch => {
+            debug!("Watching...");
+            watch::watch(opt).context("watch repository")?;
         }
     }
 
