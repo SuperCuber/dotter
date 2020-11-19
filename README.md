@@ -40,17 +40,15 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.9.1
+Dotter 0.9.2
 A small dotfile manager. Note that flags and options have to come BEFORE subcommands
 
 USAGE:
     dotter [FLAGS] [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
-        --dry-run    Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
-                     otherwise
-        --force      Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
-                     --dry-run and implies RUST_LOG=warn unless specified otherwise
+        --dry-run    Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed otherwise
+        --force      Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run and implies RUST_LOG=warn unless specified otherwise
     -h, --help       Prints help information
     -V, --version    Prints version information
 
@@ -58,17 +56,15 @@ OPTIONS:
         --cache-directory <cache-directory>    Directory to cache into [default: dotter_settings/cache]
         --cache-file <cache-file>              Location of cache file [default: dotter_settings/cache.toml]
     -d, --directory <directory>                Do all operations relative to this directory [default: .]
-    -g, --global-config <global-config>        Location of the global configuration [default:
-                                               dotter_settings/global.toml]
+    -g, --global-config <global-config>        Location of the global configuration [default: dotter_settings/global.toml]
     -l, --local-config <local-config>          Location of the local configuration [default: dotter_settings/local.toml]
 
 SUBCOMMANDS:
     deploy      Deploy the files to their respective targets. This is the default subcommand
     help        Prints this message or the help of the given subcommand(s)
-    init        Initialize global.toml with a single package containing all the files in the current directory
-                pointing to a dummy value and a local.toml that selects that package
-    undeploy    Delete all deployed files from their target locations. Note that this operates on all files that are
-                currently in cache
+    init        Initialize global.toml with a single package containing all the files in the current directory pointing to a dummy value and a local.toml that selects that package
+    undeploy    Delete all deployed files from their target locations. Note that this operates on all files that are currently in cache
+    watch       Run continuously, watching the repository for changes and re-deploying as soon as they happen
 ```
 
 Dotter uses the `env_logger` rust library for displaying errors and warnings. To configure logging level, use the `RUST_LOG` environment variable. The options are, in order of least verbose to most verbose: `error`, `warn`, `info`, `debug`, `trace`. The default is `error`.
