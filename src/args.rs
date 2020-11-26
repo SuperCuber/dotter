@@ -12,11 +12,11 @@ pub struct Options {
     pub directory: PathBuf,
 
     /// Location of the global configuration
-    #[structopt(short, long, default_value = "dotter_settings/global.toml")]
+    #[structopt(short, long, default_value = ".dotter/global.toml")]
     pub global_config: PathBuf,
 
     /// Location of the local configuration
-    #[structopt(short, long, default_value = "dotter_settings/local.toml")]
+    #[structopt(short, long, default_value = ".dotter/local.toml")]
     pub local_config: PathBuf,
 
     /// Dry run - don't do anything, only print information.
@@ -25,11 +25,11 @@ pub struct Options {
     pub act: bool,
 
     /// Location of cache file
-    #[structopt(long, default_value = "dotter_settings/cache.toml")]
+    #[structopt(long, default_value = ".dotter/cache.toml")]
     pub cache_file: PathBuf,
 
     /// Directory to cache into.
-    #[structopt(long, default_value = "dotter_settings/cache")]
+    #[structopt(long, default_value = ".dotter/cache")]
     pub cache_directory: PathBuf,
 
     /// Force - instead of skipping, overwrite target files if their content is unexpected.
