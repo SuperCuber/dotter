@@ -358,7 +358,6 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
     } else {
         let target = match target {
             FileTarget::Automatic(target) => target,
-            // TODO: test this
             _ => bail!("Complex file target not implemented for directories yet."),
         };
         let expanded = fs::read_dir(source)
