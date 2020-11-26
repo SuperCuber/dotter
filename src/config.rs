@@ -300,7 +300,7 @@ struct LocalConfig {
     variables: Variables,
 }
 
-fn try_load_configuration(
+fn load_configuration(
     local_config: &Path,
     global_config: &Path,
 ) -> Result<Configuration, LoadConfigFailType> {
@@ -328,6 +328,22 @@ fn try_load_configuration(
     debug!("Expanding files which are directories...");
     merged_config.files = expand_directories(merged_config.files)
         .map_err(|e| LoadConfigFailType::InvalidSourceTree { source: e })?;
+
+    debug!("Expanding tildes to home directory...");
+    merged_config.files = merged_config
+        .files
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k,
+                v.map(|path| {
+                    shellexpand::tilde(&path.to_string_lossy())
+                        .to_string()
+                        .into()
+                }),
+            )
+        })
+        .collect();
 
     trace!("Final files: {:#?}", merged_config.files);
     trace!("Final variables: {:#?}", merged_config.variables);
@@ -372,52 +388,6 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
     }
-}
-
-pub fn load_configuration(
-    local_config: &Path,
-    global_config: &Path,
-) -> Result<Configuration, LoadConfigFailType> {
-    debug!("Loading configuration...");
-    let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
-    let mut configuration = loop {
-        match try_load_configuration(local_config, global_config) {
-            Ok(conf) => break Ok(conf),
-            Err(LoadConfigFailType::Find) => {
-                if let Some(new_parent) = parent.parent().map(|p| p.into()) {
-                    parent = new_parent;
-                    warn!(
-                        "Didn't find configuration in current directory. Going one up to {:?}",
-                        parent
-                    );
-                } else {
-                    warn!("Reached root.");
-                    break Err(LoadConfigFailType::Find);
-                }
-                ::std::env::set_current_dir(&parent).expect("Failed to move up a directory");
-            }
-            Err(e) => break Err(e),
-        }
-    }?;
-    debug!("Loaded configuration. Expanding tildes to home directory...");
-
-    configuration.files = configuration
-        .files
-        .into_iter()
-        .map(|(k, v)| {
-            (
-                k,
-                v.map(|path| {
-                    shellexpand::tilde(&path.to_string_lossy())
-                        .to_string()
-                        .into()
-                }),
-            )
-        })
-        .collect();
-
-    trace!("Expanded files: {:#?}", configuration.files);
-    Ok(configuration)
 }
 
 pub fn save_dummy_config(
