@@ -36,6 +36,9 @@ fn merge_configuration_tables(
                 source: e,
             })?;
 
+        debug!("Included config {:?}", included_path);
+        trace!("{:#?}", included);
+
         // If package isn't filtered it's ignored, if package isn't included it's ignored
         for (package_name, package_global) in global.packages.iter_mut() {
             if let Some(package_included) = included.remove(package_name) {
@@ -45,7 +48,9 @@ fn merge_configuration_tables(
         }
 
         if !included.is_empty() {
-            todo!("extra packages");
+            return Err(LoadConfigFailType::UnknownPackages(
+                included.keys().into_iter().cloned().collect(),
+            ));
         }
     }
 
@@ -61,20 +66,22 @@ fn merge_configuration_tables(
         .next()
         .unwrap_or_else(|| (String::new(), Package::default()))
         .1;
-    for (_, v) in configuration_packages {
-        for (file_name, file_target) in v.files {
+    for (package_name, package) in configuration_packages {
+        for (file_name, file_target) in package.files {
             if first_package.files.contains_key(&file_name) {
-                todo!("duplicate file");
+                return Err(LoadConfigFailType::DuplicateFile { package_name, file_name });
             } else {
                 first_package.files.insert(file_name, file_target);
             }
         }
 
-        for (variable_name, variable_value) in v.variables {
+        for (variable_name, variable_value) in package.variables {
             if first_package.variables.contains_key(&variable_name) {
-                todo!("duplicate variable");
+                return Err(LoadConfigFailType::DuplicateVariable { package_name, variable_name });
             } else {
-                first_package.variables.insert(variable_name, variable_value);
+                first_package
+                    .variables
+                    .insert(variable_name, variable_value);
             }
         }
     }
@@ -108,6 +115,15 @@ pub enum LoadConfigFailType {
 
     #[error("inspect source files")]
     InvalidSourceTree { source: anyhow::Error },
+
+    #[error("unknown included packages: {0:?}")]
+    UnknownPackages(Vec<String>),
+
+    #[error("duplicate file {file_name:?}, second time encountered in package {package_name:?}")]
+    DuplicateFile { package_name: String, file_name: PathBuf },
+
+    #[error("duplicate variable {variable_name}, second time encountered in package {package_name:?}")]
+    DuplicateVariable {package_name: String, variable_name: String },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -254,6 +270,7 @@ impl<T: Into<PathBuf>> From<T> for FileTarget {
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
 struct Package {
     #[serde(default)]
     files: Files,
@@ -272,11 +289,14 @@ struct GlobalConfig {
 type IncludedConfig = BTreeMap<String, Package>;
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct LocalConfig {
     #[serde(default)]
     includes: Vec<PathBuf>,
     packages: Vec<String>,
+    #[serde(default)]
     files: Files,
+    #[serde(default)]
     variables: Variables,
 }
 
@@ -382,7 +402,8 @@ pub fn load_configuration(
     }?;
     debug!("Loaded configuration. Expanding tildes to home directory...");
 
-    configuration.files = configuration.files
+    configuration.files = configuration
+        .files
         .into_iter()
         .map(|(k, v)| {
             (
@@ -434,6 +455,7 @@ pub fn save_dummy_config(
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct Cache {
     pub symlinks: BTreeMap<PathBuf, PathBuf>,
     pub templates: BTreeMap<PathBuf, PathBuf>,
