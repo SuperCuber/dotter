@@ -7,10 +7,6 @@ use structopt::StructOpt;
 /// A small dotfile manager.
 /// Note that flags and options have to come BEFORE subcommands.
 pub struct Options {
-    /// Do all operations relative to this directory.
-    #[structopt(short, long, default_value = ".")]
-    pub directory: PathBuf,
-
     /// Location of the global configuration
     #[structopt(short, long, default_value = ".dotter/global.toml")]
     pub global_config: PathBuf,
