@@ -26,8 +26,6 @@ mod handlebars_helpers;
 mod init;
 mod watch;
 
-use std::env;
-
 use anyhow::{Context, Result};
 
 fn main() {
