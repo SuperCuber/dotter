@@ -72,11 +72,6 @@ fn run() -> Result<()> {
 
     trace!("Loaded options: {:#?}", opt);
 
-    // Change dir
-    info!("Changing directory to {:?}", &opt.directory);
-    env::set_current_dir(&opt.directory)
-        .with_context(|| format!("set current directory to {:?}", opt.directory))?;
-
     match opt.action.unwrap_or_default() {
         args::Action::Deploy => {
             debug!("Deploying...");

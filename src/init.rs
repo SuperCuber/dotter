@@ -5,19 +5,14 @@ use config;
 
 pub fn init(opt: Options) -> Result<()> {
     info!("Looking for existing configuration...");
-    let cwd = std::env::current_dir().context("get current directory")?;
-    match config::load_configuration(&opt.local_config, &opt.global_config) {
-        Ok(_) if !opt.force => {
+    if opt.global_config.exists() {
+        if opt.force {
+            warn!("Configuration already exists. Overwriting because of --force");
+        } else {
             bail!("Configuration already exists. Use --force to overwrite.");
         }
-        Ok(_) => {
-            warn!("Configuration already exists. Overwriting because of --force");
-        }
-        Err(config::LoadConfigFailType::Find) => {
-            info!("No existing configuration.");
-            std::env::set_current_dir(cwd).context("restore current directory")?;
-        }
-        Err(e) => Err(e).context("load existing configuration")?,
+    } else {
+        info!("No existing configuration.");
     }
 
     debug!("Reading files from current directory...");

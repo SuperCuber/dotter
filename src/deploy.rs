@@ -14,9 +14,6 @@ use filesystem::{self, SymlinkComparison, TemplateComparison};
 use handlebars_helpers;
 
 pub fn undeploy(opt: Options) -> Result<()> {
-    config::load_configuration(&opt.local_config, &opt.global_config)
-        .context("find configuration location")?;
-
     let cache = config::load_cache(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
 

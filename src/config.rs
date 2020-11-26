@@ -17,10 +17,10 @@ pub struct Configuration {
     pub helpers: Helpers,
 }
 
-fn merge_configuration_tables(
+fn merge_configuration_files(
     mut global: GlobalConfig,
     local: LocalConfig,
-) -> Result<Configuration, LoadConfigFailType> {
+) -> Result<Configuration> {
     // Apply packages filter
     global.packages = global
         .packages
@@ -30,28 +30,31 @@ fn merge_configuration_tables(
 
     // Patch each package with included.toml's
     for included_path in &local.includes {
-        let mut included: IncludedConfig =
-            filesystem::load_file(&included_path).map_err(|e| LoadConfigFailType::Parse {
-                file: included_path.into(),
-                source: e,
-            })?;
+        || -> Result<()> {
+            let mut included: IncludedConfig =
+                filesystem::load_file(&included_path).context("load file")?;
 
-        debug!("Included config {:?}", included_path);
-        trace!("{:#?}", included);
+            debug!("Included config {:?}", included_path);
+            trace!("{:#?}", included);
 
-        // If package isn't filtered it's ignored, if package isn't included it's ignored
-        for (package_name, package_global) in global.packages.iter_mut() {
-            if let Some(package_included) = included.remove(package_name) {
-                package_global.files.extend(package_included.files);
-                package_global.variables.extend(package_included.variables);
+            // If package isn't filtered it's ignored, if package isn't included it's ignored
+            for (package_name, package_global) in global.packages.iter_mut() {
+                if let Some(package_included) = included.remove(package_name) {
+                    package_global.files.extend(package_included.files);
+                    package_global.variables.extend(package_included.variables);
+                }
             }
-        }
 
-        if !included.is_empty() {
-            return Err(LoadConfigFailType::UnknownPackages(
-                included.keys().into_iter().cloned().collect(),
-            ));
-        }
+            if !included.is_empty() {
+                bail!(
+                    "unknown packages: {:?}",
+                    included.keys().into_iter().cloned().collect::<Vec<_>>()
+                );
+            }
+
+            Ok(())
+        }()
+        .with_context(|| format!("including file {:?}", included_path))?;
     }
 
     let mut output = Configuration {
@@ -67,23 +70,28 @@ fn merge_configuration_tables(
         .unwrap_or_else(|| (String::new(), Package::default()))
         .1;
     for (package_name, package) in configuration_packages {
-        for (file_name, file_target) in package.files {
-            if first_package.files.contains_key(&file_name) {
-                return Err(LoadConfigFailType::DuplicateFile { package_name, file_name });
-            } else {
-                first_package.files.insert(file_name, file_target);
+        || -> Result<()> {
+            for (file_name, file_target) in package.files {
+                if first_package.files.contains_key(&file_name) {
+                    bail!("file {:?} already encountered", file_name);
+                } else {
+                    first_package.files.insert(file_name, file_target);
+                }
             }
-        }
 
-        for (variable_name, variable_value) in package.variables {
-            if first_package.variables.contains_key(&variable_name) {
-                return Err(LoadConfigFailType::DuplicateVariable { package_name, variable_name });
-            } else {
-                first_package
-                    .variables
-                    .insert(variable_name, variable_value);
+            for (variable_name, variable_value) in package.variables {
+                if first_package.variables.contains_key(&variable_name) {
+                    bail!("variable {:?} already encountered", variable_name);
+                } else {
+                    first_package
+                        .variables
+                        .insert(variable_name, variable_value);
+                }
             }
-        }
+
+            Ok(())
+        }()
+        .with_context(|| format!("merge package {:?}", package_name))?;
     }
     output.files = first_package.files;
     output.variables = first_package.variables;
@@ -100,30 +108,6 @@ fn merge_configuration_tables(
         .collect();
 
     Ok(output)
-}
-
-#[derive(Error, Debug)]
-pub enum LoadConfigFailType {
-    #[error("find config files")]
-    Find,
-
-    #[error("parse config file {file}")]
-    Parse {
-        file: PathBuf,
-        source: filesystem::FileLoadError,
-    },
-
-    #[error("inspect source files")]
-    InvalidSourceTree { source: anyhow::Error },
-
-    #[error("unknown included packages: {0:?}")]
-    UnknownPackages(Vec<String>),
-
-    #[error("duplicate file {file_name:?}, second time encountered in package {package_name:?}")]
-    DuplicateFile { package_name: String, file_name: PathBuf },
-
-    #[error("duplicate variable {variable_name}, second time encountered in package {package_name:?}")]
-    DuplicateVariable {package_name: String, variable_name: String },
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -300,34 +284,22 @@ struct LocalConfig {
     variables: Variables,
 }
 
-fn load_configuration(
-    local_config: &Path,
-    global_config: &Path,
-) -> Result<Configuration, LoadConfigFailType> {
-    let global: GlobalConfig = match filesystem::load_file(global_config) {
-        Err(filesystem::FileLoadError::Open { .. }) => Err(LoadConfigFailType::Find),
-        Err(e) => Err(LoadConfigFailType::Parse {
-            file: global_config.into(),
-            source: e,
-        }),
-        Ok(global) => Ok(global),
-    }?;
-
+pub fn load_configuration(local_config: &Path, global_config: &Path) -> Result<Configuration> {
+    let global: GlobalConfig = filesystem::load_file(global_config)
+        .with_context(|| format!("load global config {:?}", global_config))?;
     trace!("Global config: {:#?}", global);
 
-    let local: LocalConfig =
-        filesystem::load_file(local_config).map_err(|e| LoadConfigFailType::Parse {
-            file: local_config.into(),
-            source: e,
-        })?;
+    let local: LocalConfig = filesystem::load_file(local_config)
+        .with_context(|| format!("load local config {:?}", local_config))?;
     trace!("Local config: {:#?}", local);
 
-    let mut merged_config = merge_configuration_tables(global, local)?;
+    let mut merged_config =
+        merge_configuration_files(global, local).context("merge configuration files")?;
     trace!("Merged config: {:#?}", merged_config);
 
     debug!("Expanding files which are directories...");
-    merged_config.files = expand_directories(merged_config.files)
-        .map_err(|e| LoadConfigFailType::InvalidSourceTree { source: e })?;
+    merged_config.files =
+        expand_directories(merged_config.files).context("expand files that are directories")?;
 
     debug!("Expanding tildes to home directory...");
     merged_config.files = merged_config
@@ -409,6 +381,13 @@ pub fn save_dummy_config(
         packages,
     };
     debug!("Saving global config...");
+    // Assume default args so all parents are the same
+    std::fs::create_dir_all(
+        global_config_path
+            .parent()
+            .context("get parent of global config")?,
+    )
+    .context("create parent of global config")?;
     filesystem::save_file(global_config_path, global_config).context("save global config")?;
 
     let local_config = LocalConfig {
