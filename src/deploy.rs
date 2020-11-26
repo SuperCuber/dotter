@@ -88,7 +88,9 @@ pub fn deploy(opt: &Options) -> Result<()> {
     // Throughout this function I'll be referencing steps, those were described in issue #6
 
     // Step 1
-    let (files, variables, helpers) =
+    let config::Configuration {
+        files, variables, helpers
+    }=
         config::load_configuration(&opt.local_config, &opt.global_config)
             .context("get a configuration")?;
 

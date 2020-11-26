@@ -1,17 +1,26 @@
 use anyhow::{Context, Result};
 
 use filesystem;
-use toml::value::Table;
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub type Files = BTreeMap<PathBuf, FileTarget>;
-pub type Variables = Table;
+pub type Variables = toml::value::Table;
 pub type Helpers = BTreeMap<String, PathBuf>;
 
-fn merge_configuration_tables(mut global: GlobalConfig, mut local: LocalConfig) -> GlobalConfig {
+#[derive(Debug, Clone)]
+pub struct Configuration {
+    pub files: Files,
+    pub variables: Variables,
+    pub helpers: Helpers,
+}
+
+fn merge_configuration_tables(
+    mut global: GlobalConfig,
+    local: LocalConfig,
+) -> Result<Configuration, LoadConfigFailType> {
     // Apply packages filter
     global.packages = global
         .packages
@@ -19,29 +28,71 @@ fn merge_configuration_tables(mut global: GlobalConfig, mut local: LocalConfig) 
         .filter(|(k, _)| local.packages.contains(&k))
         .collect();
 
-    let mut output = GlobalConfig {
-        helpers: global.helpers,
-        packages: Default::default(),
-    };
+    // Patch each package with included.toml's
+    for included_path in &local.includes {
+        let mut included: IncludedConfig =
+            filesystem::load_file(&included_path).map_err(|e| LoadConfigFailType::Parse {
+                file: included_path.into(),
+                source: e,
+            })?;
 
-    for (package_name, mut package_global) in global.packages.into_iter() {
-        // Extend it with the local patch
-        if let Some(package_local) = local.package_patches.remove(&package_name) {
-            package_global.files.extend(package_local.files);
-            package_global.variables.extend(package_local.variables);
+        // If package isn't filtered it's ignored, if package isn't included it's ignored
+        for (package_name, package_global) in global.packages.iter_mut() {
+            if let Some(package_included) = included.remove(package_name) {
+                package_global.files.extend(package_included.files);
+                package_global.variables.extend(package_included.variables);
+            }
         }
-        // Remove files with target = ""
-        package_global.files = package_global
-            .files
-            .into_iter()
-            .filter(|(_, v)| v.path().to_string_lossy() != "")
-            .collect();
 
-        // Insert into output
-        output.packages.insert(package_name, package_global);
+        if !included.is_empty() {
+            todo!("extra packages");
+        }
     }
 
-    output
+    let mut output = Configuration {
+        helpers: global.helpers,
+        files: Files::default(),
+        variables: Variables::default(),
+    };
+
+    // Merge all the packages
+    let mut configuration_packages = global.packages.into_iter();
+    let mut first_package = configuration_packages
+        .next()
+        .unwrap_or_else(|| (String::new(), Package::default()))
+        .1;
+    for (_, v) in configuration_packages {
+        for (file_name, file_target) in v.files {
+            if first_package.files.contains_key(&file_name) {
+                todo!("duplicate file");
+            } else {
+                first_package.files.insert(file_name, file_target);
+            }
+        }
+
+        for (variable_name, variable_value) in v.variables {
+            if first_package.variables.contains_key(&variable_name) {
+                todo!("duplicate variable");
+            } else {
+                first_package.variables.insert(variable_name, variable_value);
+            }
+        }
+    }
+    output.files = first_package.files;
+    output.variables = first_package.variables;
+
+    // Add local.toml's patches
+    output.files.extend(local.files);
+    output.variables.extend(local.variables);
+
+    // Remove files with target = ""
+    output.files = output
+        .files
+        .into_iter()
+        .filter(|(_, v)| v.path().to_string_lossy() != "")
+        .collect();
+
+    Ok(output)
 }
 
 #[derive(Error, Debug)]
@@ -207,7 +258,7 @@ struct Package {
     #[serde(default)]
     files: Files,
     #[serde(default)]
-    variables: Table,
+    variables: Variables,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -218,17 +269,21 @@ struct GlobalConfig {
     packages: BTreeMap<String, Package>,
 }
 
+type IncludedConfig = BTreeMap<String, Package>;
+
 #[derive(Debug, Deserialize, Serialize)]
 struct LocalConfig {
+    #[serde(default)]
+    includes: Vec<PathBuf>,
     packages: Vec<String>,
-    #[serde(flatten)]
-    package_patches: BTreeMap<String, Package>,
+    files: Files,
+    variables: Variables,
 }
 
 fn try_load_configuration(
     local_config: &Path,
     global_config: &Path,
-) -> Result<(Files, Variables, Helpers), LoadConfigFailType> {
+) -> Result<Configuration, LoadConfigFailType> {
     let global: GlobalConfig = match filesystem::load_file(global_config) {
         Err(filesystem::FileLoadError::Open { .. }) => Err(LoadConfigFailType::Find),
         Err(e) => Err(LoadConfigFailType::Parse {
@@ -247,32 +302,18 @@ fn try_load_configuration(
         })?;
     trace!("Local config: {:#?}", local);
 
-    let merged_config = merge_configuration_tables(global, local);
+    let mut merged_config = merge_configuration_tables(global, local)?;
     trace!("Merged config: {:#?}", merged_config);
 
-    // Merge all the packages
-    let Package { files, variables } = {
-        let mut configuration_packages = merged_config.packages.into_iter();
-        let mut first_package = configuration_packages
-            .next()
-            .unwrap_or_else(|| (String::new(), Package::default()))
-            .1;
-        for (_, v) in configuration_packages {
-            first_package.files.extend(v.files);
-            first_package.variables.extend(v.variables);
-        }
-        first_package
-    };
-
     debug!("Expanding files which are directories...");
-    let files = expand_directories(files)
+    merged_config.files = expand_directories(merged_config.files)
         .map_err(|e| LoadConfigFailType::InvalidSourceTree { source: e })?;
 
-    trace!("Final files: {:#?}", files);
-    trace!("Final variables: {:#?}", variables);
+    trace!("Final files: {:#?}", merged_config.files);
+    trace!("Final variables: {:#?}", merged_config.variables);
     trace!("Final helpers: {:?}", merged_config.helpers);
 
-    Ok((files, variables, merged_config.helpers))
+    Ok(merged_config)
 }
 
 fn expand_directories(files: Files) -> Result<Files> {
@@ -317,10 +358,10 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
 pub fn load_configuration(
     local_config: &Path,
     global_config: &Path,
-) -> Result<(Files, Variables, Helpers), LoadConfigFailType> {
+) -> Result<Configuration, LoadConfigFailType> {
     debug!("Loading configuration...");
     let mut parent = ::std::env::current_dir().expect("Failed to get current directory.");
-    let (files, variables, helpers) = loop {
+    let mut configuration = loop {
         match try_load_configuration(local_config, global_config) {
             Ok(conf) => break Ok(conf),
             Err(LoadConfigFailType::Find) => {
@@ -341,7 +382,7 @@ pub fn load_configuration(
     }?;
     debug!("Loaded configuration. Expanding tildes to home directory...");
 
-    let files = files
+    configuration.files = configuration.files
         .into_iter()
         .map(|(k, v)| {
             (
@@ -355,8 +396,8 @@ pub fn load_configuration(
         })
         .collect();
 
-    trace!("Expanded files: {:#?}", files);
-    Ok((files, variables, helpers))
+    trace!("Expanded files: {:#?}", configuration.files);
+    Ok(configuration)
 }
 
 pub fn save_dummy_config(
@@ -381,8 +422,10 @@ pub fn save_dummy_config(
     filesystem::save_file(global_config_path, global_config).context("save global config")?;
 
     let local_config = LocalConfig {
+        includes: vec![],
         packages: vec!["default".into()],
-        package_patches: BTreeMap::new(),
+        files: Files::default(),
+        variables: Variables::default(),
     };
     trace!("Local config: {:#?}", local_config);
     filesystem::save_file(local_config_path, local_config).context("save local config")?;
