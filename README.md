@@ -40,7 +40,7 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.9.2
+Dotter 0.10.1
 A small dotfile manager. Note that flags and options have to come BEFORE subcommands
 
 USAGE:
@@ -53,11 +53,10 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-        --cache-directory <cache-directory>    Directory to cache into [default: dotter_settings/cache]
-        --cache-file <cache-file>              Location of cache file [default: dotter_settings/cache.toml]
-    -d, --directory <directory>                Do all operations relative to this directory [default: .]
-    -g, --global-config <global-config>        Location of the global configuration [default: dotter_settings/global.toml]
-    -l, --local-config <local-config>          Location of the local configuration [default: dotter_settings/local.toml]
+        --cache-directory <cache-directory>    Directory to cache into [default: .dotter/cache]
+        --cache-file <cache-file>              Location of cache file [default: .dotter/cache.toml]
+    -g, --global-config <global-config>        Location of the global configuration [default: .dotter/global.toml]
+    -l, --local-config <local-config>          Location of the local configuration [default: .dotter/local.toml]
 
 SUBCOMMANDS:
     deploy      Deploy the files to their respective targets. This is the default subcommand
