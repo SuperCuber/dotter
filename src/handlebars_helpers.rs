@@ -1,8 +1,9 @@
-use config::Helpers;
+use config::{Files, Helpers, Variables};
 
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
 
 use meval;
+use toml::value::{Table, Value};
 
 fn math_helper(
     h: &Helper,
@@ -53,4 +54,34 @@ pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: Helpers) {
             );
         }
     }
+}
+
+fn files_as_toml(files: &Files) -> Value {
+    Value::Table(
+        files
+            .iter()
+            .map(|(source, target)| {
+                (
+                    source.to_string_lossy().to_string(),
+                    target.path().to_string_lossy().to_string().into(),
+                )
+            })
+            .collect(),
+    )
+}
+
+pub fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[String]) {
+    let mut dotter = Table::new();
+    dotter.insert(
+        "packages".into(),
+        Value::Table(
+            packages
+                .iter()
+                .map(|p| (p.to_string(), Value::Boolean(true)))
+                .collect(),
+        ),
+    );
+    dotter.insert("files".into(), files_as_toml(files));
+
+    variables.insert("dotter".into(), dotter.into());
 }

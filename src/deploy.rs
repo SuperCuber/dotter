@@ -86,10 +86,12 @@ pub fn deploy(opt: &Options) -> Result<()> {
 
     // Step 1
     let config::Configuration {
-        files, variables, helpers
-    }=
-        config::load_configuration(&opt.local_config, &opt.global_config)
-            .context("get a configuration")?;
+        files,
+        mut variables,
+        helpers,
+        packages,
+    } = config::load_configuration(&opt.local_config, &opt.global_config)
+        .context("get a configuration")?;
 
     // On Windows, you need developer mode to create symlinks.
     let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
@@ -109,7 +111,7 @@ Proceeding by copying instead of symlinking."
     let mut desired_symlinks = BTreeMap::new();
     let mut desired_templates = BTreeMap::new();
 
-    for (source, target) in files {
+    for (source, target) in files.clone() {
         match target {
             config::FileTarget::Automatic(target) => {
                 if symlinks_enabled
@@ -212,6 +214,7 @@ Proceeding by copying instead of symlinking."
     handlebars.set_strict_mode(true); // Report missing variables as errors
     handlebars_helpers::register_rust_helpers(&mut handlebars);
     handlebars_helpers::register_script_helpers(&mut handlebars, helpers);
+    handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
     trace!("Handlebars instance: {:#?}", handlebars);
 
     // Step 7+8

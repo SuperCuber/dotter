@@ -15,6 +15,7 @@ pub struct Configuration {
     pub files: Files,
     pub variables: Variables,
     pub helpers: Helpers,
+    pub packages: Vec<String>,
 }
 
 fn merge_configuration_files(
@@ -61,6 +62,7 @@ fn merge_configuration_files(
         helpers: global.helpers,
         files: Files::default(),
         variables: Variables::default(),
+        packages: local.packages,
     };
 
     // Merge all the packages
