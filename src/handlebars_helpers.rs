@@ -40,8 +40,38 @@ fn math_helper(
     Ok(())
 }
 
+fn include_template_helper(
+    h: &Helper,
+    handlebars: &Handlebars,
+    ctx: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> HelperResult {
+    let mut params = h.params().iter();
+    let path = params
+        .next()
+        .ok_or_else(|| RenderError::new("include_template: No path given"))?
+        .render();
+    if params.next().is_some() {
+        return Err(RenderError::new(
+            "include_template: More than one parameter given",
+        ));
+    }
+
+    let included_file = std::fs::read_to_string(path)
+        .map_err(|e| RenderError::from_error("include_template", e))?;
+    let rendered_file = handlebars
+        .render_template_with_context(&included_file, ctx)
+        .map_err(|e| RenderError::from_error("include_template", e))?;
+
+    out.write(&rendered_file)?;
+
+    Ok(())
+}
+
 pub fn register_rust_helpers(handlebars: &mut Handlebars) {
     handlebars.register_helper("math", Box::new(math_helper));
+    handlebars.register_helper("include_template", Box::new(include_template_helper));
 }
 
 pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: Helpers) {
