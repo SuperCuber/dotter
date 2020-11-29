@@ -16,6 +16,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
+          args: --verbose --locked
   check-windows:
     name: Check (Windows)
     runs-on: windows-latest
@@ -29,6 +30,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
+          args: --verbose --locked
 
   test:
     name: Test Suite
