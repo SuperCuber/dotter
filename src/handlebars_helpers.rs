@@ -89,10 +89,74 @@ fn is_executable_helper(
         ));
     }
 
-    let status = is_executable(&executable).map_err(|e| RenderError::from_error("is_executable", e))?;
+    let status =
+        is_executable(&executable).map_err(|e| RenderError::from_error("is_executable", e))?;
     if status {
         out.write("true")?;
     }
+    // writing anything other than an empty string is considered truthy
+
+    Ok(())
+}
+
+fn command_success_helper(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> HelperResult {
+    let mut params = h.params().iter();
+    let command = params
+        .next()
+        .ok_or_else(|| RenderError::new("command_success: No executable name given"))?
+        .render();
+    if params.next().is_some() {
+        return Err(RenderError::new(
+            "command_success: More than one parameter given",
+        ));
+    }
+
+    let status = os_shell()
+        .arg(&command)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?
+        .success();
+    if status {
+        out.write("true")?;
+    }
+    // writing anything other than an empty string is considered truthy
+
+    Ok(())
+}
+
+fn command_output_helper(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> HelperResult {
+    let mut params = h.params().iter();
+    let command = params
+        .next()
+        .ok_or_else(|| RenderError::new("command_success: No executable name given"))?
+        .render();
+    if params.next().is_some() {
+        return Err(RenderError::new(
+            "command_success: More than one parameter given",
+        ));
+    }
+
+    let output = os_shell()
+        .arg(&command)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        // .stderr(Stdio::piped()) - probably not wanted
+        .output()?;
+    out.write(&String::from_utf8_lossy(&output.stdout))?;
     // writing anything other than an empty string is considered truthy
 
     Ok(())
@@ -120,10 +184,26 @@ fn is_executable(name: &str) -> Result<bool, std::io::Error> {
         .map(|s| s.success())
 }
 
+#[cfg(windows)]
+fn os_shell() -> Command {
+    let mut cmd = Command::new("cmd");
+    cmd.arg("/C");
+    cmd
+}
+
+#[cfg(unix)]
+fn os_shell() -> Command {
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c");
+    cmd
+}
+
 pub fn register_rust_helpers(handlebars: &mut Handlebars) {
     handlebars.register_helper("math", Box::new(math_helper));
     handlebars.register_helper("include_template", Box::new(include_template_helper));
     handlebars.register_helper("is_executable", Box::new(is_executable_helper));
+    handlebars.register_helper("command_success", Box::new(command_success_helper));
+    handlebars.register_helper("command_output", Box::new(command_output_helper));
 }
 
 pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: Helpers) {
