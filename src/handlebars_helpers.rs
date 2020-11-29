@@ -244,6 +244,10 @@ pub fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &
         ),
     );
     dotter.insert("files".into(), files_as_toml(files));
+    dotter.insert(
+        "os".into(),
+        (if cfg!(windows) { "windows" } else { "unix" }).into(),
+    );
 
     variables.insert("dotter".into(), dotter.into());
 }
