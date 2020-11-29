@@ -29,9 +29,13 @@ mod watch;
 use anyhow::{Context, Result};
 
 fn main() {
-    if let Err(e) = run() {
-        display_error(e);
-        std::process::exit(1);
+    match run() {
+        Ok(success) if success => std::process::exit(0),
+        Ok(_) => std::process::exit(1),
+        Err(e) => {
+            display_error(e);
+            std::process::exit(1);
+        }
     }
 }
 
@@ -48,7 +52,8 @@ pub(crate) fn display_error(error: anyhow::Error) {
     error!("{}", error_message);
 }
 
-fn run() -> Result<()> {
+/// Returns true if program should exit with success status
+fn run() -> Result<bool> {
     // Parse arguments
     let opt = args::get_options();
 
@@ -73,7 +78,10 @@ fn run() -> Result<()> {
     match opt.action.unwrap_or_default() {
         args::Action::Deploy => {
             debug!("Deploying...");
-            deploy::deploy(&opt).context("deploy")?;
+            if deploy::deploy(&opt).context("deploy")? {
+                // An error occurred
+                return Ok(false);
+            }
         }
         args::Action::Undeploy => {
             debug!("Un-Deploying...");
@@ -89,5 +97,5 @@ fn run() -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(true)
 }

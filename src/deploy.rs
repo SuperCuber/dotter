@@ -81,7 +81,8 @@ pub fn undeploy(opt: Options) -> Result<()> {
     Ok(())
 }
 
-pub fn deploy(opt: &Options) -> Result<()> {
+/// Returns true if an error was printed
+pub fn deploy(opt: &Options) -> Result<bool> {
     // Throughout this function I'll be referencing steps, those were described in issue #6
 
     // Step 1
@@ -179,6 +180,7 @@ Proceeding by copying instead of symlinking."
     let mut actual_symlinks = existing_symlinks;
     let mut actual_templates = existing_templates;
     let mut suggest_force = false;
+    let mut error_occurred = false;
 
     // Step 5+6
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
@@ -192,7 +194,10 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("delete symlink {}", deleted_symlink))),
+            Err(e) => {
+                display_error(e.context(format!("delete symlink {}", deleted_symlink)));
+                error_occurred = true;
+            }
         }
     }
     for deleted_template in deleted_templates {
@@ -203,7 +208,10 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("delete template {}", deleted_template))),
+            Err(e) => {
+                display_error(e.context(format!("delete template {}", deleted_template)));
+                error_occurred = true;
+            }
         }
     }
 
@@ -229,7 +237,10 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("create symlink {}", new_symlink))),
+            Err(e) => {
+                display_error(e.context(format!("create symlink {}", new_symlink)));
+                error_occurred = true;
+            }
         }
     }
     for new_template in new_templates {
@@ -240,7 +251,10 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("create template {}", new_template))),
+            Err(e) => {
+                display_error(e.context(format!("create template {}", new_template)));
+                error_occurred = true;
+            }
         }
     }
 
@@ -254,7 +268,10 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("update symlink {}", old_symlink))),
+            Err(e) => {
+                display_error(e.context(format!("update symlink {}", old_symlink)));
+                error_occurred = true;
+            }
         }
     }
     for old_template in old_templates {
@@ -263,7 +280,10 @@ Proceeding by copying instead of symlinking."
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("update template {}", old_template))),
+            Err(e) => {
+                display_error(e.context(format!("update template {}", old_template)));
+                error_occurred = true;
+            }
         }
     }
 
@@ -272,6 +292,7 @@ Proceeding by copying instead of symlinking."
 
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error_occurred = true;
     }
 
     // Step 11
@@ -285,7 +306,7 @@ Proceeding by copying instead of symlinking."
         )?;
     }
 
-    Ok(())
+    Ok(error_occurred)
 }
 
 /// Returns true if symlink should be deleted from cache
