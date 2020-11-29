@@ -18,6 +18,7 @@ pub struct Configuration {
     pub packages: Vec<String>,
 }
 
+#[allow(clippy::map_entry)]
 fn merge_configuration_files(
     mut global: GlobalConfig,
     local: LocalConfig,
