@@ -1,3 +1,5 @@
+use std::process::{Command, Stdio};
+
 use config::{Files, Helpers, Variables};
 
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
@@ -69,9 +71,59 @@ fn include_template_helper(
     Ok(())
 }
 
+fn is_executable_helper(
+    h: &Helper,
+    _: &Handlebars,
+    _: &Context,
+    _: &mut RenderContext,
+    out: &mut dyn Output,
+) -> HelperResult {
+    let mut params = h.params().iter();
+    let executable = params
+        .next()
+        .ok_or_else(|| RenderError::new("is_executable: No executable name given"))?
+        .render();
+    if params.next().is_some() {
+        return Err(RenderError::new(
+            "is_executable: More than one parameter given",
+        ));
+    }
+
+    let status = is_executable(&executable).map_err(|e| RenderError::from_error("is_executable", e))?;
+    if status {
+        out.write("true")?;
+    }
+    // writing anything other than an empty string is considered truthy
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn is_executable(name: &str) -> Result<bool, std::io::Error> {
+    Command::new("where")
+        .arg(name)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+}
+
+#[cfg(unix)]
+fn is_executable(name: &str) -> Result<bool, std::io::Error> {
+    Command::new("which")
+        .arg(name)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+}
+
 pub fn register_rust_helpers(handlebars: &mut Handlebars) {
     handlebars.register_helper("math", Box::new(math_helper));
     handlebars.register_helper("include_template", Box::new(include_template_helper));
+    handlebars.register_helper("is_executable", Box::new(is_executable_helper));
 }
 
 pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: Helpers) {
