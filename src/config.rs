@@ -6,6 +6,22 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TemplateTarget {
+    pub target: PathBuf,
+    pub append: Option<String>,
+    pub prepend: Option<String>,
+}
+
+// Deserialize implemented manually
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(untagged)]
+pub enum FileTarget {
+    Automatic(PathBuf),
+    Symbolic(PathBuf),
+    ComplexTemplate(TemplateTarget),
+}
+
 pub type Files = BTreeMap<PathBuf, FileTarget>;
 pub type Variables = toml::value::Table;
 pub type Helpers = BTreeMap<String, PathBuf>;
@@ -16,6 +32,145 @@ pub struct Configuration {
     pub variables: Variables,
     pub helpers: Helpers,
     pub packages: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+#[serde(deny_unknown_fields)]
+struct Package {
+    #[serde(default)]
+    files: Files,
+    #[serde(default)]
+    variables: Variables,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct GlobalConfig {
+    #[serde(default)]
+    helpers: Helpers,
+    #[serde(flatten)]
+    packages: BTreeMap<String, Package>,
+}
+
+type IncludedConfig = BTreeMap<String, Package>;
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LocalConfig {
+    #[serde(default)]
+    includes: Vec<PathBuf>,
+    packages: Vec<String>,
+    #[serde(default)]
+    files: Files,
+    #[serde(default)]
+    variables: Variables,
+}
+
+pub fn load_configuration(local_config: &Path, global_config: &Path) -> Result<Configuration> {
+    let global: GlobalConfig = filesystem::load_file(global_config)
+        .with_context(|| format!("load global config {:?}", global_config))?;
+    trace!("Global config: {:#?}", global);
+
+    let local: LocalConfig = filesystem::load_file(local_config)
+        .with_context(|| format!("load local config {:?}", local_config))?;
+    trace!("Local config: {:#?}", local);
+
+    let mut merged_config =
+        merge_configuration_files(global, local).context("merge configuration files")?;
+    trace!("Merged config: {:#?}", merged_config);
+
+    debug!("Expanding files which are directories...");
+    merged_config.files =
+        expand_directories(merged_config.files).context("expand files that are directories")?;
+
+    debug!("Expanding tildes to home directory...");
+    merged_config.files = merged_config
+        .files
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k,
+                v.map(|path| {
+                    shellexpand::tilde(&path.to_string_lossy())
+                        .to_string()
+                        .into()
+                }),
+            )
+        })
+        .collect();
+
+    trace!("Final files: {:#?}", merged_config.files);
+    trace!("Final variables: {:#?}", merged_config.variables);
+    trace!("Final helpers: {:?}", merged_config.helpers);
+
+    Ok(merged_config)
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Cache {
+    pub symlinks: BTreeMap<PathBuf, PathBuf>,
+    pub templates: BTreeMap<PathBuf, PathBuf>,
+}
+
+pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
+    debug!("Loading cache...");
+
+    let cache = match filesystem::load_file(cache) {
+        Ok(cache) => Some(cache),
+        Err(filesystem::FileLoadError::Open { .. }) => None,
+        Err(e) => Err(e).context("load cache file")?,
+    };
+
+    trace!("Cache: {:#?}", cache);
+
+    Ok(cache)
+}
+
+pub fn save_cache(cache_file: &Path, cache: Cache) -> Result<()> {
+    debug!("Saving cache...");
+    filesystem::save_file(cache_file, cache)?;
+
+    Ok(())
+}
+
+pub fn save_dummy_config(
+    files: Vec<String>,
+    local_config_path: &Path,
+    global_config_path: &Path,
+) -> Result<()> {
+    debug!("Saving dummy config...");
+    let package = Package {
+        files: files.into_iter().map(|f| (f.into(), "".into())).collect(),
+        variables: Variables::new(),
+    };
+    trace!("Default package: {:#?}", package);
+
+    let mut packages = BTreeMap::new();
+    packages.insert("default".into(), package);
+    let global_config = GlobalConfig {
+        helpers: Helpers::new(),
+        packages,
+    };
+    debug!("Saving global config...");
+    // Assume default args so all parents are the same
+    std::fs::create_dir_all(
+        global_config_path
+            .parent()
+            .context("get parent of global config")?,
+    )
+    .context("create parent of global config")?;
+    filesystem::save_file(global_config_path, global_config).context("save global config")?;
+
+    let local_config = LocalConfig {
+        includes: vec![],
+        packages: vec!["default".into()],
+        files: Files::default(),
+        variables: Variables::default(),
+    };
+    trace!("Local config: {:#?}", local_config);
+    filesystem::save_file(local_config_path, local_config).context("save local config")?;
+
+    Ok(())
 }
 
 #[allow(clippy::map_entry)]
@@ -111,22 +266,6 @@ fn merge_configuration_files(
         .collect();
 
     Ok(output)
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-pub struct TemplateTarget {
-    pub target: PathBuf,
-    pub append: Option<String>,
-    pub prepend: Option<String>,
-}
-
-// Deserialize implemented manually
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(untagged)]
-pub enum FileTarget {
-    Automatic(PathBuf),
-    Symbolic(PathBuf),
-    ComplexTemplate(TemplateTarget),
 }
 
 impl<'de> serde::Deserialize<'de> for FileTarget {
@@ -256,77 +395,6 @@ impl<T: Into<PathBuf>> From<T> for FileTarget {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
-#[serde(deny_unknown_fields)]
-struct Package {
-    #[serde(default)]
-    files: Files,
-    #[serde(default)]
-    variables: Variables,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct GlobalConfig {
-    #[serde(default)]
-    helpers: Helpers,
-    #[serde(flatten)]
-    packages: BTreeMap<String, Package>,
-}
-
-type IncludedConfig = BTreeMap<String, Package>;
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct LocalConfig {
-    #[serde(default)]
-    includes: Vec<PathBuf>,
-    packages: Vec<String>,
-    #[serde(default)]
-    files: Files,
-    #[serde(default)]
-    variables: Variables,
-}
-
-pub fn load_configuration(local_config: &Path, global_config: &Path) -> Result<Configuration> {
-    let global: GlobalConfig = filesystem::load_file(global_config)
-        .with_context(|| format!("load global config {:?}", global_config))?;
-    trace!("Global config: {:#?}", global);
-
-    let local: LocalConfig = filesystem::load_file(local_config)
-        .with_context(|| format!("load local config {:?}", local_config))?;
-    trace!("Local config: {:#?}", local);
-
-    let mut merged_config =
-        merge_configuration_files(global, local).context("merge configuration files")?;
-    trace!("Merged config: {:#?}", merged_config);
-
-    debug!("Expanding files which are directories...");
-    merged_config.files =
-        expand_directories(merged_config.files).context("expand files that are directories")?;
-
-    debug!("Expanding tildes to home directory...");
-    merged_config.files = merged_config
-        .files
-        .into_iter()
-        .map(|(k, v)| {
-            (
-                k,
-                v.map(|path| {
-                    shellexpand::tilde(&path.to_string_lossy())
-                        .to_string()
-                        .into()
-                }),
-            )
-        })
-        .collect();
-
-    trace!("Final files: {:#?}", merged_config.files);
-    trace!("Final variables: {:#?}", merged_config.variables);
-    trace!("Final helpers: {:?}", merged_config.helpers);
-
-    Ok(merged_config)
-}
-
 fn expand_directories(files: Files) -> Result<Files> {
     let expanded = files
         .into_iter()
@@ -363,72 +431,4 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
     }
-}
-
-pub fn save_dummy_config(
-    files: Vec<String>,
-    local_config_path: &Path,
-    global_config_path: &Path,
-) -> Result<()> {
-    debug!("Saving dummy config...");
-    let package = Package {
-        files: files.into_iter().map(|f| (f.into(), "".into())).collect(),
-        variables: Variables::new(),
-    };
-    trace!("Default package: {:#?}", package);
-
-    let mut packages = BTreeMap::new();
-    packages.insert("default".into(), package);
-    let global_config = GlobalConfig {
-        helpers: Helpers::new(),
-        packages,
-    };
-    debug!("Saving global config...");
-    // Assume default args so all parents are the same
-    std::fs::create_dir_all(
-        global_config_path
-            .parent()
-            .context("get parent of global config")?,
-    )
-    .context("create parent of global config")?;
-    filesystem::save_file(global_config_path, global_config).context("save global config")?;
-
-    let local_config = LocalConfig {
-        includes: vec![],
-        packages: vec!["default".into()],
-        files: Files::default(),
-        variables: Variables::default(),
-    };
-    trace!("Local config: {:#?}", local_config);
-    filesystem::save_file(local_config_path, local_config).context("save local config")?;
-
-    Ok(())
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-pub struct Cache {
-    pub symlinks: BTreeMap<PathBuf, PathBuf>,
-    pub templates: BTreeMap<PathBuf, PathBuf>,
-}
-
-pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
-    debug!("Loading cache...");
-
-    let cache = match filesystem::load_file(cache) {
-        Ok(cache) => Some(cache),
-        Err(filesystem::FileLoadError::Open { .. }) => None,
-        Err(e) => Err(e).context("load cache file")?,
-    };
-
-    trace!("Cache: {:#?}", cache);
-
-    Ok(cache)
-}
-
-pub fn save_cache(cache_file: &Path, cache: Cache) -> Result<()> {
-    debug!("Saving cache...");
-    filesystem::save_file(cache_file, cache)?;
-
-    Ok(())
 }
