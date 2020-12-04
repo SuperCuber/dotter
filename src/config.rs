@@ -173,6 +173,29 @@ pub fn save_dummy_config(
     Ok(())
 }
 
+fn recursive_extend_map(
+    original: &mut BTreeMap<String, toml::Value>,
+    new: BTreeMap<String, toml::Value>,
+) {
+    for (key, new_value) in new.into_iter() {
+        original
+            .entry(key)
+            .and_modify(|original_value| {
+                match (
+                    original_value.as_table().cloned(),
+                    new_value.as_table().cloned(),
+                ) {
+                    (Some(mut original_table), Some(new_table)) => {
+                        recursive_extend_map(&mut original_table, new_table);
+                        *original_value = original_table.into();
+                    }
+                    _ => *original_value = new_value.clone(),
+                }
+            })
+            .or_insert(new_value);
+    }
+}
+
 #[allow(clippy::map_entry)]
 fn merge_configuration_files(
     mut global: GlobalConfig,
@@ -198,7 +221,7 @@ fn merge_configuration_files(
             for (package_name, package_global) in global.packages.iter_mut() {
                 if let Some(package_included) = included.remove(package_name) {
                     package_global.files.extend(package_included.files);
-                    package_global.variables.extend(package_included.variables);
+                    recursive_extend_map(&mut package_global.variables, package_included.variables);
                 }
             }
 
@@ -256,7 +279,7 @@ fn merge_configuration_files(
 
     // Add local.toml's patches
     output.files.extend(local.files);
-    output.variables.extend(local.variables);
+    recursive_extend_map(&mut output.variables, local.variables);
 
     // Remove files with target = ""
     output.files = output
