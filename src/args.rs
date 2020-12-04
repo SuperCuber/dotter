@@ -52,16 +52,31 @@ pub enum Action {
 
     /// Run continuously, watching the repository for changes and re-deploying as soon as they
     /// happen.
-    Watch,
+    Watch {
+        #[structopt(subcommand)]
+        action: Option<WatchedAction>,
+    },
 
     /// Print the differences that will result when running a deploy (in templates only).
     /// Does not actually execute the deploy
     Diff,
 }
 
+#[derive(Debug, Clone, Copy, StructOpt)]
+pub enum WatchedAction {
+    Deploy,
+    Diff,
+}
+
 impl Default for Action {
     fn default() -> Self {
         Action::Deploy
+    }
+}
+
+impl Default for WatchedAction {
+    fn default() -> Self {
+        WatchedAction::Deploy
     }
 }
 

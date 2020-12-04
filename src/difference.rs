@@ -11,7 +11,7 @@ use deploy;
 use file_state;
 use handlebars_helpers;
 
-pub fn diff(opt: Options) -> Result<()> {
+pub fn diff(opt: &Options) -> Result<()> {
     let mut config = config::load_configuration(&opt.local_config, &opt.global_config)
         .context("get a configuration")?;
     let cache = config::load_cache(&opt.cache_file)
