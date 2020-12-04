@@ -201,13 +201,6 @@ fn merge_configuration_files(
     mut global: GlobalConfig,
     local: LocalConfig,
 ) -> Result<Configuration> {
-    // Apply packages filter
-    global.packages = global
-        .packages
-        .into_iter()
-        .filter(|(k, _)| local.packages.contains(&k))
-        .collect();
-
     // Patch each package with included.toml's
     for included_path in &local.includes {
         || -> Result<()> {
@@ -236,6 +229,13 @@ fn merge_configuration_files(
         }()
         .with_context(|| format!("including file {:?}", included_path))?;
     }
+
+    // Apply packages filter
+    global.packages = global
+        .packages
+        .into_iter()
+        .filter(|(k, _)| local.packages.contains(&k))
+        .collect();
 
     let mut output = Configuration {
         helpers: global.helpers,
