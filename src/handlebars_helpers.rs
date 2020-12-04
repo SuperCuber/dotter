@@ -206,7 +206,7 @@ pub fn register_rust_helpers(handlebars: &mut Handlebars) {
     handlebars.register_helper("command_output", Box::new(command_output_helper));
 }
 
-pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: Helpers) {
+pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: &Helpers) {
     debug!("Registering script helpers...");
     for (helper_name, helper_path) in helpers {
         if let Err(e) = handlebars.register_script_helper_file(&helper_name, &helper_path) {

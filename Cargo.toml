@@ -12,6 +12,8 @@ license = "Unlicense"
 [dependencies]
 anyhow = "1.*"
 clap = "2.*"
+crossterm = "0.18.*"
+diff = "0.1.*"
 env_logger = "0.7.*"
 handlebars = { version = "3.*", features = ["script_helper"] }
 log = "0.4.*"

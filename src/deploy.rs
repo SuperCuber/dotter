@@ -82,7 +82,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
     Ok(())
 }
 
-fn file_state_from_configuration(
+pub fn file_state_from_configuration(
     config: &config::Configuration,
     cache: &config::Cache,
     cache_directory: &Path,
@@ -227,7 +227,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
     handlebars.set_strict_mode(true); // Report missing variables as errors
     handlebars_helpers::register_rust_helpers(&mut handlebars);
-    handlebars_helpers::register_script_helpers(&mut handlebars, helpers);
+    handlebars_helpers::register_script_helpers(&mut handlebars, &helpers);
     handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
     trace!("Handlebars instance: {:#?}", handlebars);
 

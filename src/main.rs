@@ -4,6 +4,8 @@ extern crate dunce;
 #[macro_use]
 extern crate anyhow;
 extern crate clap;
+extern crate crossterm;
+extern crate diff;
 extern crate env_logger;
 extern crate handlebars;
 #[macro_use]
@@ -21,6 +23,8 @@ extern crate watchexec;
 mod args;
 mod config;
 mod deploy;
+mod difference;
+mod file_state;
 mod filesystem;
 mod handlebars_helpers;
 mod init;
@@ -94,6 +98,10 @@ fn run() -> Result<bool> {
         args::Action::Watch => {
             debug!("Watching...");
             watch::watch(opt).context("watch repository")?;
+        }
+        args::Action::Diff => {
+            debug!("Diffing...");
+            difference::diff(opt).context("print diff")?;
         }
     }
 

@@ -53,6 +53,10 @@ pub enum Action {
     /// Run continuously, watching the repository for changes and re-deploying as soon as they
     /// happen.
     Watch,
+
+    /// Print the differences that will result when running a deploy (in templates only).
+    /// Does not actually execute the deploy
+    Diff,
 }
 
 impl Default for Action {
