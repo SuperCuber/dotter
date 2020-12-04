@@ -82,19 +82,11 @@ pub fn undeploy(opt: Options) -> Result<()> {
     Ok(())
 }
 
-/// Returns true if an error was printed
-pub fn deploy(opt: &Options) -> Result<bool> {
-    // Throughout this function I'll be referencing steps, those were described in issue #6
-
-    // Step 1
-    let config::Configuration {
-        files,
-        mut variables,
-        helpers,
-        packages,
-    } = config::load_configuration(&opt.local_config, &opt.global_config)
-        .context("get a configuration")?;
-
+fn file_state_from_configuration(
+    config: &config::Configuration,
+    cache: &config::Cache,
+    cache_directory: &Path,
+) -> Result<FileState> {
     // On Windows, you need developer mode to create symlinks.
     let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
         .context("check whether symlinks are enabled")?
@@ -109,11 +101,10 @@ Proceeding by copying instead of symlinking."
         false
     };
 
-    // Step 2-3
     let mut desired_symlinks = BTreeMap::new();
     let mut desired_templates = BTreeMap::new();
 
-    for (source, target) in files.clone() {
+    for (source, target) in config.files.clone() {
         match target {
             config::FileTarget::Automatic(target) => {
                 if symlinks_enabled
@@ -155,7 +146,22 @@ Proceeding by copying instead of symlinking."
     trace!("Desired symlinks: {:#?}", desired_symlinks);
     trace!("Desired templates: {:#?}", desired_templates);
 
-    // Step 4
+    let state = FileState::new(
+        desired_symlinks,
+        desired_templates,
+        cache.symlinks.clone(),
+        cache.templates.clone(),
+        cache_directory.into(),
+    );
+
+    Ok(state)
+}
+
+/// Returns true if an error was printed
+pub fn deploy(opt: &Options) -> Result<bool> {
+    let config = config::load_configuration(&opt.local_config, &opt.global_config)
+        .context("get a configuration")?;
+
     let cache = match config::load_cache(&opt.cache_file)? {
         Some(cache) => cache,
         None => {
@@ -164,26 +170,25 @@ Proceeding by copying instead of symlinking."
         }
     };
 
-    let config::Cache {
-        symlinks: existing_symlinks,
-        templates: existing_templates,
-    } = cache;
-
-    let state = FileState::new(
-        desired_symlinks,
-        desired_templates,
-        existing_symlinks.clone(),
-        existing_templates.clone(),
-        opt.cache_directory.clone(),
-    );
+    let state = file_state_from_configuration(&config, &cache, &opt.cache_directory)
+        .context("get file state")?;
     trace!("File state: {:#?}", state);
 
-    let mut actual_symlinks = existing_symlinks;
-    let mut actual_templates = existing_templates;
+    let config::Configuration {
+        files,
+        mut variables,
+        helpers,
+        packages,
+    } = config;
+
+    let config::Cache {
+        symlinks: mut actual_symlinks,
+        templates: mut actual_templates,
+    } = cache;
+
     let mut suggest_force = false;
     let mut error_occurred = false;
 
-    // Step 5+6
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
     trace!("Deleted symlinks: {:#?}", deleted_symlinks);
     trace!("Deleted templates: {:#?}", deleted_templates);
@@ -226,7 +231,6 @@ Proceeding by copying instead of symlinking."
     handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
     trace!("Handlebars instance: {:#?}", handlebars);
 
-    // Step 7+8
     let (new_symlinks, new_templates) = state.new_files();
     trace!("New symlinks: {:#?}", new_symlinks);
     trace!("New templates: {:#?}", new_templates);
@@ -259,7 +263,6 @@ Proceeding by copying instead of symlinking."
         }
     }
 
-    // Step 9+10
     let (old_symlinks, old_templates) = state.old_files();
     trace!("Old symlinks: {:#?}", old_symlinks);
     trace!("Old templates: {:#?}", old_templates);
@@ -296,7 +299,6 @@ Proceeding by copying instead of symlinking."
         error_occurred = true;
     }
 
-    // Step 11
     if opt.act {
         config::save_cache(
             &opt.cache_file,
