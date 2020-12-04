@@ -40,15 +40,17 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.10.3
+Dotter 0.10.4
 A small dotfile manager. Note that flags and options have to come BEFORE subcommands
 
 USAGE:
-    dotter [FLAGS] [OPTIONS] [SUBCOMMAND]
+    dotter.exe [FLAGS] [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
-        --dry-run    Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed otherwise
-        --force      Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run and implies RUST_LOG=warn unless specified otherwise
+        --dry-run    Dry run - don't do anything, only print information. Implies RUST_LOG=info unless specificed
+                     otherwise
+        --force      Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
+                     --dry-run and implies RUST_LOG=warn unless specified otherwise
     -h, --help       Prints help information
     -V, --version    Prints version information
 
@@ -60,9 +62,13 @@ OPTIONS:
 
 SUBCOMMANDS:
     deploy      Deploy the files to their respective targets. This is the default subcommand
+    diff        Print the differences that will result when running a deploy (in templates only). Does not actually
+                execute the deploy
     help        Prints this message or the help of the given subcommand(s)
-    init        Initialize global.toml with a single package containing all the files in the current directory pointing to a dummy value and a local.toml that selects that package
-    undeploy    Delete all deployed files from their target locations. Note that this operates on all files that are currently in cache
+    init        Initialize global.toml with a single package containing all the files in the current directory
+                pointing to a dummy value and a local.toml that selects that package
+    undeploy    Delete all deployed files from their target locations. Note that this operates on all files that are
+                currently in cache
     watch       Run continuously, watching the repository for changes and re-deploying as soon as they happen
 ```
 
