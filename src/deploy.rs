@@ -688,7 +688,7 @@ fn is_template(source: &Path) -> Result<bool> {
     let mut file = File::open(source).context("open file")?;
     let mut buf = String::new();
     if file.read_to_string(&mut buf).is_err() {
-        warn!("File {:?} is not valid UTF-8 - not templating", source);
+        warn!("File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.", source);
         Ok(false)
     } else {
         Ok(buf.contains("{{"))
