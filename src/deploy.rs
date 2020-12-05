@@ -222,7 +222,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     }
 
     // Prepare handlebars instance
-    info!("Creating Handlebars instance...");
+    debug!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
     handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
     handlebars.set_strict_mode(true); // Report missing variables as errors

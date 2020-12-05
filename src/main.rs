@@ -6,7 +6,6 @@ extern crate anyhow;
 extern crate clap;
 extern crate crossterm;
 extern crate diff;
-extern crate env_logger;
 extern crate handlebars;
 #[macro_use]
 extern crate log;
@@ -14,6 +13,7 @@ extern crate meval;
 #[macro_use]
 extern crate serde;
 extern crate shellexpand;
+extern crate simplelog;
 extern crate structopt;
 #[macro_use]
 extern crate thiserror;
@@ -61,21 +61,31 @@ fn run() -> Result<bool> {
     // Parse arguments
     let opt = args::get_options();
 
-    let log_level = if opt.act && opt.force {
-        "warn"
-    } else if opt.act && !opt.force {
-        "error"
-    } else if !opt.act && opt.force {
-        unreachable!()
-    } else {
-        "info"
-    };
+    use simplelog::LevelFilter;
 
-    env_logger::from_env(env_logger::Env::default().default_filter_or(log_level))
-        .format_timestamp(None)
-        .format_module_path(false)
-        .format_indent(Some(8))
-        .init();
+    simplelog::TermLogger::init(
+        if opt.quiet {
+            LevelFilter::Off
+        } else {
+            match opt.verbosity {
+                0 => LevelFilter::Warn,
+                1 => LevelFilter::Info,
+                2 => LevelFilter::Debug,
+                3 => LevelFilter::Trace,
+                _ => unreachable!(),
+            }
+        },
+        simplelog::ConfigBuilder::new()
+            .set_time_level(LevelFilter::Off)
+            .set_location_level(LevelFilter::Debug)
+            .set_target_level(LevelFilter::Off)
+            .set_thread_level(LevelFilter::Off)
+            .set_level_padding(simplelog::LevelPadding::Left)
+            .add_filter_allow("dotter".into())
+            .build(),
+        simplelog::TerminalMode::Mixed,
+    )
+    .unwrap();
 
     trace!("Loaded options: {:#?}", opt);
 

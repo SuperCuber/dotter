@@ -15,11 +15,6 @@ pub struct Options {
     #[structopt(short, long, default_value = ".dotter/local.toml")]
     pub local_config: PathBuf,
 
-    /// Dry run - don't do anything, only print information.
-    /// Implies RUST_LOG=info unless specificed otherwise.
-    #[structopt(long = "dry-run", parse(from_flag = std::ops::Not::not))]
-    pub act: bool,
-
     /// Location of cache file
     #[structopt(long, default_value = ".dotter/cache.toml")]
     pub cache_file: PathBuf,
@@ -28,17 +23,30 @@ pub struct Options {
     #[structopt(long, default_value = ".dotter/cache")]
     pub cache_directory: PathBuf,
 
+    /// Dry run - don't do anything, only print information.
+    /// Implies -v at least once
+    #[structopt(short = "d", long = "dry-run", parse(from_flag = std::ops::Not::not))]
+    pub act: bool,
+
+    /// Verbosity level - specify up to 3 times to get more detailed output
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    pub verbosity: u64,
+
+    /// Quiet - only print errors
+    #[structopt(short, long)]
+    pub quiet: bool,
+
     /// Force - instead of skipping, overwrite target files if their content is unexpected.
-    /// Overrides --dry-run and implies RUST_LOG=warn unless specified otherwise.
+    /// Overrides --dry-run.
     #[structopt(long)]
     pub force: bool,
-
-    #[structopt(subcommand)]
-    pub action: Option<Action>,
 
     /// Assume "yes" instead of prompting when removing empty directories
     #[structopt(short = "y", long = "noconfirm", parse(from_flag = std::ops::Not::not))]
     pub interactive: bool,
+
+    #[structopt(subcommand)]
+    pub action: Option<Action>,
 }
 
 #[derive(Debug, Clone, Copy, StructOpt)]
@@ -92,5 +100,12 @@ pub fn get_options() -> Options {
     if opt.force {
         opt.act = true;
     }
+    if !opt.act {
+        opt.verbosity = std::cmp::max(opt.verbosity, 1);
+    }
+    opt.verbosity = std::cmp::min(3, opt.verbosity);
+    // if opt.quiet {
+    //     opt.verbosity = 0;
+    // }
     opt
 }
