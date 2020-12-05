@@ -72,8 +72,6 @@ SUBCOMMANDS:
     watch       Run continuously, watching the repository for changes and re-deploying as soon as they happen
 ```
 
-Dotter uses the `env_logger` rust library for displaying errors and warnings. To configure logging level, use the `RUST_LOG` environment variable. The options are, in order of least verbose to most verbose: `error`, `warn`, `info`, `debug`, `trace`. The default is `error`.
-
 # Contributing
 Contributions to Dotter are welcome, whether in the form of a pull request or an issue (for bug repots, feature requests, or other helpful comments)
 
