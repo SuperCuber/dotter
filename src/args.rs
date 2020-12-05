@@ -50,7 +50,7 @@ pub enum Action {
     /// directory pointing to a dummy value and a local.toml that selects that package.
     Init,
 
-    /// Run continuously, watching the repository for changes and re-deploying as soon as they
+    /// Run continuously, watching the repository for changes and running a subcommand as soon as they
     /// happen.
     Watch {
         #[structopt(subcommand)]
@@ -64,7 +64,10 @@ pub enum Action {
 
 #[derive(Debug, Clone, Copy, StructOpt)]
 pub enum WatchedAction {
+    /// Deploys when a change is detected
     Deploy,
+
+    /// Shows diff when a change is detected
     Diff,
 }
 
