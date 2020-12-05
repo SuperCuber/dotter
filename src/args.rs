@@ -62,7 +62,7 @@ pub enum Action {
     /// directory pointing to a dummy value and a local.toml that selects that package.
     Init,
 
-    /// Run continuously, watching the repository for changes and running a subcommand as soon as they
+    /// Run continuously, watching the repository for changes and deploying as soon as they
     /// happen. Can be ran with `--dry-run`
     Watch,
 }

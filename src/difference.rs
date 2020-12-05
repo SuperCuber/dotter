@@ -36,7 +36,7 @@ fn to_owned_diff_result(from: diff::Result<&str>) -> diff::Result<String> {
     }
 }
 
-pub fn diff_nonempty(diff: &Vec<diff::Result<String>>) -> bool {
+pub fn diff_nonempty(diff: &[diff::Result<String>]) -> bool {
     for line in diff {
         match line {
             diff::Result::Both(..) => {}

@@ -65,7 +65,7 @@ fn run() -> Result<bool> {
 
     simplelog::TermLogger::init(
         if opt.quiet {
-            LevelFilter::Off
+            LevelFilter::Error
         } else {
             match opt.verbosity {
                 0 => LevelFilter::Warn,
