@@ -313,7 +313,12 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 }
 
 /// Returns true if symlink should be deleted from cache
-fn delete_symlink(act: bool, symlink: &SymlinkDescription, force: bool, interactive: bool) -> Result<bool> {
+fn delete_symlink(
+    act: bool,
+    symlink: &SymlinkDescription,
+    force: bool,
+    interactive: bool,
+) -> Result<bool> {
     info!("Deleting {}...", symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
@@ -362,7 +367,12 @@ fn delete_symlink(act: bool, symlink: &SymlinkDescription, force: bool, interact
 }
 
 /// Returns true if template should be deleted from cache
-fn delete_template(act: bool, template: &TemplateDescription, force: bool, interactive: bool) -> Result<bool> {
+fn delete_template(
+    act: bool,
+    template: &TemplateDescription,
+    force: bool,
+    interactive: bool,
+) -> Result<bool> {
     info!("Deleting {}", template);
 
     let comparison = filesystem::compare_template(&template.target.target, &template.cache)
