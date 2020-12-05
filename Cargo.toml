@@ -18,7 +18,6 @@ env_logger = "0.7.*"
 handlebars = { version = "3.*", features = ["script_helper"] }
 log = "0.4.*"
 meval = "0.2.*"
-pager = "0.16.*"
 serde = "1.*"
 shellexpand = "1.*"
 structopt = "0.3.*"
