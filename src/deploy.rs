@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use crossterm::style::Colorize;
 
 use handlebars::Handlebars;
 
@@ -10,6 +11,7 @@ use std::path::{Path, PathBuf};
 use super::display_error;
 use args::Options;
 use config::{self, Variables};
+use difference;
 use file_state::*;
 use filesystem::{self, SymlinkComparison, TemplateComparison};
 use handlebars_helpers;
@@ -93,7 +95,7 @@ pub fn file_state_from_configuration(
     {
         true
     } else {
-        error!(
+        warn!(
             "No permission to create symbolic links.\n
 On Windows, in order to create symbolic links you need to enable Developer Mode.\n
 Proceeding by copying instead of symlinking."
@@ -319,7 +321,7 @@ fn delete_symlink(
     force: bool,
     interactive: bool,
 ) -> Result<bool> {
-    info!("Deleting {}...", symlink);
+    info!("{} {}...", "[-]".red(), symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("detect symlink's current state")?;
@@ -373,7 +375,7 @@ fn delete_template(
     force: bool,
     interactive: bool,
 ) -> Result<bool> {
-    info!("Deleting {}", template);
+    info!("{} {}", "[-]".red(), template);
 
     let comparison = filesystem::compare_template(&template.target.target, &template.cache)
         .context("detect templated file's current state")?;
@@ -431,7 +433,7 @@ fn delete_template(
 
 /// Returns true if symlink should be added to cache
 fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
-    info!("Creating {}", symlink);
+    info!("{} {}", "[+]".green(), symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("detect symlink's current state")?;
@@ -488,7 +490,7 @@ fn create_template(
     variables: &Variables,
     force: bool,
 ) -> Result<bool> {
-    info!("Creating {}", template);
+    info!("{} {}", "[+]".green(), template);
 
     let comparison = filesystem::compare_template(&template.target.target, &template.cache)
         .context("detect templated file's current state")?;
@@ -531,8 +533,7 @@ fn create_template(
 
 // Returns true if the symlink wasn't skipped
 fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
-    info!("Updating {}", symlink);
-
+    debug!("Updating {}...", symlink);
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
@@ -600,8 +601,7 @@ fn update_template(
     variables: &Variables,
     force: bool,
 ) -> Result<bool> {
-    info!("Updating {}", template);
-
+    debug!("Updating {}...", template);
     let comparison = filesystem::compare_template(&template.target.target, &template.cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
@@ -631,6 +631,16 @@ fn update_template(
             }
 
             debug!("Performing update");
+
+            if log_enabled!(log::Level::Info) {
+                let diff = difference::generate_diff(&template, handlebars, &variables)
+                    .context("generate diff for template")?;
+                if difference::diff_nonempty(&diff) {
+                    info!("{} {}", "[~]".yellow(), template);
+                    difference::print_diff(diff);
+                }
+            }
+
             if act {
                 perform_template_deployment(template, handlebars, variables)
                     .context("perform template deployment")?;

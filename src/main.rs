@@ -105,13 +105,9 @@ fn run() -> Result<bool> {
             debug!("Initializing repo...");
             init::init(opt).context("initalize directory")?;
         }
-        args::Action::Watch { action } => {
+        args::Action::Watch => {
             debug!("Watching...");
-            watch::watch(opt, action.unwrap_or_default()).context("watch repository")?;
-        }
-        args::Action::Diff => {
-            debug!("Diffing...");
-            difference::diff(&opt).context("print diff")?;
+            watch::watch(opt).context("watch repository")?;
         }
     }
 

@@ -3,70 +3,12 @@ use crossterm::style::Colorize;
 use diff;
 use handlebars::Handlebars;
 
-use std::{collections::BTreeMap, fs};
+use std::fs;
 
-use args::Options;
-use config::{self, Variables};
-use deploy;
+use config::Variables;
 use file_state;
-use handlebars_helpers;
 
-pub fn diff(opt: &Options) -> Result<()> {
-    let mut config = config::load_configuration(&opt.local_config, &opt.global_config)
-        .context("get a configuration")?;
-    let cache = config::load_cache(&opt.cache_file)
-        .context("get cache")?
-        .unwrap_or_default();
-    let state = deploy::file_state_from_configuration(&config, &cache, &opt.cache_directory)
-        .context("get file state")?;
-
-    let (new_symlinks, new_templates) = state.new_files();
-    let (deleted_symlinks, deleted_templates) = state.deleted_files();
-    let (_old_symlinks, old_templates) = state.old_files();
-
-    for new_symlink in new_symlinks {
-        println!("{}{}", "[+] ".green(), new_symlink);
-    }
-    for new_template in new_templates {
-        println!("{}{}", "[+] ".green(), new_template);
-    }
-
-    for deleted_symlink in deleted_symlinks {
-        println!("{}{}", "[-] ".red(), deleted_symlink);
-    }
-    for deleted_template in deleted_templates {
-        println!("{}{}", "[-] ".red(), deleted_template);
-    }
-
-    info!("Creating Handlebars instance...");
-    let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
-    handlebars.set_strict_mode(true); // Report missing variables as errors
-    handlebars_helpers::register_rust_helpers(&mut handlebars);
-    handlebars_helpers::register_script_helpers(&mut handlebars, &config.helpers);
-    handlebars_helpers::add_dotter_variable(&mut config.variables, &config.files, &config.packages);
-    trace!("Handlebars instance: {:#?}", handlebars);
-
-    let diffs: Result<BTreeMap<_, _>> = old_templates
-        .into_iter()
-        .map(|t| {
-            let diff = generate_diff(&t, &handlebars, &config.variables);
-            diff.map(|d| (t.clone(), d))
-                .with_context(|| format!("generate diff for {}", t))
-        })
-        .collect();
-    let diffs = diffs.context("generate diffs")?;
-
-    for (template, diff) in diffs.into_iter().filter(diff_nonempty) {
-        println!("\n{}{}", "----- ".blue(), template.to_string().blue());
-
-        print_diff(diff);
-    }
-
-    Ok(())
-}
-
-fn generate_diff(
+pub fn generate_diff(
     template: &file_state::TemplateDescription,
     handlebars: &Handlebars,
     variables: &Variables,
@@ -94,8 +36,7 @@ fn to_owned_diff_result(from: diff::Result<&str>) -> diff::Result<String> {
     }
 }
 
-fn diff_nonempty<T>(diff: &(T, Vec<diff::Result<String>>)) -> bool {
-    let diff = &diff.1;
+pub fn diff_nonempty(diff: &Vec<diff::Result<String>>) -> bool {
     for line in diff {
         match line {
             diff::Result::Both(..) => {}
@@ -107,7 +48,7 @@ fn diff_nonempty<T>(diff: &(T, Vec<diff::Result<String>>)) -> bool {
     false
 }
 
-fn print_diff(diff: Vec<diff::Result<String>>) {
+pub fn print_diff(diff: Vec<diff::Result<String>>) {
     let minus = "-".red();
     let plus = "+".green();
 
