@@ -40,7 +40,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
     let mut suggest_force = false;
 
     for symlink in deleted_symlinks {
-        match delete_symlink(opt.act, &symlink, opt.force) {
+        match delete_symlink(opt.act, &symlink, opt.force, opt.interactive) {
             Ok(true) => {
                 actual_symlinks.remove(&symlink.source);
             }
@@ -52,7 +52,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
     }
 
     for template in deleted_templates {
-        match delete_template(opt.act, &template, opt.force) {
+        match delete_template(opt.act, &template, opt.force, opt.interactive) {
             Ok(true) => {
                 actual_templates.remove(&template.source);
             }
@@ -193,7 +193,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     trace!("Deleted symlinks: {:#?}", deleted_symlinks);
     trace!("Deleted templates: {:#?}", deleted_templates);
     for deleted_symlink in deleted_symlinks {
-        match delete_symlink(opt.act, &deleted_symlink, opt.force) {
+        match delete_symlink(opt.act, &deleted_symlink, opt.force, opt.interactive) {
             Ok(true) => {
                 actual_symlinks.remove(&deleted_symlink.source);
             }
@@ -207,7 +207,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         }
     }
     for deleted_template in deleted_templates {
-        match delete_template(opt.act, &deleted_template, opt.force) {
+        match delete_template(opt.act, &deleted_template, opt.force, opt.interactive) {
             Ok(true) => {
                 actual_templates.remove(&deleted_template.source);
             }
@@ -313,7 +313,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 }
 
 /// Returns true if symlink should be deleted from cache
-fn delete_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
+fn delete_symlink(act: bool, symlink: &SymlinkDescription, force: bool, interactive: bool) -> Result<bool> {
     info!("Deleting {}...", symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
@@ -353,7 +353,7 @@ fn delete_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             debug!("Performing deletion");
             if act {
                 fs::remove_file(&symlink.target).context("remove symlink")?;
-                filesystem::delete_parents(&symlink.target, true)
+                filesystem::delete_parents(&symlink.target, interactive)
                     .context("delete parents of symlink")?;
             }
             Ok(true)
@@ -362,7 +362,7 @@ fn delete_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
 }
 
 /// Returns true if template should be deleted from cache
-fn delete_template(act: bool, template: &TemplateDescription, force: bool) -> Result<bool> {
+fn delete_template(act: bool, template: &TemplateDescription, force: bool, interactive: bool) -> Result<bool> {
     info!("Deleting {}", template);
 
     let comparison = filesystem::compare_template(&template.target.target, &template.cache)
@@ -408,7 +408,7 @@ fn delete_template(act: bool, template: &TemplateDescription, force: bool) -> Re
             debug!("Performing deletion");
             if act {
                 fs::remove_file(&template.target.target).context("delete target file")?;
-                filesystem::delete_parents(&template.target.target, true)
+                filesystem::delete_parents(&template.target.target, interactive)
                     .context("delete parent directory in target location")?;
                 fs::remove_file(&template.cache).context("delete cache file")?;
                 filesystem::delete_parents(&template.cache, false)

@@ -35,6 +35,10 @@ pub struct Options {
 
     #[structopt(subcommand)]
     pub action: Option<Action>,
+
+    /// Assume "yes" instead of prompting when removing empty directories
+    #[structopt(short = "y", long = "noconfirm", parse(from_flag = std::ops::Not::not))]
+    pub interactive: bool,
 }
 
 #[derive(Debug, Clone, Copy, StructOpt)]

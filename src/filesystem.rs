@@ -164,7 +164,7 @@ pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
 }
 
 pub fn ask_boolean(prompt: &str) -> bool {
-    let mut buf = String::new();
+    let mut buf = String::from("a"); // enter the loop at least once
     while !(buf.to_lowercase().starts_with('y')
         || buf.to_lowercase().starts_with('n')
         || buf.is_empty())
