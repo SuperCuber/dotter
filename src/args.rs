@@ -46,7 +46,7 @@ pub struct Options {
     pub interactive: bool,
 
     /// Take standard input as an additional files/variables patch, added after evaluating
-    /// `local.toml`
+    /// `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch.
     #[structopt(short, long)]
     pub patch: bool,
 
@@ -87,8 +87,8 @@ pub fn get_options() -> Options {
         opt.verbosity = std::cmp::max(opt.verbosity, 1);
     }
     opt.verbosity = std::cmp::min(3, opt.verbosity);
-    // if opt.quiet {
-    //     opt.verbosity = 0;
-    // }
+    if opt.patch {
+        opt.interactive = false;
+    }
     opt
 }
