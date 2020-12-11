@@ -40,7 +40,7 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.10.5
+Dotter 0.10.6
 A small dotfile manager. Note that flags and options have to come BEFORE subcommands
 
 USAGE:
@@ -51,6 +51,7 @@ FLAGS:
         --force        Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run
     -h, --help         Prints help information
     -y, --noconfirm    Assume "yes" instead of prompting when removing empty directories
+    -p, --patch        Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch
     -q, --quiet        Quiet - only print errors
     -V, --version      Prints version information
     -v, --verbose      Verbosity level - specify up to 3 times to get more detailed output
