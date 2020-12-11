@@ -45,6 +45,11 @@ pub struct Options {
     #[structopt(short = "y", long = "noconfirm", parse(from_flag = std::ops::Not::not))]
     pub interactive: bool,
 
+    /// Take standard input as an additional files/variables patch, added after evaluating
+    /// `local.toml`
+    #[structopt(short, long)]
+    pub patch: bool,
+
     #[structopt(subcommand)]
     pub action: Option<Action>,
 }

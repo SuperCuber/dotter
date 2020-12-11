@@ -36,7 +36,7 @@ pub struct Configuration {
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
-struct Package {
+pub struct Package {
     #[serde(default)]
     files: Files,
     #[serde(default)]
@@ -65,7 +65,11 @@ struct LocalConfig {
     variables: Variables,
 }
 
-pub fn load_configuration(local_config: &Path, global_config: &Path) -> Result<Configuration> {
+pub fn load_configuration(
+    local_config: &Path,
+    global_config: &Path,
+    patch: Option<Package>,
+) -> Result<Configuration> {
     let global: GlobalConfig = filesystem::load_file(global_config)
         .with_context(|| format!("load global config {:?}", global_config))?;
     trace!("Global config: {:#?}", global);
@@ -75,7 +79,7 @@ pub fn load_configuration(local_config: &Path, global_config: &Path) -> Result<C
     trace!("Local config: {:#?}", local);
 
     let mut merged_config =
-        merge_configuration_files(global, local).context("merge configuration files")?;
+        merge_configuration_files(global, local, patch).context("merge configuration files")?;
     trace!("Merged config: {:#?}", merged_config);
 
     debug!("Expanding files which are directories...");
@@ -200,6 +204,7 @@ fn recursive_extend_map(
 fn merge_configuration_files(
     mut global: GlobalConfig,
     local: LocalConfig,
+    patch: Option<Package>,
 ) -> Result<Configuration> {
     // Patch each package with included.toml's
     for included_path in &local.includes {
@@ -280,6 +285,12 @@ fn merge_configuration_files(
     // Add local.toml's patches
     output.files.extend(local.files);
     recursive_extend_map(&mut output.variables, local.variables);
+
+    // Add manual patch
+    if let Some(patch) = patch {
+        output.files.extend(patch.files);
+        recursive_extend_map(&mut output.variables, patch.variables);
+    }
 
     // Remove files with target = ""
     output.files = output

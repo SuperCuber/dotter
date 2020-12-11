@@ -5,7 +5,7 @@ use handlebars::Handlebars;
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use super::display_error;
@@ -161,7 +161,18 @@ Proceeding by copying instead of symlinking."
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
-    let config = config::load_configuration(&opt.local_config, &opt.global_config)
+    let mut patch = None;
+    if opt.patch {
+        debug!("Reading manual patch from stdin...");
+        let mut patch_str = String::new();
+        io::stdin()
+            .read_to_string(&mut patch_str)
+            .context("read patch from stdin")?;
+        patch = Some(toml::from_str(&patch_str).context("parse patch into package")?);
+    }
+    trace!("Manual patch: {:#?}", patch);
+
+    let config = config::load_configuration(&opt.local_config, &opt.global_config, patch)
         .context("get a configuration")?;
 
     let cache = match config::load_cache(&opt.cache_file)? {
