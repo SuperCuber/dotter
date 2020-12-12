@@ -199,7 +199,9 @@ fn os_shell() -> Command {
 }
 
 pub fn register_rust_helpers(handlebars: &mut Handlebars) {
+    handlebars_misc_helpers::register(handlebars);
     handlebars.register_helper("math", Box::new(math_helper));
+
     handlebars.register_helper("include_template", Box::new(include_template_helper));
     handlebars.register_helper("is_executable", Box::new(is_executable_helper));
     handlebars.register_helper("command_success", Box::new(command_success_helper));

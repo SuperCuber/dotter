@@ -7,6 +7,7 @@ extern crate clap;
 extern crate crossterm;
 extern crate diff;
 extern crate handlebars;
+extern crate handlebars_misc_helpers;
 #[macro_use]
 extern crate log;
 extern crate meval;
