@@ -292,7 +292,14 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         }
     }
     for old_template in old_templates {
-        match update_template(opt.act, &old_template, &handlebars, &variables, opt.force, opt.diff_context_lines) {
+        match update_template(
+            opt.act,
+            &old_template,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        ) {
             Ok(true) => {}
             Ok(false) => {
                 suggest_force = true;
