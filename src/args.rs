@@ -28,7 +28,8 @@ pub struct Options {
     #[structopt(short = "d", long = "dry-run", parse(from_flag = std::ops::Not::not))]
     pub act: bool,
 
-    /// Verbosity level - specify up to 3 times to get more detailed output
+    /// Verbosity level - specify up to 3 times to get more detailed output.
+    /// Specifying at least once prints the differences between what was before and after Dotter's run
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     pub verbosity: u64,
 
@@ -49,6 +50,10 @@ pub struct Options {
     /// `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch.
     #[structopt(short, long)]
     pub patch: bool,
+
+    /// Amount of lines that are printed before and after a diff hunk.
+    #[structopt(long, default_value = "3")]
+    pub diff_context_lines: usize,
 
     #[structopt(subcommand)]
     pub action: Option<Action>,

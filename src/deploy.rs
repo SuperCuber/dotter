@@ -292,7 +292,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         }
     }
     for old_template in old_templates {
-        match update_template(opt.act, &old_template, &handlebars, &variables, opt.force) {
+        match update_template(opt.act, &old_template, &handlebars, &variables, opt.force, opt.diff_context_lines) {
             Ok(true) => {}
             Ok(false) => {
                 suggest_force = true;
@@ -611,6 +611,7 @@ fn update_template(
     handlebars: &Handlebars,
     variables: &Variables,
     force: bool,
+    diff_context_lines: usize,
 ) -> Result<bool> {
     debug!("Updating {}...", template);
     let comparison = filesystem::compare_template(&template.target.target, &template.cache)
@@ -648,7 +649,7 @@ fn update_template(
                     .context("generate diff for template")?;
                 if difference::diff_nonempty(&diff) {
                     info!("{} {}", "[~]".yellow(), template);
-                    difference::print_diff(diff);
+                    difference::print_diff(diff, diff_context_lines);
                 }
             }
 
