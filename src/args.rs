@@ -5,14 +5,13 @@ use structopt::StructOpt;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Dotter")]
 /// A small dotfile manager.
-/// Note that flags and options have to come BEFORE subcommands.
 pub struct Options {
     /// Location of the global configuration
-    #[structopt(short, long, default_value = ".dotter/global.toml")]
+    #[structopt(short, long, default_value = ".dotter/global.toml", global = true)]
     pub global_config: PathBuf,
 
     /// Location of the local configuration
-    #[structopt(short, long, default_value = ".dotter/local.toml")]
+    #[structopt(short, long, default_value = ".dotter/local.toml", global = true)]
     pub local_config: PathBuf,
 
     /// Location of cache file
@@ -25,30 +24,30 @@ pub struct Options {
 
     /// Dry run - don't do anything, only print information.
     /// Implies -v at least once
-    #[structopt(short = "d", long = "dry-run", parse(from_flag = std::ops::Not::not))]
+    #[structopt(short = "d", long = "dry-run", parse(from_flag = std::ops::Not::not), global = true)]
     pub act: bool,
 
     /// Verbosity level - specify up to 3 times to get more detailed output.
     /// Specifying at least once prints the differences between what was before and after Dotter's run
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences), global = true)]
     pub verbosity: u64,
 
     /// Quiet - only print errors
-    #[structopt(short, long)]
+    #[structopt(short, long, global = true)]
     pub quiet: bool,
 
     /// Force - instead of skipping, overwrite target files if their content is unexpected.
     /// Overrides --dry-run.
-    #[structopt(long)]
+    #[structopt(long, global = true)]
     pub force: bool,
 
     /// Assume "yes" instead of prompting when removing empty directories
-    #[structopt(short = "y", long = "noconfirm", parse(from_flag = std::ops::Not::not))]
+    #[structopt(short = "y", long = "noconfirm", parse(from_flag = std::ops::Not::not), global = true)]
     pub interactive: bool,
 
     /// Take standard input as an additional files/variables patch, added after evaluating
     /// `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch.
-    #[structopt(short, long)]
+    #[structopt(short, long, global = true)]
     pub patch: bool,
 
     /// Amount of lines that are printed before and after a diff hunk.
