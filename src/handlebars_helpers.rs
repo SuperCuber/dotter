@@ -164,6 +164,12 @@ fn command_output_helper(
 
 #[cfg(windows)]
 fn is_executable(name: &str) -> Result<bool, std::io::Error> {
+    let name = if name.ends_with(".exe") {
+        name.to_string()
+    } else {
+        format!("{}.exe", name)
+    };
+
     Command::new("where")
         .arg(name)
         .stdin(Stdio::null())
