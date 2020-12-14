@@ -40,8 +40,8 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.10.7
-A small dotfile manager. Note that flags and options have to come BEFORE subcommands
+Dotter 0.10.8
+A small dotfile manager
 
 USAGE:
     dotter [FLAGS] [OPTIONS] [SUBCOMMAND]
@@ -54,13 +54,14 @@ FLAGS:
     -p, --patch        Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch
     -q, --quiet        Quiet - only print errors
     -V, --version      Prints version information
-    -v, --verbose      Verbosity level - specify up to 3 times to get more detailed output
+    -v, --verbose      Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter's run
 
 OPTIONS:
-        --cache-directory <cache-directory>    Directory to cache into [default: .dotter/cache]
-        --cache-file <cache-file>              Location of cache file [default: .dotter/cache.toml]
-    -g, --global-config <global-config>        Location of the global configuration [default: .dotter/global.toml]
-    -l, --local-config <local-config>          Location of the local configuration [default: .dotter/local.toml]
+        --cache-directory <cache-directory>          Directory to cache into [default: .dotter/cache]
+        --cache-file <cache-file>                    Location of cache file [default: .dotter/cache.toml]
+        --diff-context-lines <diff-context-lines>    Amount of lines that are printed before and after a diff hunk [default: 3]
+    -g, --global-config <global-config>              Location of the global configuration [default: .dotter/global.toml]
+    -l, --local-config <local-config>                Location of the local configuration [default: .dotter/local.toml]
 
 SUBCOMMANDS:
     deploy      Deploy the files to their respective targets. This is the default subcommand
