@@ -60,8 +60,7 @@ fn hunkify_diff(diff: Diff, extra_lines: usize) -> HunkDiff {
 
     let mut current_hunk = None;
 
-    for position in 0..diff.len() {
-        let line = &diff[position];
+    for (position, line) in diff.iter().enumerate() {
         match line {
             diff::Result::Left(_) => {
                 left_line_number += 1;
@@ -85,6 +84,7 @@ fn hunkify_diff(diff: Diff, extra_lines: usize) -> HunkDiff {
                     .iter()
                     .any(is_different)
                 {
+                    // There's a hunk soon
                     if current_hunk.is_none() {
                         current_hunk = Some((left_line_number, right_line_number, vec![]));
                     }
@@ -93,14 +93,17 @@ fn hunkify_diff(diff: Diff, extra_lines: usize) -> HunkDiff {
                     .iter()
                     .any(is_different)
                 {
+                    // We're just after a hunk
                     current_hunk.as_mut().unwrap().2.push(line.clone());
                 } else if let Some(hunk) = current_hunk.take() {
+                    // We're finished with the current hunk
                     hunks.push(hunk);
                 }
             }
         }
     }
 
+    // Last hunk - in case the last line is included in a hunk, it was never added
     if let Some(hunk) = current_hunk {
         hunks.push(hunk);
     }
