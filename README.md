@@ -44,31 +44,39 @@ Dotter 0.10.9
 A small dotfile manager
 
 USAGE:
-    dotter [FLAGS] [OPTIONS] [SUBCOMMAND]
+    dotter.exe [FLAGS] [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
     -d, --dry-run      Dry run - don't do anything, only print information. Implies -v at least once
-        --force        Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run
+        --force        Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
+                       --dry-run
     -h, --help         Prints help information
     -y, --noconfirm    Assume "yes" instead of prompting when removing empty directories
-    -p, --patch        Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch
+    -p, --patch        Take standard input as an additional files/variables patch, added after evaluating `local.toml`.
+                       Assumes --noconfirm flag because all of stdin is taken as the patch
     -q, --quiet        Quiet - only print errors
     -V, --version      Prints version information
-    -v, --verbose      Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter's run
+    -v, --verbose      Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once
+                       prints the differences between what was before and after Dotter's run
 
 OPTIONS:
         --cache-directory <cache-directory>          Directory to cache into [default: .dotter/cache]
         --cache-file <cache-file>                    Location of cache file [default: .dotter/cache.toml]
-        --diff-context-lines <diff-context-lines>    Amount of lines that are printed before and after a diff hunk [default: 3]
+        --diff-context-lines <diff-context-lines>
+            Amount of lines that are printed before and after a diff hunk [default: 3]
+
     -g, --global-config <global-config>              Location of the global configuration [default: .dotter/global.toml]
     -l, --local-config <local-config>                Location of the local configuration [default: .dotter/local.toml]
 
 SUBCOMMANDS:
     deploy      Deploy the files to their respective targets. This is the default subcommand
     help        Prints this message or the help of the given subcommand(s)
-    init        Initialize global.toml with a single package containing all the files in the current directory pointing to a dummy value and a local.toml that selects that package
-    undeploy    Delete all deployed files from their target locations. Note that this operates on all files that are currently in cache
-    watch       Run continuously, watching the repository for changes and deploying as soon as they happen. Can be ran with `--dry-run`
+    init        Initialize global.toml with a single package containing all the files in the current directory
+                pointing to a dummy value and a local.toml that selects that package
+    undeploy    Delete all deployed files from their target locations. Note that this operates on all files that are
+                currently in cache
+    watch       Run continuously, watching the repository for changes and deploying as soon as they happen. Can be
+                ran with `--dry-run`
 ```
 
 # Contributing
