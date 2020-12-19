@@ -44,7 +44,7 @@ Dotter 0.10.9
 A small dotfile manager
 
 USAGE:
-    dotter.exe [FLAGS] [OPTIONS] [SUBCOMMAND]
+    dotter [FLAGS] [OPTIONS] [SUBCOMMAND]
 
 FLAGS:
     -d, --dry-run      Dry run - don't do anything, only print information. Implies -v at least once
