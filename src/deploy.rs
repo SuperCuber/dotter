@@ -113,12 +113,19 @@ Proceeding by copying instead of symlinking."
                     && !is_template(&source)
                         .context(format!("check whether {:?} is a template", source))?
                 {
-                    desired_symlinks.insert(source, target);
+                    desired_symlinks.insert(
+                        source,
+                        config::SymbolicTarget {
+                            target,
+                            owner: None,
+                        },
+                    );
                 } else {
                     desired_templates.insert(
                         source,
                         config::TemplateTarget {
                             target,
+                            owner: None,
                             append: None,
                             prepend: None,
                         },
@@ -132,7 +139,8 @@ Proceeding by copying instead of symlinking."
                     desired_templates.insert(
                         source,
                         config::TemplateTarget {
-                            target,
+                            target: target.target,
+                            owner: target.owner,
                             append: None,
                             prepend: None,
                         },
@@ -250,7 +258,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     for new_symlink in new_symlinks {
         match create_symlink(opt.act, &new_symlink, opt.force) {
             Ok(true) => {
-                actual_symlinks.insert(new_symlink.source, new_symlink.target);
+                actual_symlinks.insert(new_symlink.source, new_symlink.target.target);
             }
             Ok(false) => {
                 suggest_force = true;
@@ -341,7 +349,7 @@ fn delete_symlink(
 ) -> Result<bool> {
     info!("{} {}...", "[-]".red(), symlink);
 
-    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
+    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -377,8 +385,8 @@ fn delete_symlink(
 
             debug!("Performing deletion");
             if act {
-                fs::remove_file(&symlink.target).context("remove symlink")?;
-                filesystem::delete_parents(&symlink.target, interactive)
+                fs::remove_file(&symlink.target.target).context("remove symlink")?;
+                filesystem::delete_parents(&symlink.target.target, interactive)
                     .context("delete parents of symlink")?;
             }
             Ok(true)
@@ -453,7 +461,7 @@ fn delete_template(
 fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
     info!("{} {}", "[+]".green(), symlink);
 
-    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
+    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -479,7 +487,7 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                     "Creating {} but target already exists and differs from expected. Forcing.",
                     symlink
                 );
-                std::fs::remove_file(&symlink.target)
+                std::fs::remove_file(&symlink.target.target)
                     .context("remove symlink target while forcing")?;
             }
 
@@ -488,11 +496,12 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                 fs::create_dir_all(
                     &symlink
                         .target
+                        .target
                         .parent()
                         .context("get parent of target file")?,
                 )
                 .context("create parent for target file")?;
-                filesystem::make_symlink(&symlink.target, &symlink.source)
+                filesystem::make_symlink(&symlink.target.target, &symlink.source)
                     .context("create target symlink")?;
             }
             Ok(true)
@@ -552,7 +561,7 @@ fn create_template(
 // Returns true if the symlink wasn't skipped
 fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
     debug!("Updating {}...", symlink);
-    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target)
+    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -585,7 +594,7 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                     "Updating {} but target wasn't what was expected. Forcing.",
                     symlink
                 );
-                std::fs::remove_file(&symlink.target)
+                std::fs::remove_file(&symlink.target.target)
                     .context("remove symlink target while forcing")?;
             }
             if s == SymlinkComparison::OnlySourceExists {
@@ -599,11 +608,12 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                 fs::create_dir_all(
                     &symlink
                         .target
+                        .target
                         .parent()
                         .context("get parent of target file")?,
                 )
                 .context("create parent for target file")?;
-                filesystem::make_symlink(&symlink.target, &symlink.source)
+                filesystem::make_symlink(&symlink.target.target, &symlink.source)
                     .context("create target symlink")?;
             }
             Ok(true)

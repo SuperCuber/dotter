@@ -6,9 +6,23 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(untagged)]
+pub enum UnixUser {
+    Uid(i32),
+    Name(String),
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SymbolicTarget {
+    pub target: PathBuf,
+    pub owner: Option<UnixUser>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TemplateTarget {
     pub target: PathBuf,
+    pub owner: Option<UnixUser>,
     pub append: Option<String>,
     pub prepend: Option<String>,
 }
@@ -18,7 +32,7 @@ pub struct TemplateTarget {
 #[serde(untagged)]
 pub enum FileTarget {
     Automatic(PathBuf),
-    Symbolic(PathBuf),
+    Symbolic(SymbolicTarget),
     ComplexTemplate(TemplateTarget),
 }
 
@@ -311,6 +325,7 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
         #[serde(field_identifier, rename_all = "snake_case")]
         enum Field {
             Target,
+            Owner,
             Append,
             Prepend,
             Type,
@@ -338,6 +353,7 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
             {
                 let mut file_type = None;
                 let mut target = None;
+                let mut owner = None;
                 let mut append = None;
                 let mut prepend = None;
 
@@ -354,6 +370,12 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
                                 return Err(serde::de::Error::duplicate_field("target"));
                             }
                             target = Some(map.next_value()?);
+                        }
+                        Field::Owner => {
+                            if owner.is_some() {
+                                return Err(serde::de::Error::duplicate_field("owner"));
+                            }
+                            owner = Some(map.next_value()?);
                         }
                         Field::Append => {
                             if append.is_some() {
@@ -379,12 +401,13 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
                                 "invalid use of `append` or `prepend` on a symbolic target",
                             ));
                         }
-                        FileTarget::Symbolic(target)
+                        FileTarget::Symbolic(SymbolicTarget { target, owner })
                     }
                     "template" => FileTarget::ComplexTemplate(TemplateTarget {
+                        target,
+                        owner,
                         append,
                         prepend,
-                        target,
                     }),
                     other_type => {
                         return Err(serde::de::Error::invalid_value(
@@ -406,7 +429,10 @@ impl FileTarget {
     fn map<F: FnOnce(PathBuf) -> PathBuf>(self, func: F) -> Self {
         match self {
             FileTarget::Automatic(path) => FileTarget::Automatic(func(path)),
-            FileTarget::Symbolic(path) => FileTarget::Symbolic(func(path)),
+            FileTarget::Symbolic(mut s) => {
+                s.target = func(s.target);
+                FileTarget::Symbolic(s)
+            }
             FileTarget::ComplexTemplate(mut t) => {
                 t.target = func(t.target);
                 FileTarget::ComplexTemplate(t)
@@ -417,7 +443,7 @@ impl FileTarget {
     pub fn path(&self) -> &Path {
         match self {
             FileTarget::Automatic(path) => &path,
-            FileTarget::Symbolic(path) => &path,
+            FileTarget::Symbolic(SymbolicTarget { target, .. }) => &target,
             FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
         }
     }

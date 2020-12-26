@@ -14,7 +14,7 @@ pub struct FileState {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymlinkDescription {
     pub source: PathBuf,
-    pub target: PathBuf,
+    pub target: config::SymbolicTarget,
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +73,7 @@ impl std::fmt::Display for TemplateDescription {
 
 impl FileState {
     pub fn new(
-        desired_symlinks: BTreeMap<PathBuf, PathBuf>,
+        desired_symlinks: BTreeMap<PathBuf, config::SymbolicTarget>,
         desired_templates: BTreeMap<PathBuf, config::TemplateTarget>,
         existing_symlinks: BTreeMap<PathBuf, PathBuf>,
         existing_templates: BTreeMap<PathBuf, PathBuf>,
@@ -82,7 +82,20 @@ impl FileState {
         FileState {
             desired_symlinks: Self::symlinks_to_set(desired_symlinks),
             desired_templates: Self::templates_to_set(desired_templates, &cache_dir),
-            existing_symlinks: Self::symlinks_to_set(existing_symlinks),
+            existing_symlinks: Self::symlinks_to_set(
+                existing_symlinks
+                    .into_iter()
+                    .map(|(source, target)| {
+                        (
+                            source,
+                            config::SymbolicTarget {
+                                target,
+                                owner: None,
+                            },
+                        )
+                    })
+                    .collect(),
+            ),
             existing_templates: Self::templates_to_set(
                 existing_templates
                     .into_iter()
@@ -91,6 +104,7 @@ impl FileState {
                             source,
                             config::TemplateTarget {
                                 target,
+                                owner: None,
                                 append: None,
                                 prepend: None,
                             },
@@ -102,7 +116,9 @@ impl FileState {
         }
     }
 
-    pub fn symlinks_to_set(symlinks: BTreeMap<PathBuf, PathBuf>) -> BTreeSet<SymlinkDescription> {
+    pub fn symlinks_to_set(
+        symlinks: BTreeMap<PathBuf, config::SymbolicTarget>,
+    ) -> BTreeSet<SymlinkDescription> {
         symlinks
             .into_iter()
             .map(|(source, target)| SymlinkDescription { source, target })
