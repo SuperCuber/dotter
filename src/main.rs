@@ -16,6 +16,7 @@ extern crate serde;
 extern crate shellexpand;
 extern crate simplelog;
 extern crate structopt;
+extern crate sudo;
 #[macro_use]
 extern crate thiserror;
 extern crate toml;

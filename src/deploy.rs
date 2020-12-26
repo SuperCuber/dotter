@@ -347,7 +347,7 @@ fn delete_symlink(
     force: bool,
     interactive: bool,
 ) -> Result<bool> {
-    info!("{} {}...", "[-]".red(), symlink);
+    info!("{} {}", "[-]".red(), symlink);
 
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;

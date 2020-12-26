@@ -387,6 +387,7 @@ dependencies = [
  "shellexpand",
  "simplelog",
  "structopt",
+ "sudo",
  "thiserror",
  "toml 0.4.10",
  "watchexec",
@@ -1476,6 +1477,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "sudo"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a88e74edf206f281aff2820aa2066c781331044c770626dcafe19491f214e05"
+dependencies = [
+ "libc",
+ "log",
 ]
 
 [[package]]

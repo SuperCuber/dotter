@@ -11,7 +11,7 @@ pub struct FileState {
     pub existing_templates: BTreeSet<TemplateDescription>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone)]
 pub struct SymlinkDescription {
     pub source: PathBuf,
     pub target: config::SymbolicTarget,
@@ -24,13 +24,34 @@ pub struct TemplateDescription {
     pub cache: PathBuf,
 }
 
+// For use in FileState's Sets
+impl std::cmp::PartialEq for SymlinkDescription {
+    fn eq(&self, other: &SymlinkDescription) -> bool {
+        self.source == other.source && self.target.target == other.target.target
+    }
+}
+impl std::cmp::Eq for SymlinkDescription {}
+impl std::cmp::PartialOrd for SymlinkDescription {
+    fn partial_cmp(&self, other: &SymlinkDescription) -> Option<std::cmp::Ordering> {
+        Some(
+            self.source
+                .cmp(&other.source)
+                .then(self.target.target.cmp(&other.target.target)),
+        )
+    }
+}
+impl std::cmp::Ord for SymlinkDescription {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 impl std::cmp::PartialEq for TemplateDescription {
     fn eq(&self, other: &TemplateDescription) -> bool {
         self.source == other.source && self.target.target == other.target.target
     }
 }
 impl std::cmp::Eq for TemplateDescription {}
-
 impl std::cmp::PartialOrd for TemplateDescription {
     fn partial_cmp(&self, other: &TemplateDescription) -> Option<std::cmp::Ordering> {
         Some(
@@ -61,7 +82,7 @@ impl TemplateDescription {
 
 impl std::fmt::Display for SymlinkDescription {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "symlink {:?} -> {:?}", self.source, self.target)
+        write!(f, "symlink {:?} -> {:?}", self.source, self.target.target)
     }
 }
 
@@ -181,8 +202,6 @@ impl FileState {
 mod test {
     use super::*;
 
-    // TODO: test complex targets
-
     #[test]
     fn test_file_state_symlinks_only() {
         let mut existing_symlinks = BTreeMap::new();
@@ -251,5 +270,24 @@ mod test {
     }
 
     #[test]
-    fn test_file_state_complex() {}
+    fn test_file_state_complex() {
+        let mut existing_templates = BTreeMap::new();
+        existing_templates.insert("file1s".into(), "file1t".into()); // Same
+        existing_templates.insert("file2s".into(), "file2t".into()); // Deleted
+        existing_templates.insert("file3s".into(), "file3t".into()); // Target change
+
+        let mut desired_templates = BTreeMap::new();
+        desired_templates.insert("file1s".into(), "file1t".into()); // Same
+        desired_templates.insert("file3s".into(), "file0t".into()); // Target change
+        desired_templates.insert("file5s".into(), "file5t".into()); // New
+
+        let state = FileState::new(
+            Default::default(),
+            desired_templates,
+            Default::default(),
+            existing_templates,
+            "cache".into(),
+        );
+        todo!()
+    }
 }
