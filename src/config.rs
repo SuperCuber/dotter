@@ -455,6 +455,26 @@ impl<T: Into<PathBuf>> From<T> for FileTarget {
     }
 }
 
+impl<T: Into<PathBuf>> From<T> for SymbolicTarget {
+    fn from(input: T) -> Self {
+        SymbolicTarget {
+            target: input.into(),
+            owner: None,
+        }
+    }
+}
+
+impl<T: Into<PathBuf>> From<T> for TemplateTarget {
+    fn from(input: T) -> Self {
+        TemplateTarget {
+            target: input.into(),
+            owner: None,
+            append: None,
+            prepend: None,
+        }
+    }
+}
+
 fn expand_directories(files: Files) -> Result<Files> {
     let expanded = files
         .into_iter()

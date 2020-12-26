@@ -185,12 +185,12 @@ mod test {
 
     #[test]
     fn test_file_state_symlinks_only() {
-        let mut existing_symlinks = BTreeMap::<PathBuf, PathBuf>::new();
+        let mut existing_symlinks = BTreeMap::new();
         existing_symlinks.insert("file1s".into(), "file1t".into()); // Same
         existing_symlinks.insert("file2s".into(), "file2t".into()); // Deleted
         existing_symlinks.insert("file3s".into(), "file3t".into()); // Target change
 
-        let mut desired_symlinks = BTreeMap::<PathBuf, PathBuf>::new();
+        let mut desired_symlinks = BTreeMap::new();
         desired_symlinks.insert("file1s".into(), "file1t".into()); // Same
         desired_symlinks.insert("file3s".into(), "file0t".into()); // Target change
         desired_symlinks.insert("file5s".into(), "file5t".into()); // New
