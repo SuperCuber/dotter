@@ -118,7 +118,7 @@ pub fn load_configuration(
 
     debug!("Scanning for 'owner' field in files...");
     if merged_config.files.iter().any(|(_, v)| v.has_owner()) {
-        elevate_privileges();
+        elevate_privileges().context("elevate privileges")?;
     }
 
     trace!("Final files: {:#?}", merged_config.files);
@@ -129,7 +129,7 @@ pub fn load_configuration(
 }
 
 #[cfg(unix)]
-fn elevate_privileges() {
+fn elevate_privileges() -> Result<()> {
     if sudo::check() == sudo::RunningAs::User {
         warn!("'owner' field was found on one of the files. Restarting with elevation.");
     }
@@ -143,12 +143,15 @@ fn elevate_privileges() {
         }
         Ok(sudo::RunningAs::Root) => {}
     }
+
+    Ok(())
 }
 
 #[cfg(windows)]
-fn elevate_privileges() {
+fn elevate_privileges() -> Result<()> {
     // TODO: maybe this is worth implementing
     warn!("'owner' field was found on one of the files. This is ignored on Windows.");
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
