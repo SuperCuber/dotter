@@ -118,26 +118,7 @@ pub fn load_configuration(
 
     debug!("Scanning for 'owner' field in files...");
     if merged_config.files.iter().any(|(_, v)| v.has_owner()) {
-        if cfg!(windows) {
-            // TODO: maybe this is worth implementing
-            warn!("'owner' field was found on one of the files. This is ignored on Windows.");
-        } else if cfg!(unix) {
-            if sudo::check() == sudo::RunningAs::User {
-                warn!("'owner' field was found on one of the files. Restarting with elevation.");
-            }
-            match sudo::with_env(&["HOME", "USER"]) {
-                Err(e) => {
-                    dbg!(e);
-                    bail!("error during elevation");
-                }
-                Ok(sudo::RunningAs::User) | Ok(sudo::RunningAs::Suid) => {
-                    bail!("running as regular user after elevating?")
-                }
-                Ok(sudo::RunningAs::Root) => {}
-            }
-        } else {
-            bail!("unsupported operating system while analyzing 'owner' field");
-        }
+        elevate_privileges();
     }
 
     trace!("Final files: {:#?}", merged_config.files);
@@ -145,6 +126,29 @@ pub fn load_configuration(
     trace!("Final helpers: {:?}", merged_config.helpers);
 
     Ok(merged_config)
+}
+
+#[cfg(unix)]
+fn elevate_privileges() {
+    if sudo::check() == sudo::RunningAs::User {
+        warn!("'owner' field was found on one of the files. Restarting with elevation.");
+    }
+    match sudo::with_env(&["HOME", "USER"]) {
+        Err(e) => {
+            dbg!(e);
+            bail!("error during elevation");
+        }
+        Ok(sudo::RunningAs::User) | Ok(sudo::RunningAs::Suid) => {
+            bail!("running as regular user after elevating?")
+        }
+        Ok(sudo::RunningAs::Root) => {}
+    }
+}
+
+#[cfg(windows)]
+fn elevate_privileges() {
+    // TODO: maybe this is worth implementing
+    warn!("'owner' field was found on one of the files. This is ignored on Windows.");
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
