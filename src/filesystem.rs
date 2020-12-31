@@ -300,13 +300,20 @@ mod filesystem_impl {
 
     use std::os::unix::fs::MetadataExt;
     pub fn set_owner(file: &Path, owner: Option<UnixUser>) -> Result<()> {
-        let owner = owner
-            .unwrap_or(UnixUser::Name(std::env::var("USER").context("get user")?));
+        let owner = owner.unwrap_or(UnixUser::Name(std::env::var("USER").context("get user")?));
         let uid = match owner {
             UnixUser::Uid(uid) => uid as u32,
             UnixUser::Name(name) => {
-                let name = std::ffi::CString::new(name.clone()).context("create C string")?;
-                let user_info = unsafe { *libc::getpwnam(name.as_ptr()) };
+                let name = std::ffi::CString::new(name).context("create C string")?;
+                dbg!(&name);
+                let user_info = unsafe {
+                    let user_info_ptr = libc::getpwnam(name.as_ptr());
+                    if user_info_ptr.is_null() {
+                        bail!("lookup uid of user {:?}", name);
+                    } else {
+                        *user_info_ptr
+                    }
+                };
                 user_info.pw_uid
             }
         };
