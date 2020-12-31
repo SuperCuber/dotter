@@ -258,6 +258,10 @@ mod filesystem_impl {
     pub fn platform_dunce(path: PathBuf) -> PathBuf {
         dunce::simplified(&path).into()
     }
+
+    pub fn set_owner(file: &Path, owner: Option<UnixUser>) -> Result<()> {
+        warn!("ignoring `owner` field on file {:?}", file);
+    }
 }
 
 #[cfg(unix)]
