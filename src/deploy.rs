@@ -222,7 +222,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
                 suggest_force = true;
             }
             Err(e) => {
-                display_error(e.context(format!("delete symlink {}", deleted_symlink)));
+                display_error(e.context(format!("delete {}", deleted_symlink)));
                 error_occurred = true;
             }
         }
@@ -236,7 +236,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
                 suggest_force = true;
             }
             Err(e) => {
-                display_error(e.context(format!("delete template {}", deleted_template)));
+                display_error(e.context(format!("delete {}", deleted_template)));
                 error_occurred = true;
             }
         }
@@ -264,7 +264,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
                 suggest_force = true;
             }
             Err(e) => {
-                display_error(e.context(format!("create symlink {}", new_symlink)));
+                display_error(e.context(format!("create {}", new_symlink)));
                 error_occurred = true;
             }
         }
@@ -278,7 +278,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
                 suggest_force = true;
             }
             Err(e) => {
-                display_error(e.context(format!("create template {}", new_template)));
+                display_error(e.context(format!("create {}", new_template)));
                 error_occurred = true;
             }
         }
@@ -294,7 +294,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
                 suggest_force = true;
             }
             Err(e) => {
-                display_error(e.context(format!("update symlink {}", old_symlink)));
+                display_error(e.context(format!("update {}", old_symlink)));
                 error_occurred = true;
             }
         }
@@ -313,7 +313,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
                 suggest_force = true;
             }
             Err(e) => {
-                display_error(e.context(format!("update template {}", old_template)));
+                display_error(e.context(format!("update {}", old_template)));
                 error_occurred = true;
             }
         }
@@ -662,11 +662,16 @@ fn update_template(
             debug!("Performing update");
 
             if log_enabled!(log::Level::Info) {
-                let diff = difference::generate_diff(&template, handlebars, &variables)
-                    .context("generate diff for template")?;
-                if difference::diff_nonempty(&diff) {
-                    info!("{} {}", "[~]".yellow(), template);
-                    difference::print_diff(diff, diff_context_lines);
+                match difference::generate_diff(&template, handlebars, &variables) {
+                    Ok(diff) => {
+                        if difference::diff_nonempty(&diff) {
+                            info!("{} {}", "[~]".yellow(), template);
+                            difference::print_diff(diff, diff_context_lines);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to generate diff for {} on step: {}", template, e);
+                    }
                 }
             }
 
@@ -698,7 +703,6 @@ fn perform_template_deployment(
     )
     .context("create parent for cache file")?;
     fs::write(&template.cache, rendered).context("write rendered template to cache")?;
-    filesystem::set_owner(&template.cache, template.target.owner.clone()).context("set cache file owner")?;
     fs::create_dir_all(
         &template
             .target
@@ -711,6 +715,8 @@ fn perform_template_deployment(
         .context("copy template from cache to target")?;
     filesystem::copy_permissions(&template.source, &template.target.target)
         .context("copy permissions from source to target")?;
+    filesystem::set_owner(&template.target.target, template.target.owner.clone())
+        .context("set cache file owner")?;
     Ok(())
 }
 

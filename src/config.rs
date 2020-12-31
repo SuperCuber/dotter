@@ -135,6 +135,7 @@ fn elevate_privileges() -> Result<()> {
     }
     match sudo::with_env(&["HOME", "USER"]) {
         Err(e) => {
+            // TODO: print this properly
             dbg!(e);
             bail!("error during elevation");
         }
@@ -177,7 +178,7 @@ pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
 
 pub fn save_cache(cache_file: &Path, cache: Cache) -> Result<()> {
     debug!("Saving cache...");
-    filesystem::save_file(cache_file, cache)?;
+    filesystem::save_file(cache_file, cache).context("save cache")?;
 
     Ok(())
 }
