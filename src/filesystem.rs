@@ -222,6 +222,8 @@ mod filesystem_impl {
     use std::os::windows::fs;
     use std::path::{Path, PathBuf};
 
+    use config::UnixUser;
+
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
         Ok(fs::symlink_file(
             super::real_path(target).context("get real path of source file")?,
@@ -265,6 +267,8 @@ mod filesystem_impl {
     use std::os::unix::fs;
     use std::path::{Path, PathBuf};
 
+    use config::UnixUser;
+
     pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
         Ok(fs::symlink(
             super::real_path(target).context("get real path of source file")?,
@@ -280,21 +284,36 @@ mod filesystem_impl {
     pub fn platform_dunce(path: PathBuf) -> PathBuf {
         path
     }
-}
 
-#[cfg(not(any(unix, windows)))]
-mod filesystem_impl {
-    use std::path::Path;
-    pub fn make_symlink(link: &Path, target: &Path) {
-        panic!("Unsupported platform: neither unix nor windows");
+    use libc::{self, gid_t, uid_t};
+    use std::os::unix::ffi::OsStrExt;
+    fn chown(path: impl AsRef<Path>, uid: uid_t, gid: gid_t) -> std::io::Result<()> {
+        let path = path.as_ref();
+        let s = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        let ret = unsafe { libc::chown(s.as_ptr(), uid, gid) };
+        if ret == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
     }
 
-    pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
-        panic!("Unsupported platform: neither unix nor windows");
-    }
+    use std::os::unix::fs::MetadataExt;
+    pub fn set_owner(file: &Path, owner: Option<UnixUser>) -> Result<()> {
+        let owner = owner
+            .unwrap_or(UnixUser::Name(std::env::var("USER").context("get user")?));
+        let uid = match owner {
+            UnixUser::Uid(uid) => uid as u32,
+            UnixUser::Name(name) => {
+                let name = std::ffi::CString::new(name.clone()).context("create C string")?;
+                let user_info = unsafe { *libc::getpwnam(name.as_ptr()) };
+                user_info.pw_uid
+            }
+        };
+        let metadata = file.metadata().context("get file metadata")?;
+        chown(file, uid, metadata.gid()).context("change owner")?;
 
-    pub fn platform_dunce(path: PathBuf) -> PathBuf {
-        panic!("Unsupported platform: neither unix nor windows");
+        Ok(())
     }
 }
 

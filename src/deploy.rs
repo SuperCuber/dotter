@@ -698,6 +698,7 @@ fn perform_template_deployment(
     )
     .context("create parent for cache file")?;
     fs::write(&template.cache, rendered).context("write rendered template to cache")?;
+    filesystem::set_owner(&template.cache, template.target.owner.clone()).context("set cache file owner")?;
     fs::create_dir_all(
         &template
             .target
