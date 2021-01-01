@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 
+use std::collections::BTreeMap;
+
 use args::Options;
 use config;
 
@@ -38,8 +40,8 @@ pub fn init(opt: Options) -> Result<()> {
     config::save_cache(
         &opt.cache_file,
         config::Cache {
-            symlinks: Default::default(),
-            templates: Default::default(),
+            symlinks: BTreeMap::default(),
+            templates: BTreeMap::default(),
         },
     )
     .context("save empty cache file")?;

@@ -227,7 +227,7 @@ fn recursive_extend_map(
     original: &mut BTreeMap<String, toml::Value>,
     new: BTreeMap<String, toml::Value>,
 ) {
-    for (key, new_value) in new.into_iter() {
+    for (key, new_value) in new {
         original
             .entry(key)
             .and_modify(|original_value| {
@@ -262,7 +262,7 @@ fn merge_configuration_files(
             trace!("{:#?}", included);
 
             // If package isn't filtered it's ignored, if package isn't included it's ignored
-            for (package_name, package_global) in global.packages.iter_mut() {
+            for (package_name, package_global) in &mut global.packages {
                 if let Some(package_included) = included.remove(package_name) {
                     package_global.files.extend(package_included.files);
                     recursive_extend_map(&mut package_global.variables, package_included.variables);
@@ -475,7 +475,7 @@ impl FileTarget {
     pub fn path(&self) -> &Path {
         match self {
             FileTarget::Automatic(path) => &path,
-            FileTarget::Symbolic(SymbolicTarget { target, .. }) => &target,
+            FileTarget::Symbolic(SymbolicTarget { target, .. }) |
             FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
         }
     }
@@ -483,7 +483,7 @@ impl FileTarget {
     pub fn has_owner(&self) -> bool {
         match self {
             FileTarget::Automatic(_) => false,
-            FileTarget::Symbolic(SymbolicTarget { owner, .. }) => owner.is_some(),
+            FileTarget::Symbolic(SymbolicTarget { owner, .. }) |
             FileTarget::ComplexTemplate(TemplateTarget { owner, .. }) => owner.is_some(),
         }
     }

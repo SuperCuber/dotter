@@ -160,7 +160,7 @@ pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateCompariso
 
 pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
     let path = std::fs::canonicalize(&path)?;
-    Ok(platform_dunce(path))
+    Ok(platform_dunce(&path))
 }
 
 pub fn ask_boolean(prompt: &str) -> bool {
@@ -255,12 +255,13 @@ mod filesystem_impl {
         }
     }
 
-    pub fn platform_dunce(path: PathBuf) -> PathBuf {
+    pub fn platform_dunce(path: &Path) -> PathBuf {
         dunce::simplified(&path).into()
     }
 
-    pub fn set_owner(file: &Path, owner: Option<UnixUser>) -> Result<()> {
+    pub fn set_owner(file: &Path, _owner: Option<UnixUser>) -> Result<()> {
         warn!("ignoring `owner` field on file {:?}", file);
+        Ok(())
     }
 }
 
@@ -285,7 +286,7 @@ mod filesystem_impl {
         Ok(true)
     }
 
-    pub fn platform_dunce(path: PathBuf) -> PathBuf {
+    pub fn platform_dunce(path: &Path) -> PathBuf {
         path
     }
 

@@ -12,7 +12,7 @@ use super::display_error;
 use args::Options;
 use config::{self, Variables};
 use difference;
-use file_state::*;
+use file_state::{FileState, SymlinkDescription, TemplateDescription};
 use filesystem::{self, SymlinkComparison, TemplateComparison};
 use handlebars_helpers;
 
@@ -27,8 +27,8 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     // Used just to transform them into Description structs
     let state = FileState::new(
-        Default::default(),
-        Default::default(),
+        BTreeMap::default(),
+        BTreeMap::default(),
         existing_symlinks.clone(),
         existing_templates.clone(),
         opt.cache_directory,
@@ -161,7 +161,7 @@ Proceeding by copying instead of symlinking."
         desired_templates,
         cache.symlinks.clone(),
         cache.templates.clone(),
-        cache_directory.into(),
+        cache_directory,
     );
 
     Ok(state)
@@ -183,12 +183,11 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let config = config::load_configuration(&opt.local_config, &opt.global_config, patch)
         .context("get a configuration")?;
 
-    let cache = match config::load_cache(&opt.cache_file)? {
-        Some(cache) => cache,
-        None => {
-            warn!("Cache file not found. Assuming cache is empty.");
-            Default::default()
-        }
+    let cache = if let Some(cache) = config::load_cache(&opt.cache_file)? {
+        cache
+    } else {
+        warn!("Cache file not found. Assuming cache is empty.");
+        config::Cache::default()
     };
 
     let state = file_state_from_configuration(&config, &cache, &opt.cache_directory)

@@ -98,11 +98,11 @@ impl FileState {
         desired_templates: BTreeMap<PathBuf, config::TemplateTarget>,
         existing_symlinks: BTreeMap<PathBuf, PathBuf>,
         existing_templates: BTreeMap<PathBuf, PathBuf>,
-        cache_dir: PathBuf,
+        cache_dir: impl AsRef<Path>,
     ) -> FileState {
         FileState {
             desired_symlinks: Self::symlinks_to_set(desired_symlinks),
-            desired_templates: Self::templates_to_set(desired_templates, &cache_dir),
+            desired_templates: Self::templates_to_set(desired_templates, cache_dir.as_ref()),
             existing_symlinks: Self::symlinks_to_set(
                 existing_symlinks
                     .into_iter()
@@ -132,7 +132,7 @@ impl FileState {
                         )
                     })
                     .collect(),
-                &cache_dir,
+                cache_dir.as_ref(),
             ),
         }
     }
