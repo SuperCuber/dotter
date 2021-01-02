@@ -248,12 +248,12 @@ mod filesystem_impl {
     }
 
     pub fn is_owned_by_user(path: &Path) -> Result<bool> {
-        true
+        Ok(true)
     }
 
     pub fn remove_file(path: &Path, root: bool) -> Result<()> {
         if root {
-            warn!("Removing file {:?} as regular user instead of root");
+            warn!("Removing file {:?} as regular user instead of root", path);
         }
         std::fs::remove_file(path).context("remove file")
     }
@@ -275,7 +275,8 @@ mod filesystem_impl {
                 owner, source, target
             );
         }
-        std::fs::copy(source, target).context("copy file")
+        std::fs::copy(source, target).context("copy file")?;
+        Ok(())
     }
 
     pub fn copy_permissions(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
