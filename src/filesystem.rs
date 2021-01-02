@@ -218,7 +218,6 @@ mod filesystem_impl {
     use anyhow::{Context, Result};
     use dunce;
 
-    use std::fs;
     use std::os::windows::fs;
     use std::path::{Path, PathBuf};
 
@@ -237,10 +236,10 @@ mod filesystem_impl {
             "Testing whether symlinks are enabled on path {:?}",
             test_file_path
         );
-        let _ = fs::remove_file(&test_file_path);
+        let _ = std::fs::remove_file(&test_file_path);
         match fs::symlink_file("test.txt", &test_file_path) {
             Ok(()) => {
-                fs::remove_file(&test_file_path)
+                std::fs::remove_file(&test_file_path)
                     .context(format!("remove test file {:?}", test_file_path))?;
                 Ok(true)
             }
@@ -259,10 +258,6 @@ mod filesystem_impl {
         dunce::simplified(&path).into()
     }
 
-    pub fn copy_file(source: &Path, target: &Path) -> Result<()> {
-        fs::copy_file(source, target).into()
-    }
-
     pub fn set_owner(file: &Path, _owner: Option<UnixUser>) -> Result<()> {
         warn!("ignoring `owner` field on file {:?}", file);
         Ok(())
@@ -273,8 +268,9 @@ mod filesystem_impl {
 mod filesystem_impl {
     use anyhow::{Context, Result};
 
-    use std::os::unix::fs;
+    use std::io::Write;
     use std::os::linux::fs::MetadataExt;
+    use std::os::unix::fs;
     use std::path::{Path, PathBuf};
 
     use config::UnixUser;
@@ -295,29 +291,117 @@ mod filesystem_impl {
         path.into()
     }
 
+    pub fn is_owned_by_user(path: &Path) -> Result<bool> {
+        let file_uid = path.metadata().context("get file metadata")?.st_uid();
+        let process_uid = std::path::PathBuf::from("/proc/self")
+            .metadata()
+            .context("get metadata of /proc/self")?
+            .st_uid();
+        Ok(file_uid == process_uid)
+    }
+
+    pub fn create_dir_all(path: &Path, owner: Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            debug!("Creating directory {:?} from user {:?}...", path, owner);
+            let success = std::process::Command::new("sudo")
+                .arg("-u")
+                .arg(owner.as_sudo_arg())
+                .arg("mkdir")
+                .arg("-p")
+                .arg(path)
+                .spawn()
+                .context("spawn sudo mkdir")?
+                .wait()
+                .context("wait for sudo mkdir")?
+                .success();
+
+            ensure!(success, "sudo mkdir failed");
+        } else {
+            std::fs::create_dir_all(path).context("create directories")?;
+        }
+        Ok(())
+    }
+
     pub fn copy_file(source: &Path, target: &Path, owner: Option<UnixUser>) -> Result<()> {
         if let Some(owner) = owner {
-            let contents = std::fs::read_to_string(source).context("read cached file")?;
-        } else {
+            debug!("Copying {:?} -> {:?} as user {:?}", source, target, owner);
+            let contents = std::fs::read_to_string(source).context("read file contents")?;
+            let mut child = std::process::Command::new("sudo")
+                .arg("-u")
+                .arg(owner.as_sudo_arg())
+                .arg("sh")
+                .arg("cat")
+                .arg(format!(">{}", target.as_os_str().to_string_lossy()))
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .context("spawn sudo cat >file")?;
 
+            // At this point we should've gone through another sudo at the mkdir step already,
+            // so sudo will not ask for the password
+            child
+                .stdin
+                .as_ref()
+                .expect("has stdin")
+                .write_all(contents.as_bytes())
+                .context("give input to cat")?;
+
+            let success = child.wait().context("wait for sudo cat >file")?.success();
+
+            ensure!(success, "sudo cat >file failed");
+        } else {
+            std::fs::copy(source, target).context("copy file")?;
         }
+
+        Ok(())
     }
 
     pub fn set_owner(file: &Path, owner: Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            debug!("Setting owner of {:?} to {:?}...", file, owner);
+        let owner = owner.unwrap_or(UnixUser::Name(
+            std::env::var("USER").context("get USER env var")?,
+        ));
+        debug!("Setting owner of {:?} to {:?}...", file, owner);
 
+        let success = std::process::Command::new("sudo")
+            .arg("chown")
+            .arg(owner.as_chown_arg())
+            .arg(file)
+            .spawn()
+            .context("spawn sudo chown command")?
+            .wait()
+            .context("wait for sudo chown command")?
+            .success();
+
+        ensure!(success, "sudo chown command failed");
+        Ok(())
+    }
+
+    pub fn copy_permissions(source: &Path, target: &Path, owner: Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            debug!(
+                "Copying permissions {:?} -> {:?} as user {:?}",
+                source, target, owner
+            );
             let success = std::process::Command::new("sudo")
-                .arg("chown")
-                .arg(owner.as_chown_arg())
-                .arg(file)
+                .arg("chmod")
+                .arg("--reference")
+                .arg(source)
+                .arg(target)
                 .spawn()
-                .context("spawn sudo chown command")?
+                .context("spawn sudo chmod command")?
                 .wait()
-                .context("wait for sudo chown command")?
+                .context("wait for sudo chmod command")?
                 .success();
 
-            ensure!(success, "sudo chown command failed");
+            ensure!(success, "sudo chmod failed");
+        } else {
+            std::fs::set_permissions(
+                target,
+                source
+                    .metadata()
+                    .context("get source metadata")?
+                    .permissions(),
+            )
+            .context("set target permissions")?;
         }
         Ok(())
     }
