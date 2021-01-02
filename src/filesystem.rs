@@ -251,10 +251,7 @@ mod filesystem_impl {
         Ok(true)
     }
 
-    pub fn remove_file(path: &Path, root: bool) -> Result<()> {
-        if root {
-            warn!("Removing file {:?} as regular user instead of root", path);
-        }
+    pub fn remove_file(path: &Path) -> Result<()> {
         std::fs::remove_file(path).context("remove file")
     }
 
