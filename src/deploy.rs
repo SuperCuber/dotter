@@ -546,11 +546,34 @@ fn create_template(
                     "Creating {} but target file already exists. Forcing.",
                     template
                 );
+                if filesystem::is_owned_by_user(&template.target.target).context("check if existing file needs elevation to be deleted")? {
+                    filesystem::remove_file(&template.target.target, true).context("remove existing file while forcing")?;
+                }
             }
+
             debug!("Performing creation");
             if act {
-                perform_template_deployment(template, handlebars, variables)
+                perform_template_render(template, handlebars, variables)
                     .context("perform template deployment")?;
+                filesystem::create_dir_all(
+                    &template
+                        .target
+                        .target
+                        .parent()
+                        .context("get parent of target file")?,
+                    &template.target.owner,
+                )
+                .context("create parent for target file")?;
+                filesystem::copy_file(
+                    &template.cache,
+                    &template.target.target,
+                    &template.target.owner,
+                )
+                .context("copy template from cache to target")?;
+                filesystem::copy_permissions(&template.source, &template.target.target)
+                    .context("copy permissions from source to target")?;
+                filesystem::set_owner(&template.target.target, &template.target.owner)
+                    .context("set cache file owner")?;
             }
             Ok(true)
         }
@@ -675,15 +698,33 @@ fn update_template(
             }
 
             if act {
-                perform_template_deployment(template, handlebars, variables)
+                perform_template_render(template, handlebars, variables)
                     .context("perform template deployment")?;
+                fs::create_dir_all(
+                    &template
+                        .target
+                        .target
+                        .parent()
+                        .context("get parent of target file")?,
+                )
+                .context("create parent for target file")?;
+                filesystem::copy_file(
+                    &template.cache,
+                    &template.target.target,
+                    template.target.owner.clone(),
+                )
+                .context("copy template from cache to target")?;
+                filesystem::copy_permissions(&template.source, &template.target.target)
+                    .context("copy permissions from source to target")?;
+                filesystem::set_owner(&template.target.target, template.target.owner.clone())
+                    .context("set cache file owner")?;
             }
             Ok(true)
         }
     }
 }
 
-fn perform_template_deployment(
+fn perform_template_render(
     template: &TemplateDescription,
     handlebars: &Handlebars,
     variables: &Variables,
@@ -695,7 +736,6 @@ fn perform_template_deployment(
         .render_template(&file_contents, variables)
         .context("render template")?;
 
-    // Cache
     fs::create_dir_all(
         &template
             .cache
@@ -704,22 +744,6 @@ fn perform_template_deployment(
     )
     .context("create parent for cache file")?;
     fs::write(&template.cache, rendered).context("write rendered template to cache")?;
-
-    // Target
-    fs::create_dir_all(
-        &template
-            .target
-            .target
-            .parent()
-            .context("get parent of target file")?,
-    )
-    .context("create parent for target file")?;
-    filesystem::copy_file(&template.cache, &template.target.target, template.target.owner.clone())
-        .context("copy template from cache to target")?;
-    filesystem::copy_permissions(&template.source, &template.target.target)
-        .context("copy permissions from source to target")?;
-    filesystem::set_owner(&template.target.target, template.target.owner.clone())
-        .context("set cache file owner")?;
 
     Ok(())
 }
