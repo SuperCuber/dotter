@@ -195,7 +195,7 @@ pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
                 path
             ))
         {
-            fs::remove_dir(path).context(format!("remove directory {:?}", path))?;
+            remove_dir(path).context(format!("remove directory {:?}", path))?;
         }
         path = path.parent().context(format!("get parent of {:?}", path))?;
     }
@@ -294,6 +294,10 @@ mod filesystem_impl {
                 .permissions(),
         )
         .context("set target permissions")
+    }
+
+    pub fn remove_dir(path: &Path) -> Result<()> {
+        std::fs::remove_dir(path).context("remove dir")
     }
 
     pub fn set_owner(file: &Path, _owner: &Option<UnixUser>) -> Result<()> {
@@ -450,24 +454,45 @@ mod filesystem_impl {
         Ok(())
     }
 
-    pub fn remove_file(path: &Path, root: bool) -> Result<()> {
-        if root {
-            debug!("Removing file {:?} as root", path);
-            let success = std::process::Command::new("sudo")
-                .arg("rm")
-                .arg(path)
-                .spawn()
-                .context("spawn sudo rm command")?
-                .wait()
-                .context("wait for sudo rm command")?
-                .success();
+    pub fn remove_dir(path: &Path) -> Result<()> {
+        match std::fs::remove_dir(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                let success = std::process::Command::new("sudo")
+                    .arg("rmdir")
+                    .arg(path)
+                    .spawn()
+                    .context("spawn sudo rmdir")?
+                    .wait()
+                    .context("wait for sudo rmdir")?
+                    .success();
 
-            ensure!(success, "sudo rm command failed");
-        } else {
-            debug!("Removing file {:?} as current user", path);
-            std::fs::remove_file(path).context("remove file")?;
+                ensure!(success, "sudo rmdir failed");
+                Ok(())
+            }
+            Err(e) => Err(e).context("remove dir"),
         }
-        Ok(())
+    }
+
+    pub fn remove_file(path: &Path) -> Result<()> {
+        match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                debug!("Removing file {:?} as root", path);
+                let success = std::process::Command::new("sudo")
+                    .arg("rm")
+                    .arg(path)
+                    .spawn()
+                    .context("spawn sudo rm command")?
+                    .wait()
+                    .context("wait for sudo rm command")?
+                    .success();
+
+                ensure!(success, "sudo rm command failed");
+                Ok(())
+            }
+            Err(e) => Err(e).context("remove file"),
+        }
     }
 }
 

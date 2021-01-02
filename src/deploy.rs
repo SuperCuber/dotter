@@ -444,7 +444,7 @@ fn delete_template(
 
             debug!("Performing deletion");
             if act {
-                fs::remove_file(&template.target.target).context("delete target file")?;
+                filesystem::remove_file(&template.target.target).context("delete target file")?;
                 filesystem::delete_parents(&template.target.target, interactive)
                     .context("delete parent directory in target location")?;
                 fs::remove_file(&template.cache).context("delete cache file")?;
@@ -546,12 +546,8 @@ fn create_template(
                     "Creating {} but target file already exists. Forcing.",
                     template
                 );
-                filesystem::remove_file(
-                    &template.target.target,
-                    filesystem::is_owned_by_user(&template.target.target)
-                        .context("check if existing file needs elevation to be deleted")?,
-                )
-                .context("remove existing file while forcing")?;
+                filesystem::remove_file(&template.target.target)
+                    .context("remove existing file while forcing")?;
             }
 
             debug!("Performing creation");
