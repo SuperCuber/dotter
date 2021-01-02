@@ -300,7 +300,7 @@ mod filesystem_impl {
         Ok(file_uid == process_uid)
     }
 
-    pub fn create_dir_all(path: &Path, owner: Option<UnixUser>) -> Result<()> {
+    pub fn create_dir_all(path: &Path, owner: &Option<UnixUser>) -> Result<()> {
         if let Some(owner) = owner {
             debug!("Creating directory {:?} from user {:?}...", path, owner);
             let success = std::process::Command::new("sudo")
@@ -317,12 +317,13 @@ mod filesystem_impl {
 
             ensure!(success, "sudo mkdir failed");
         } else {
+            debug!("Creating directory {:?} as current user...", path);
             std::fs::create_dir_all(path).context("create directories")?;
         }
         Ok(())
     }
 
-    pub fn copy_file(source: &Path, target: &Path, owner: Option<UnixUser>) -> Result<()> {
+    pub fn copy_file(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
         if let Some(owner) = owner {
             debug!("Copying {:?} -> {:?} as user {:?}", source, target, owner);
             let contents = std::fs::read_to_string(source).context("read file contents")?;
@@ -349,13 +350,14 @@ mod filesystem_impl {
 
             ensure!(success, "sudo cat >file failed");
         } else {
+            debug!("Copying {:?} -> {:?} as current user", source, target);
             std::fs::copy(source, target).context("copy file")?;
         }
 
         Ok(())
     }
 
-    pub fn set_owner(file: &Path, owner: Option<UnixUser>) -> Result<()> {
+    pub fn set_owner(file: &Path, owner: &Option<UnixUser>) -> Result<()> {
         let owner = owner.unwrap_or(UnixUser::Name(
             std::env::var("USER").context("get USER env var")?,
         ));
@@ -375,7 +377,7 @@ mod filesystem_impl {
         Ok(())
     }
 
-    pub fn copy_permissions(source: &Path, target: &Path, owner: Option<UnixUser>) -> Result<()> {
+    pub fn copy_permissions(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
         if let Some(owner) = owner {
             debug!(
                 "Copying permissions {:?} -> {:?} as user {:?}",
@@ -394,6 +396,10 @@ mod filesystem_impl {
 
             ensure!(success, "sudo chmod failed");
         } else {
+            debug!(
+                "Copying permissions {:?} -> {:?} as current user",
+                source, owner
+            );
             std::fs::set_permissions(
                 target,
                 source
