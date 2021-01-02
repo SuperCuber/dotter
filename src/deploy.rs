@@ -686,8 +686,6 @@ fn update_template(
                 );
             }
 
-            debug!("Performing update");
-
             if log_enabled!(log::Level::Info) {
                 match difference::generate_diff(&template, handlebars, &variables) {
                     Ok(diff) => {
@@ -702,17 +700,30 @@ fn update_template(
                 }
             }
 
+            debug!("Performing update");
             if act {
                 perform_template_cache(template, handlebars, variables)
                     .context("perform template cache")?;
-                fs::create_dir_all(
-                    &template
-                        .target
-                        .target
-                        .parent()
-                        .context("get parent of target file")?,
-                )
-                .context("create parent for target file")?;
+
+                // Handle TemplateComparison::TargetMissing
+                if !template.target.target.exists() {
+                    filesystem::create_dir_all(
+                        &template
+                            .target
+                            .target
+                            .parent()
+                            .context("get parent of target file")?,
+                        &template.target.owner,
+                    )
+                    .context("create parent for target file")?;
+                }
+                if !filesystem::is_owned_by_user(&template.target.target)
+                    .context("detect if target file is owned by the current user")?
+                    || template.target.owner.is_some()
+                {
+                    filesystem::set_owner(&template.target.target, &template.target.owner)
+                        .context("set cache file owner")?;
+                }
                 filesystem::copy_file(
                     &template.cache,
                     &template.target.target,
@@ -725,8 +736,6 @@ fn update_template(
                     &template.target.owner,
                 )
                 .context("copy permissions from source to target")?;
-                filesystem::set_owner(&template.target.target, &template.target.owner)
-                    .context("set cache file owner")?;
             }
             Ok(true)
         }
