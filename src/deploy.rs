@@ -546,12 +546,12 @@ fn create_template(
                     "Creating {} but target file already exists. Forcing.",
                     template
                 );
-                if filesystem::is_owned_by_user(&template.target.target)
-                    .context("check if existing file needs elevation to be deleted")?
-                {
-                    filesystem::remove_file(&template.target.target, true)
-                        .context("remove existing file while forcing")?;
-                }
+                filesystem::remove_file(
+                    &template.target.target,
+                    filesystem::is_owned_by_user(&template.target.target)
+                        .context("check if existing file needs elevation to be deleted")?,
+                )
+                .context("remove existing file while forcing")?;
             }
 
             debug!("Performing creation");
