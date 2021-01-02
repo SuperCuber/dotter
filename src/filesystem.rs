@@ -411,6 +411,26 @@ mod filesystem_impl {
         }
         Ok(())
     }
+
+    pub fn remove_file(path: &Path, root: bool) -> Result<()> {
+        if root {
+            debug!("Removing file {:?} as root", path);
+            let success = std::process::Command::new("sudo")
+                .arg("rm")
+                .arg(path)
+                .spawn()
+                .context("spawn sudo rm command")?
+                .wait()
+                .context("wait for sudo rm command")?
+                .success();
+
+            ensure!(success, "sudo rm command failed");
+        } else {
+            debug!("Removing file {:?} as current user", path);
+            std::fs::remove_file(path).context("remove file")?;
+        }
+        Ok(())
+    }
 }
 
 pub use self::filesystem_impl::*;
