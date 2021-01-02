@@ -247,7 +247,55 @@ mod filesystem_impl {
         dunce::simplified(&path).into()
     }
 
-    pub fn set_owner(file: &Path, _owner: Option<UnixUser>) -> Result<()> {
+    pub fn is_owned_by_user(path: &Path) -> Result<bool> {
+        true
+    }
+
+    pub fn remove_file(path: &Path, root: bool) -> Result<()> {
+        if root {
+            warn!("Removing file {:?} as regular user instead of root");
+        }
+        std::fs::remove_file(path).context("remove file")
+    }
+
+    pub fn create_dir_all(path: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when creating directory {:?}",
+                owner, path
+            );
+        }
+        std::fs::create_dir_all(path).context("create directories")
+    }
+
+    pub fn copy_file(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when copying {:?} -> {:?}",
+                owner, source, target
+            );
+        }
+        std::fs::copy(source, target).context("copy file")
+    }
+
+    pub fn copy_permissions(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when copying permissions {:?} -> {:?}",
+                owner, source, target
+            );
+        }
+        std::fs::set_permissions(
+            target,
+            source
+                .metadata()
+                .context("get source metadata")?
+                .permissions(),
+        )
+        .context("set target permissions")
+    }
+
+    pub fn set_owner(file: &Path, _owner: &Option<UnixUser>) -> Result<()> {
         warn!("ignoring `owner` field on file {:?}", file);
         Ok(())
     }
