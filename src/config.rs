@@ -123,7 +123,6 @@ pub fn load_configuration(
     Ok(merged_config)
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Cache {
@@ -444,8 +443,8 @@ impl FileTarget {
     pub fn path(&self) -> &Path {
         match self {
             FileTarget::Automatic(path) => &path,
-            FileTarget::Symbolic(SymbolicTarget { target, .. }) |
-            FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
+            FileTarget::Symbolic(SymbolicTarget { target, .. })
+            | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
         }
     }
 }
