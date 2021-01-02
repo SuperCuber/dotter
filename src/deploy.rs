@@ -546,8 +546,11 @@ fn create_template(
                     "Creating {} but target file already exists. Forcing.",
                     template
                 );
-                if filesystem::is_owned_by_user(&template.target.target).context("check if existing file needs elevation to be deleted")? {
-                    filesystem::remove_file(&template.target.target, true).context("remove existing file while forcing")?;
+                if filesystem::is_owned_by_user(&template.target.target)
+                    .context("check if existing file needs elevation to be deleted")?
+                {
+                    filesystem::remove_file(&template.target.target, true)
+                        .context("remove existing file while forcing")?;
                 }
             }
 
@@ -570,10 +573,12 @@ fn create_template(
                     &template.target.owner,
                 )
                 .context("copy template from cache to target")?;
-                filesystem::copy_permissions(&template.source, &template.target.target)
-                    .context("copy permissions from source to target")?;
-                filesystem::set_owner(&template.target.target, &template.target.owner)
-                    .context("set cache file owner")?;
+                filesystem::copy_permissions(
+                    &template.source,
+                    &template.target.target,
+                    &template.target.owner,
+                )
+                .context("copy permissions from source to target")?;
             }
             Ok(true)
         }
@@ -714,8 +719,12 @@ fn update_template(
                     &template.target.owner,
                 )
                 .context("copy template from cache to target")?;
-                filesystem::copy_permissions(&template.source, &template.target.target)
-                    .context("copy permissions from source to target")?;
+                filesystem::copy_permissions(
+                    &template.source,
+                    &template.target.target,
+                    &template.target.owner,
+                )
+                .context("copy permissions from source to target")?;
                 filesystem::set_owner(&template.target.target, &template.target.owner)
                     .context("set cache file owner")?;
             }
