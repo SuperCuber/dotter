@@ -38,7 +38,7 @@ pub struct Options {
 
     /// Force - instead of skipping, overwrite target files if their content is unexpected.
     /// Overrides --dry-run.
-    #[structopt(long, global = true)]
+    #[structopt(short, long, global = true)]
     pub force: bool,
 
     /// Assume "yes" instead of prompting when removing empty directories

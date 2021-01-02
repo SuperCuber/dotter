@@ -48,7 +48,7 @@ USAGE:
 
 FLAGS:
     -d, --dry-run      Dry run - don't do anything, only print information. Implies -v at least once
-        --force        Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
+    -f, --force        Force - instead of skipping, overwrite target files if their content is unexpected. Overrides
                        --dry-run
     -h, --help         Prints help information
     -y, --noconfirm    Assume "yes" instead of prompting when removing empty directories
