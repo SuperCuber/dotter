@@ -367,12 +367,12 @@ mod filesystem_impl {
             let mut child = std::process::Command::new("sudo")
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
-                .arg("sh")
-                .arg("cat")
-                .arg(format!(">{}", target.as_os_str().to_string_lossy()))
+                .arg("tee")
+                .arg(target)
                 .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
                 .spawn()
-                .context("spawn sudo cat >file")?;
+                .context("spawn sudo tee")?;
 
             // At this point we should've gone through another sudo at the mkdir step already,
             // so sudo will not ask for the password
@@ -381,11 +381,11 @@ mod filesystem_impl {
                 .as_ref()
                 .expect("has stdin")
                 .write_all(contents.as_bytes())
-                .context("give input to cat")?;
+                .context("give input to tee")?;
 
-            let success = child.wait().context("wait for sudo cat >file")?.success();
+            let success = child.wait().context("wait for sudo tee")?.success();
 
-            ensure!(success, "sudo cat >file failed");
+            ensure!(success, "sudo tee failed");
         } else {
             debug!("Copying {:?} -> {:?} as current user", source, target);
             std::fs::copy(source, target).context("copy file")?;
