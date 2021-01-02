@@ -219,7 +219,7 @@ mod test {
             Default::default(),
             existing_symlinks,
             Default::default(),
-            "cache".into(),
+            "cache",
         );
 
         assert_eq!(
@@ -267,27 +267,5 @@ mod test {
             ),
             "old files correct"
         );
-    }
-
-    #[test]
-    fn test_file_state_complex() {
-        let mut existing_templates = BTreeMap::new();
-        existing_templates.insert("file1s".into(), "file1t".into()); // Same
-        existing_templates.insert("file2s".into(), "file2t".into()); // Deleted
-        existing_templates.insert("file3s".into(), "file3t".into()); // Target change
-
-        let mut desired_templates = BTreeMap::new();
-        desired_templates.insert("file1s".into(), "file1t".into()); // Same
-        desired_templates.insert("file3s".into(), "file0t".into()); // Target change
-        desired_templates.insert("file5s".into(), "file5t".into()); // New
-
-        let state = FileState::new(
-            Default::default(),
-            desired_templates,
-            Default::default(),
-            existing_templates,
-            "cache".into(),
-        );
-        todo!()
     }
 }
