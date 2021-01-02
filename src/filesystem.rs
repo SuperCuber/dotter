@@ -387,7 +387,7 @@ mod filesystem_impl {
         } else {
             debug!(
                 "Copying permissions {:?} -> {:?} as current user",
-                source, owner
+                source, target
             );
             std::fs::set_permissions(
                 target,
