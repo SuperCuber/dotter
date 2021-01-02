@@ -553,8 +553,8 @@ fn create_template(
 
             debug!("Performing creation");
             if act {
-                perform_template_render(template, handlebars, variables)
-                    .context("perform template deployment")?;
+                perform_template_cache(template, handlebars, variables)
+                    .context("perform template cache")?;
                 filesystem::create_dir_all(
                     &template
                         .target
@@ -698,8 +698,8 @@ fn update_template(
             }
 
             if act {
-                perform_template_render(template, handlebars, variables)
-                    .context("perform template deployment")?;
+                perform_template_cache(template, handlebars, variables)
+                    .context("perform template cache")?;
                 fs::create_dir_all(
                     &template
                         .target
@@ -711,12 +711,12 @@ fn update_template(
                 filesystem::copy_file(
                     &template.cache,
                     &template.target.target,
-                    template.target.owner.clone(),
+                    &template.target.owner,
                 )
                 .context("copy template from cache to target")?;
                 filesystem::copy_permissions(&template.source, &template.target.target)
                     .context("copy permissions from source to target")?;
-                filesystem::set_owner(&template.target.target, template.target.owner.clone())
+                filesystem::set_owner(&template.target.target, &template.target.owner)
                     .context("set cache file owner")?;
             }
             Ok(true)
@@ -724,7 +724,7 @@ fn update_template(
     }
 }
 
-fn perform_template_render(
+fn perform_template_cache(
     template: &TemplateDescription,
     handlebars: &Handlebars,
     variables: &Variables,

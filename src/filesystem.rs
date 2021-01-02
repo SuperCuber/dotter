@@ -358,7 +358,7 @@ mod filesystem_impl {
     }
 
     pub fn set_owner(file: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        let owner = owner.unwrap_or(UnixUser::Name(
+        let owner = owner.clone().unwrap_or(UnixUser::Name(
             std::env::var("USER").context("get USER env var")?,
         ));
         debug!("Setting owner of {:?} to {:?}...", file, owner);
