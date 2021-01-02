@@ -90,6 +90,12 @@ fn run() -> Result<bool> {
 
     trace!("Loaded options: {:#?}", opt);
 
+    if std::env::var("USER").unwrap_or_default() == "root" {
+        warn!("It is not recommended to run Dotter as root, since the cache files and all files not marked with an `owner` field will default to being owned by root.
+If you're truly logged in as root, it is safe to ignore this message.
+Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, then use Dotter as a regular user.");
+    }
+
     match opt.action.unwrap_or_default() {
         args::Action::Deploy => {
             debug!("Deploying...");
