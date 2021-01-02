@@ -694,6 +694,8 @@ fn perform_template_deployment(
     let rendered = handlebars
         .render_template(&file_contents, variables)
         .context("render template")?;
+
+    // Cache
     fs::create_dir_all(
         &template
             .cache
@@ -702,6 +704,8 @@ fn perform_template_deployment(
     )
     .context("create parent for cache file")?;
     fs::write(&template.cache, rendered).context("write rendered template to cache")?;
+
+    // Target
     fs::create_dir_all(
         &template
             .target
@@ -710,12 +714,13 @@ fn perform_template_deployment(
             .context("get parent of target file")?,
     )
     .context("create parent for target file")?;
-    fs::copy(&template.cache, &template.target.target)
+    filesystem::copy_file(&template.cache, &template.target.target, template.target.owner.clone())
         .context("copy template from cache to target")?;
     filesystem::copy_permissions(&template.source, &template.target.target)
         .context("copy permissions from source to target")?;
     filesystem::set_owner(&template.target.target, template.target.owner.clone())
         .context("set cache file owner")?;
+
     Ok(())
 }
 

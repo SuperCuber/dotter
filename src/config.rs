@@ -116,11 +116,6 @@ pub fn load_configuration(
         })
         .collect();
 
-    debug!("Scanning for 'owner' field in files...");
-    if merged_config.files.iter().any(|(_, v)| v.has_owner()) {
-        elevate_privileges().context("elevate privileges")?;
-    }
-
     trace!("Final files: {:#?}", merged_config.files);
     trace!("Final variables: {:#?}", merged_config.variables);
     trace!("Final helpers: {:?}", merged_config.helpers);
@@ -128,32 +123,6 @@ pub fn load_configuration(
     Ok(merged_config)
 }
 
-#[cfg(unix)]
-fn elevate_privileges() -> Result<()> {
-    if sudo::check() == sudo::RunningAs::User {
-        warn!("'owner' field was found on one of the files. Restarting with elevation.");
-    }
-    match sudo::with_env(&["HOME", "USER"]) {
-        Err(e) => {
-            // TODO: print this properly
-            dbg!(e);
-            bail!("error during elevation");
-        }
-        Ok(sudo::RunningAs::User) | Ok(sudo::RunningAs::Suid) => {
-            bail!("running as regular user after elevating?")
-        }
-        Ok(sudo::RunningAs::Root) => {}
-    }
-
-    Ok(())
-}
-
-#[cfg(windows)]
-fn elevate_privileges() -> Result<()> {
-    // TODO: maybe this is worth implementing
-    warn!("'owner' field was found on one of the files. This is ignored on Windows.");
-    Ok(())
-}
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -479,14 +448,6 @@ impl FileTarget {
             FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
         }
     }
-
-    pub fn has_owner(&self) -> bool {
-        match self {
-            FileTarget::Automatic(_) => false,
-            FileTarget::Symbolic(SymbolicTarget { owner, .. }) |
-            FileTarget::ComplexTemplate(TemplateTarget { owner, .. }) => owner.is_some(),
-        }
-    }
 }
 
 impl<T: Into<PathBuf>> From<T> for FileTarget {
@@ -550,5 +511,21 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
+    }
+}
+
+impl UnixUser {
+    pub fn as_sudo_arg(&self) -> String {
+        match self {
+            UnixUser::Name(n) => n.clone(),
+            UnixUser::Uid(id) => format!("#{}", id),
+        }
+    }
+
+    pub fn as_chown_arg(&self) -> String {
+        match self {
+            UnixUser::Name(n) => n.clone(),
+            UnixUser::Uid(id) => format!("{}", id),
+        }
     }
 }

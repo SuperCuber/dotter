@@ -218,7 +218,7 @@ mod filesystem_impl {
     use anyhow::{Context, Result};
     use dunce;
 
-    use std::fs::remove_file;
+    use std::fs;
     use std::os::windows::fs;
     use std::path::{Path, PathBuf};
 
@@ -237,10 +237,10 @@ mod filesystem_impl {
             "Testing whether symlinks are enabled on path {:?}",
             test_file_path
         );
-        let _ = remove_file(&test_file_path);
+        let _ = fs::remove_file(&test_file_path);
         match fs::symlink_file("test.txt", &test_file_path) {
             Ok(()) => {
-                remove_file(&test_file_path)
+                fs::remove_file(&test_file_path)
                     .context(format!("remove test file {:?}", test_file_path))?;
                 Ok(true)
             }
@@ -259,6 +259,10 @@ mod filesystem_impl {
         dunce::simplified(&path).into()
     }
 
+    pub fn copy_file(source: &Path, target: &Path) -> Result<()> {
+        fs::copy_file(source, target).into()
+    }
+
     pub fn set_owner(file: &Path, _owner: Option<UnixUser>) -> Result<()> {
         warn!("ignoring `owner` field on file {:?}", file);
         Ok(())
@@ -270,6 +274,7 @@ mod filesystem_impl {
     use anyhow::{Context, Result};
 
     use std::os::unix::fs;
+    use std::os::linux::fs::MetadataExt;
     use std::path::{Path, PathBuf};
 
     use config::UnixUser;
@@ -287,44 +292,33 @@ mod filesystem_impl {
     }
 
     pub fn platform_dunce(path: &Path) -> PathBuf {
-        path
+        path.into()
     }
 
-    use libc::{self, gid_t, uid_t};
-    use std::os::unix::ffi::OsStrExt;
-    fn chown(path: impl AsRef<Path>, uid: uid_t, gid: gid_t) -> std::io::Result<()> {
-        let path = path.as_ref();
-        let s = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
-        let ret = unsafe { libc::chown(s.as_ptr(), uid, gid) };
-        if ret == 0 {
-            Ok(())
+    pub fn copy_file(source: &Path, target: &Path, owner: Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            let contents = std::fs::read_to_string(source).context("read cached file")?;
         } else {
-            Err(std::io::Error::last_os_error())
+
         }
     }
 
-    use std::os::unix::fs::MetadataExt;
     pub fn set_owner(file: &Path, owner: Option<UnixUser>) -> Result<()> {
-        let owner = owner.unwrap_or(UnixUser::Name(std::env::var("USER").context("get user")?));
-        let uid = match owner {
-            UnixUser::Uid(uid) => uid as u32,
-            UnixUser::Name(name) => {
-                let name = std::ffi::CString::new(name).context("create C string")?;
-                dbg!(&name);
-                let user_info = unsafe {
-                    let user_info_ptr = libc::getpwnam(name.as_ptr());
-                    if user_info_ptr.is_null() {
-                        bail!("lookup uid of user {:?}", name);
-                    } else {
-                        *user_info_ptr
-                    }
-                };
-                user_info.pw_uid
-            }
-        };
-        let metadata = file.metadata().context("get file metadata")?;
-        chown(file, uid, metadata.gid()).context("change owner")?;
+        if let Some(owner) = owner {
+            debug!("Setting owner of {:?} to {:?}...", file, owner);
 
+            let success = std::process::Command::new("sudo")
+                .arg("chown")
+                .arg(owner.as_chown_arg())
+                .arg(file)
+                .spawn()
+                .context("spawn sudo chown command")?
+                .wait()
+                .context("wait for sudo chown command")?
+                .success();
+
+            ensure!(success, "sudo chown command failed");
+        }
         Ok(())
     }
 }

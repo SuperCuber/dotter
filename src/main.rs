@@ -8,7 +8,6 @@ extern crate crossterm;
 extern crate diff;
 extern crate handlebars;
 extern crate handlebars_misc_helpers;
-extern crate libc;
 #[macro_use]
 extern crate log;
 extern crate meval;
@@ -17,7 +16,6 @@ extern crate serde;
 extern crate shellexpand;
 extern crate simplelog;
 extern crate structopt;
-extern crate sudo;
 #[macro_use]
 extern crate thiserror;
 extern crate toml;
