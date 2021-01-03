@@ -314,12 +314,38 @@ mod filesystem_impl {
 
     use config::UnixUser;
 
-    pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
-        Ok(fs::symlink(
-            super::real_path(target).context("get real path of source file")?,
-            link,
-        )
-        .context("create symlink")?)
+    pub fn make_symlink(link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            debug!(
+                "Creating symlink {:?} -> {:?} from user {:?}",
+                link, target, owner
+            );
+            let success = std::process::Command::new("sudo")
+                .arg("-u")
+                .arg(owner.as_sudo_arg())
+                .arg("ln")
+                .arg("-s")
+                .arg(super::real_path(target).context("get real path of source file")?)
+                .arg(link)
+                .spawn()
+                .context("spawn sudo ln")?
+                .wait()
+                .context("wait for sudo ln")?
+                .success();
+
+            ensure!(success, "sudo ln failed");
+        } else {
+            debug!(
+                "Creating symlink {:?} -> {:?} as current user...",
+                link, target
+            );
+            fs::symlink(
+                super::real_path(target).context("get real path of source file")?,
+                link,
+            )
+            .context("create symlink")?;
+        }
+        Ok(())
     }
 
     pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
@@ -405,6 +431,7 @@ mod filesystem_impl {
         let success = std::process::Command::new("sudo")
             .arg("chown")
             .arg(owner.as_chown_arg())
+            .arg("-h") // no-dereference
             .arg(file)
             .spawn()
             .context("spawn sudo chown command")?

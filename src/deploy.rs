@@ -49,7 +49,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("delete symlink {}", symlink))),
+            Err(e) => display_error(e.context(format!("delete {}", symlink))),
         }
     }
 
@@ -61,7 +61,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
             Ok(false) => {
                 suggest_force = true;
             }
-            Err(e) => display_error(e.context(format!("delete template {}", template))),
+            Err(e) => display_error(e.context(format!("delete {}", template))),
         }
     }
 
@@ -384,7 +384,7 @@ fn delete_symlink(
 
             debug!("Performing deletion");
             if act {
-                fs::remove_file(&symlink.target.target).context("remove symlink")?;
+                filesystem::remove_file(&symlink.target.target).context("remove symlink")?;
                 filesystem::delete_parents(&symlink.target.target, interactive)
                     .context("delete parents of symlink")?;
             }
@@ -492,15 +492,16 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
 
             debug!("Performing creation");
             if act {
-                fs::create_dir_all(
+                filesystem::create_dir_all(
                     &symlink
                         .target
                         .target
                         .parent()
                         .context("get parent of target file")?,
+                    &symlink.target.owner,
                 )
                 .context("create parent for target file")?;
-                filesystem::make_symlink(&symlink.target.target, &symlink.source)
+                filesystem::make_symlink(&symlink.target.target, &symlink.source, &symlink.target.owner)
                     .context("create target symlink")?;
             }
             Ok(true)
@@ -523,16 +524,6 @@ fn create_template(
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::OnlyCacheExists
-        | TemplateComparison::Identical
-        | TemplateComparison::Changed => {
-            error!(
-                "Creating {} but cache file already exists. Cache is CORRUPTED.",
-                template
-            );
-            error!("This is probably a bug. Delete cache.toml and cache/ folder.");
-            Ok(false)
-        }
         TemplateComparison::OnlyTargetExists if !force => {
             error!(
                 "Creating {} but target file already exists. Skipping...",
@@ -541,6 +532,15 @@ fn create_template(
             Ok(false)
         }
         t => {
+            if t == TemplateComparison::OnlyCacheExists
+                || t == TemplateComparison::Identical
+                || t == TemplateComparison::Changed
+            {
+                warn!(
+                    "Creating {} but cache file already exists. This is probably a result of an error in the last run.",
+                    template
+                );
+            }
             if t == TemplateComparison::OnlyTargetExists {
                 warn!(
                     "Creating {} but target file already exists. Forcing.",
@@ -607,37 +607,40 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             );
             Ok(false)
         }
-        SymlinkComparison::Identical => {
-            debug!("Not touching symlink.");
-            Ok(true)
-        }
         s => {
-            if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
-                warn!(
-                    "Updating {} but target wasn't what was expected. Forcing.",
-                    symlink
-                );
-                std::fs::remove_file(&symlink.target.target)
-                    .context("remove symlink target while forcing")?;
-            }
-            if s == SymlinkComparison::OnlySourceExists {
-                warn!(
-                    "Updating {} but target was missing. Creating it anyways.",
-                    symlink
-                );
-            }
-            debug!("Creating missing symlink.");
+            debug!("Performing creation.");
             if act {
-                fs::create_dir_all(
-                    &symlink
-                        .target
-                        .target
-                        .parent()
-                        .context("get parent of target file")?,
-                )
-                .context("create parent for target file")?;
-                filesystem::make_symlink(&symlink.target.target, &symlink.source)
-                    .context("create target symlink")?;
+                if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
+                    warn!(
+                        "Updating {} but target wasn't what was expected. Forcing.",
+                        symlink
+                    );
+                    filesystem::remove_file(&symlink.target.target)
+                        .context("remove symlink target while forcing")?;
+                }
+                if !symlink.target.target.exists() {
+                    warn!(
+                        "Updating {} but target was missing. Creating it anyways.",
+                        symlink
+                    );
+                    fs::create_dir_all(
+                        &symlink
+                            .target
+                            .target
+                            .parent()
+                            .context("get parent of target file")?,
+                    )
+                    .context("create parent for target file")?;
+                    filesystem::make_symlink(&symlink.target.target, &symlink.source, &symlink.target.owner)
+                        .context("create target symlink")?;
+                } else if !filesystem::is_owned_by_user(&symlink.target.target)
+                    .context("detect if target file is owned by the current user")?
+                    || symlink.target.owner.is_some()
+                {
+                    // Must be identical, just update owner
+                    filesystem::set_owner(&symlink.target.target, &symlink.target.owner)
+                        .context("set target symlink owner")?;
+                }
             }
             Ok(true)
         }
@@ -703,6 +706,10 @@ fn update_template(
 
                 // Handle TemplateComparison::TargetMissing
                 if !template.target.target.exists() {
+                    warn!(
+                        "Updating {} but target is missing. Creating it anyways.",
+                        template
+                    );
                     filesystem::create_dir_all(
                         &template
                             .target
@@ -712,13 +719,12 @@ fn update_template(
                         &template.target.owner,
                     )
                     .context("create parent for target file")?;
-                }
-                if !filesystem::is_owned_by_user(&template.target.target)
+                } else if !filesystem::is_owned_by_user(&template.target.target)
                     .context("detect if target file is owned by the current user")?
                     || template.target.owner.is_some()
                 {
                     filesystem::set_owner(&template.target.target, &template.target.owner)
-                        .context("set cache file owner")?;
+                        .context("set target file owner")?;
                 }
                 filesystem::copy_file(
                     &template.cache,
