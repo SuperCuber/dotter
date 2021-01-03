@@ -212,7 +212,13 @@ mod filesystem_impl {
 
     use config::UnixUser;
 
-    pub fn make_symlink(link: &Path, target: &Path) -> Result<()> {
+    pub fn make_symlink(link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when creating symlink {:?} -> {:?}",
+                owner, link, target
+            );
+        }
         Ok(fs::symlink_file(
             super::real_path(target).context("get real path of source file")?,
             link,
