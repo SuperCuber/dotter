@@ -501,8 +501,12 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                     &symlink.target.owner,
                 )
                 .context("create parent for target file")?;
-                filesystem::make_symlink(&symlink.target.target, &symlink.source, &symlink.target.owner)
-                    .context("create target symlink")?;
+                filesystem::make_symlink(
+                    &symlink.target.target,
+                    &symlink.source,
+                    &symlink.target.owner,
+                )
+                .context("create target symlink")?;
             }
             Ok(true)
         }
@@ -631,8 +635,12 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                             .context("get parent of target file")?,
                     )
                     .context("create parent for target file")?;
-                    filesystem::make_symlink(&symlink.target.target, &symlink.source, &symlink.target.owner)
-                        .context("create target symlink")?;
+                    filesystem::make_symlink(
+                        &symlink.target.target,
+                        &symlink.source,
+                        &symlink.target.owner,
+                    )
+                    .context("create target symlink")?;
                 } else if !filesystem::is_owned_by_user(&symlink.target.target)
                     .context("detect if target file is owned by the current user")?
                     || symlink.target.owner.is_some()
