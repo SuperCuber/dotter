@@ -4,168 +4,18 @@ use crossterm::style::Colorize;
 use handlebars::Handlebars;
 
 use std::collections::BTreeMap;
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
 
 use super::display_error;
 use args::Options;
 use config::{self, Variables};
 use difference;
-use file_state::{FileState, SymlinkDescription, TemplateDescription};
+use file_state::{
+    file_state_from_configuration, FileState, SymlinkDescription, TemplateDescription,
+};
 use filesystem::{self, SymlinkComparison, TemplateComparison};
 use handlebars_helpers;
-
-pub fn undeploy(opt: Options) -> Result<()> {
-    let cache = config::load_cache(&opt.cache_file)?
-        .context("load cache: Cannot undeploy without a cache.")?;
-
-    let config::Cache {
-        symlinks: existing_symlinks,
-        templates: existing_templates,
-    } = cache;
-
-    // Used just to transform them into Description structs
-    let state = FileState::new(
-        BTreeMap::default(),
-        BTreeMap::default(),
-        existing_symlinks.clone(),
-        existing_templates.clone(),
-        opt.cache_directory,
-    );
-    trace!("File state: {:#?}", state);
-
-    let (deleted_symlinks, deleted_templates) = state.deleted_files();
-
-    let mut actual_symlinks = existing_symlinks;
-    let mut actual_templates = existing_templates;
-    let mut suggest_force = false;
-
-    for symlink in deleted_symlinks {
-        match delete_symlink(opt.act, &symlink, opt.force, opt.interactive) {
-            Ok(true) => {
-                actual_symlinks.remove(&symlink.source);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => display_error(e.context(format!("delete {}", symlink))),
-        }
-    }
-
-    for template in deleted_templates {
-        match delete_template(opt.act, &template, opt.force, opt.interactive) {
-            Ok(true) => {
-                actual_templates.remove(&template.source);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => display_error(e.context(format!("delete {}", template))),
-        }
-    }
-
-    if suggest_force {
-        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
-    }
-
-    if opt.act {
-        // Should be empty if everything went well, but if some things were skipped this contains
-        // them.
-        config::save_cache(
-            &opt.cache_file,
-            config::Cache {
-                symlinks: actual_symlinks,
-                templates: actual_templates,
-            },
-        )?;
-    }
-
-    Ok(())
-}
-
-pub fn file_state_from_configuration(
-    config: &config::Configuration,
-    cache: &config::Cache,
-    cache_directory: &Path,
-) -> Result<FileState> {
-    // On Windows, you need developer mode to create symlinks.
-    let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
-        .context("check whether symlinks are enabled")?
-    {
-        true
-    } else {
-        warn!(
-            "No permission to create symbolic links.\n
-On Windows, in order to create symbolic links you need to enable Developer Mode.\n
-Proceeding by copying instead of symlinking."
-        );
-        false
-    };
-
-    let mut desired_symlinks = BTreeMap::new();
-    let mut desired_templates = BTreeMap::new();
-
-    for (source, target) in config.files.clone() {
-        match target {
-            config::FileTarget::Automatic(target) => {
-                if symlinks_enabled
-                    && !is_template(&source)
-                        .context(format!("check whether {:?} is a template", source))?
-                {
-                    desired_symlinks.insert(
-                        source,
-                        config::SymbolicTarget {
-                            target,
-                            owner: None,
-                        },
-                    );
-                } else {
-                    desired_templates.insert(
-                        source,
-                        config::TemplateTarget {
-                            target,
-                            owner: None,
-                            append: None,
-                            prepend: None,
-                        },
-                    );
-                }
-            }
-            config::FileTarget::Symbolic(target) => {
-                if symlinks_enabled {
-                    desired_symlinks.insert(source, target);
-                } else {
-                    desired_templates.insert(
-                        source,
-                        config::TemplateTarget {
-                            target: target.target,
-                            owner: target.owner,
-                            append: None,
-                            prepend: None,
-                        },
-                    );
-                }
-            }
-            config::FileTarget::ComplexTemplate(target) => {
-                desired_templates.insert(source, target);
-            }
-        }
-    }
-
-    trace!("Desired symlinks: {:#?}", desired_symlinks);
-    trace!("Desired templates: {:#?}", desired_templates);
-
-    let state = FileState::new(
-        desired_symlinks,
-        desired_templates,
-        cache.symlinks.clone(),
-        cache.templates.clone(),
-        cache_directory,
-    );
-
-    Ok(state)
-}
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
@@ -337,6 +187,74 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     }
 
     Ok(error_occurred)
+}
+
+pub fn undeploy(opt: Options) -> Result<()> {
+    let cache = config::load_cache(&opt.cache_file)?
+        .context("load cache: Cannot undeploy without a cache.")?;
+
+    let config::Cache {
+        symlinks: existing_symlinks,
+        templates: existing_templates,
+    } = cache;
+
+    // Used just to transform them into Description structs
+    let state = FileState::new(
+        BTreeMap::default(),
+        BTreeMap::default(),
+        existing_symlinks.clone(),
+        existing_templates.clone(),
+        opt.cache_directory,
+    );
+    trace!("File state: {:#?}", state);
+
+    let (deleted_symlinks, deleted_templates) = state.deleted_files();
+
+    let mut actual_symlinks = existing_symlinks;
+    let mut actual_templates = existing_templates;
+    let mut suggest_force = false;
+
+    for symlink in deleted_symlinks {
+        match delete_symlink(opt.act, &symlink, opt.force, opt.interactive) {
+            Ok(true) => {
+                actual_symlinks.remove(&symlink.source);
+            }
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => display_error(e.context(format!("delete {}", symlink))),
+        }
+    }
+
+    for template in deleted_templates {
+        match delete_template(opt.act, &template, opt.force, opt.interactive) {
+            Ok(true) => {
+                actual_templates.remove(&template.source);
+            }
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => display_error(e.context(format!("delete {}", template))),
+        }
+    }
+
+    if suggest_force {
+        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+    }
+
+    if opt.act {
+        // Should be empty if everything went well, but if some things were skipped this contains
+        // them.
+        config::save_cache(
+            &opt.cache_file,
+            config::Cache {
+                symlinks: actual_symlinks,
+                templates: actual_templates,
+            },
+        )?;
+    }
+
+    Ok(())
 }
 
 // == DELETE ==
@@ -826,6 +744,7 @@ fn perform_template_deploy(
         .render_template(&file_contents, variables)
         .context("render template")?;
 
+    // Cache
     fs::create_dir_all(
         &template
             .cache
@@ -834,6 +753,8 @@ fn perform_template_deploy(
     )
     .context("create parent for cache file")?;
     fs::write(&template.cache, rendered).context("write rendered template to cache")?;
+
+    // Target
     filesystem::copy_file(
         &template.cache,
         &template.target.target,
@@ -848,15 +769,4 @@ fn perform_template_deploy(
     .context("copy permissions from source to target")?;
 
     Ok(())
-}
-
-fn is_template(source: &Path) -> Result<bool> {
-    let mut file = File::open(source).context("open file")?;
-    let mut buf = String::new();
-    if file.read_to_string(&mut buf).is_err() {
-        warn!("File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.", source);
-        Ok(false)
-    } else {
-        Ok(buf.contains("{{"))
-    }
 }
