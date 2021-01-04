@@ -12,6 +12,27 @@ use file_state;
 pub type Diff = Vec<diff::Result<String>>;
 pub type HunkDiff = Vec<(usize, usize, Diff)>;
 
+pub fn print_template_diff(
+    template: &file_state::TemplateDescription,
+    handlebars: &Handlebars,
+    variables: &Variables,
+    diff_context_lines: usize,
+) {
+    if log_enabled!(log::Level::Info) {
+        match generate_diff(&template, handlebars, &variables) {
+            Ok(diff) => {
+                if diff_nonempty(&diff) {
+                    info!("{} {}", "[~]".yellow(), template);
+                    print_diff(diff, diff_context_lines);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to generate diff for {} on step: {}", template, e);
+            }
+        }
+    }
+}
+
 pub fn generate_diff(
     template: &file_state::TemplateDescription,
     handlebars: &Handlebars,
@@ -157,7 +178,7 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
     }
 }
 
-pub fn print_diff(diff: Diff, extra_lines: usize) {
+fn print_diff(diff: Diff, extra_lines: usize) {
     let mut diff = hunkify_diff(diff, extra_lines);
 
     let last_hunk = diff.pop().expect("at least one hunk");

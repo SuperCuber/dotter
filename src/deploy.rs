@@ -355,6 +355,14 @@ fn delete_symlink(
     debug!("Current state: {}", comparison);
 
     match comparison {
+        SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
+            debug!("Performing deletion");
+            if act {
+                perform_symlink_target_deletion(symlink, interactive)
+                    .context("perform symlink target deletion")?;
+            }
+            Ok(true)
+        }
         SymlinkComparison::OnlySourceExists | SymlinkComparison::BothMissing => {
             warn!(
                 "Deleting {} but target doesn't exist. Removing from cache anyways.",
@@ -393,14 +401,6 @@ fn delete_symlink(
             );
             Ok(false)
         }
-        SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
-            debug!("Performing deletion");
-            if act {
-                perform_symlink_target_deletion(symlink, interactive)
-                    .context("perform symlink target deletion")?;
-            }
-            Ok(true)
-        }
     }
 }
 
@@ -425,6 +425,15 @@ fn delete_template(
     debug!("Current state: {}", comparison);
 
     match comparison {
+        TemplateComparison::Identical => {
+            debug!("Performing deletion");
+            if act {
+                perform_cache_deletion(template).context("perform cache deletion")?;
+                perform_template_target_deletion(template, interactive)
+                    .context("perform template target deletion")?;
+            }
+            Ok(true)
+        }
         TemplateComparison::OnlyCacheExists => {
             warn!(
                 "Deleting {} but target doesn't exist. Deleting cache anyways.",
@@ -462,15 +471,6 @@ fn delete_template(
             );
             Ok(false)
         }
-        TemplateComparison::Identical => {
-            debug!("Performing deletion");
-            if act {
-                perform_cache_deletion(template).context("perform cache deletion")?;
-                perform_template_target_deletion(template, interactive)
-                    .context("perform template target deletion")?;
-            }
-            Ok(true)
-        }
     }
 }
 
@@ -502,13 +502,13 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
     debug!("Current state: {}", comparison);
 
     match comparison {
-        SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
-            error!("Creating {} but source is missing. Skipping...", symlink);
-            Ok(false)
-        }
         SymlinkComparison::Identical => {
             warn!("Creating {} but target already exists and points at source. Adding to cache anyways", symlink);
             Ok(true)
+        }
+        SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
+            error!("Creating {} but source is missing. Skipping...", symlink);
+            Ok(false)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
             if force {
@@ -518,15 +518,13 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                 );
                 std::fs::remove_file(&symlink.target.target)
                     .context("remove symlink target while forcing")?;
-                debug!("Performing creation");
-                if act {
-                    filesystem::make_symlink(
-                        &symlink.target.target,
-                        &symlink.source,
-                        &symlink.target.owner,
-                    )
-                    .context("create target symlink")?;
-                }
+                // -f > -v
+                filesystem::make_symlink(
+                    &symlink.target.target,
+                    &symlink.source,
+                    &symlink.target.owner,
+                )
+                .context("create target symlink")?;
                 Ok(true)
             } else {
                 error!(
@@ -615,36 +613,33 @@ fn create_template(
             }
             Ok(true)
         }
+        TemplateComparison::OnlyTargetExists if force => {
+            warn!(
+                "Creating {} but target file already exists. Forcing.",
+                template
+            );
+            filesystem::remove_file(&template.target.target)
+                .context("remove existing file while forcing")?;
+            // -f > -v
+            filesystem::create_dir_all(
+                &template
+                    .target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &template.target.owner,
+            )
+            .context("create parent for target file")?;
+            perform_template_deploy(template, handlebars, variables)
+                .context("perform template cache")?;
+            Ok(true)
+        }
         TemplateComparison::OnlyTargetExists => {
-            if force {
-                warn!(
-                    "Creating {} but target file already exists. Forcing.",
-                    template
-                );
-                filesystem::remove_file(&template.target.target)
-                    .context("remove existing file while forcing")?;
-                debug!("Performing creation");
-                if act {
-                    filesystem::create_dir_all(
-                        &template
-                            .target
-                            .target
-                            .parent()
-                            .context("get parent of target file")?,
-                        &template.target.owner,
-                    )
-                    .context("create parent for target file")?;
-                    perform_template_deploy(template, handlebars, variables)
-                        .context("perform template cache")?;
-                }
-                Ok(true)
-            } else {
-                error!(
-                    "Creating {} but target file already exists. Skipping...",
-                    template
-                );
-                Ok(false)
-            }
+            error!(
+                "Creating {} but target file already exists. Skipping...",
+                template
+            );
+            Ok(false)
         }
     }
 }
@@ -660,6 +655,14 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
     debug!("Current state: {}", comparison);
 
     match comparison {
+        SymlinkComparison::Identical => {
+            debug!("Performing update");
+            if act {
+                filesystem::set_owner(&symlink.target.target, &symlink.target.owner)
+                    .context("set target symlink owner")?;
+            }
+            Ok(true)
+        }
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
             error!("Updating {} but source is missing. Skipping...", symlink);
             Ok(false)
@@ -671,15 +674,13 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             );
             filesystem::remove_file(&symlink.target.target)
                 .context("remove symlink target while forcing")?;
-            debug!("Performing update");
-            if act {
-                filesystem::make_symlink(
-                    &symlink.target.target,
-                    &symlink.source,
-                    &symlink.target.owner,
-                )
-                .context("create target symlink")?;
-            }
+            // -f > -v
+            filesystem::make_symlink(
+                &symlink.target.target,
+                &symlink.source,
+                &symlink.target.owner,
+            )
+            .context("create target symlink")?;
             Ok(true)
         }
         SymlinkComparison::Changed => {
@@ -693,15 +694,13 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             warn!("Updating {} but target is not a symlink. Forcing.", symlink);
             filesystem::remove_file(&symlink.target.target)
                 .context("remove symlink target while forcing")?;
-            debug!("Performing update");
-            if act {
-                filesystem::make_symlink(
-                    &symlink.target.target,
-                    &symlink.source,
-                    &symlink.target.owner,
-                )
-                .context("create target symlink")?;
-            }
+            // -f > -v
+            filesystem::make_symlink(
+                &symlink.target.target,
+                &symlink.source,
+                &symlink.target.owner,
+            )
+            .context("create target symlink")?;
             Ok(true)
         }
         SymlinkComparison::TargetNotSymlink => {
@@ -716,7 +715,6 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                 "Updating {} but target was missing. Creating it anyways.",
                 symlink
             );
-            debug!("Performing update");
             if act {
                 fs::create_dir_all(
                     &symlink
@@ -732,14 +730,6 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                     &symlink.target.owner,
                 )
                 .context("create target symlink")?;
-            }
-            Ok(true)
-        }
-        SymlinkComparison::Identical => {
-            debug!("Performing update");
-            if act {
-                filesystem::set_owner(&symlink.target.target, &symlink.target.owner)
-                    .context("set target symlink owner")?;
             }
             Ok(true)
         }
@@ -762,21 +752,8 @@ fn update_template(
 
     match comparison {
         TemplateComparison::Identical => {
-            if log_enabled!(log::Level::Info) {
-                match difference::generate_diff(&template, handlebars, &variables) {
-                    Ok(diff) => {
-                        if difference::diff_nonempty(&diff) {
-                            info!("{} {}", "[~]".yellow(), template);
-                            difference::print_diff(diff, diff_context_lines);
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to generate diff for {} on step: {}", template, e);
-                    }
-                }
-            }
-
             debug!("Performing update");
+            difference::print_template_diff(template, handlebars, variables, diff_context_lines);
             if act {
                 filesystem::set_owner(&template.target.target, &template.target.owner)
                     .context("set target file owner")?;
@@ -816,21 +793,7 @@ fn update_template(
                 "Updating {} but target's contents were changed. Forcing.",
                 template
             );
-
-            if log_enabled!(log::Level::Info) {
-                match difference::generate_diff(&template, handlebars, &variables) {
-                    Ok(diff) => {
-                        if difference::diff_nonempty(&diff) {
-                            info!("{} {}", "[~]".yellow(), template);
-                            difference::print_diff(diff, diff_context_lines);
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to generate diff for {} on step: {}", template, e);
-                    }
-                }
-            }
-
+            difference::print_template_diff(template, handlebars, variables, diff_context_lines);
             debug!("Performing update");
             if act {
                 filesystem::set_owner(&template.target.target, &template.target.owner)
