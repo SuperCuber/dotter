@@ -432,6 +432,13 @@ mod filesystem_impl {
     }
 
     pub fn set_owner(file: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if is_owned_by_user(file).context("detect if file is owned by the current user")?
+            && owner.is_none()
+        {
+            // Nothing to do, no need to elevate
+            return Ok(());
+        }
+
         let owner = owner.clone().unwrap_or(UnixUser::Name(
             std::env::var("USER").context("get USER env var")?,
         ));

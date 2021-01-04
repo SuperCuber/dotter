@@ -511,23 +511,33 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             warn!("Creating {} but target already exists and points at source. Adding to cache anyways", symlink);
             Ok(true)
         }
-        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if !force => {
-            error!(
-                "Creating {} but target already exists and differs from expected. Skipping...",
-                symlink
-            );
-            Ok(false)
-        }
-        s => {
-            if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
+            if force {
                 warn!(
                     "Creating {} but target already exists and differs from expected. Forcing.",
                     symlink
                 );
                 std::fs::remove_file(&symlink.target.target)
                     .context("remove symlink target while forcing")?;
+                debug!("Performing creation");
+                if act {
+                    filesystem::make_symlink(
+                        &symlink.target.target,
+                        &symlink.source,
+                        &symlink.target.owner,
+                    )
+                    .context("create target symlink")?;
+                }
+                Ok(true)
+            } else {
+                error!(
+                    "Creating {} but target already exists and differs from expected. Skipping...",
+                    symlink
+                );
+                Ok(false)
             }
-
+        }
+        SymlinkComparison::OnlySourceExists => {
             debug!("Performing creation");
             if act {
                 filesystem::create_dir_all(
@@ -566,36 +576,9 @@ fn create_template(
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::OnlyTargetExists if !force => {
-            error!(
-                "Creating {} but target file already exists. Skipping...",
-                template
-            );
-            Ok(false)
-        }
-        t => {
-            if t == TemplateComparison::OnlyCacheExists
-                || t == TemplateComparison::Identical
-                || t == TemplateComparison::Changed
-            {
-                warn!(
-                    "Creating {} but cache file already exists. This is probably a result of an error in the last run.",
-                    template
-                );
-            }
-            if t == TemplateComparison::OnlyTargetExists {
-                warn!(
-                    "Creating {} but target file already exists. Forcing.",
-                    template
-                );
-                filesystem::remove_file(&template.target.target)
-                    .context("remove existing file while forcing")?;
-            }
-
+        TemplateComparison::BothMissing => {
             debug!("Performing creation");
             if act {
-                perform_template_cache(template, handlebars, variables)
-                    .context("perform template cache")?;
                 filesystem::create_dir_all(
                     &template
                         .target
@@ -605,27 +588,74 @@ fn create_template(
                     &template.target.owner,
                 )
                 .context("create parent for target file")?;
-                filesystem::copy_file(
-                    &template.cache,
-                    &template.target.target,
-                    &template.target.owner,
-                )
-                .context("copy template from cache to target")?;
-                filesystem::copy_permissions(
-                    &template.source,
-                    &template.target.target,
-                    &template.target.owner,
-                )
-                .context("copy permissions from source to target")?;
+                perform_template_deploy(template, handlebars, variables)
+                    .context("perform template cache")?;
             }
             Ok(true)
+        }
+        TemplateComparison::OnlyCacheExists
+        | TemplateComparison::Identical
+        | TemplateComparison::Changed => {
+            warn!(
+                "Creating {} but cache file already exists. This is probably a result of an error in the last run.",
+                template
+            );
+            debug!("Performing creation");
+            if act {
+                filesystem::create_dir_all(
+                    &template
+                        .target
+                        .target
+                        .parent()
+                        .context("get parent of target file")?,
+                    &template.target.owner,
+                )
+                .context("create parent for target file")?;
+                perform_template_deploy(template, handlebars, variables)
+                    .context("perform template cache")?;
+            }
+            Ok(true)
+        }
+        TemplateComparison::OnlyTargetExists => {
+            if force {
+                warn!(
+                    "Creating {} but target file already exists. Forcing.",
+                    template
+                );
+                filesystem::remove_file(&template.target.target)
+                    .context("remove existing file while forcing")?;
+                debug!("Performing creation");
+                if act {
+                    filesystem::create_dir_all(
+                        &template
+                            .target
+                            .target
+                            .parent()
+                            .context("get parent of target file")?,
+                        &template.target.owner,
+                    )
+                    .context("create parent for target file")?;
+                    perform_template_deploy(template, handlebars, variables)
+                        .context("perform template cache")?;
+                }
+                Ok(true)
+            } else {
+                error!(
+                    "Creating {} but target file already exists. Skipping...",
+                    template
+                );
+                Ok(false)
+            }
         }
     }
 }
 
-// Returns true if the symlink wasn't skipped
+// == UPDATE ==
+
+/// Returns true if the symlink wasn't skipped
 fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
     debug!("Updating {}...", symlink);
+
     let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
@@ -635,59 +665,82 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             error!("Updating {} but source is missing. Skipping...", symlink);
             Ok(false)
         }
-        SymlinkComparison::Changed if !force => {
+        SymlinkComparison::Changed if force => {
+            warn!(
+                "Updating {} but target doesn't point at source. Forcing.",
+                symlink
+            );
+            filesystem::remove_file(&symlink.target.target)
+                .context("remove symlink target while forcing")?;
+            debug!("Performing update");
+            if act {
+                filesystem::make_symlink(
+                    &symlink.target.target,
+                    &symlink.source,
+                    &symlink.target.owner,
+                )
+                .context("create target symlink")?;
+            }
+            Ok(true)
+        }
+        SymlinkComparison::Changed => {
             error!(
                 "Updating {} but target doesn't point at source. Skipping...",
                 symlink
             );
             Ok(false)
         }
-        SymlinkComparison::TargetNotSymlink if !force => {
+        SymlinkComparison::TargetNotSymlink if force => {
+            warn!("Updating {} but target is not a symlink. Forcing.", symlink);
+            filesystem::remove_file(&symlink.target.target)
+                .context("remove symlink target while forcing")?;
+            debug!("Performing update");
+            if act {
+                filesystem::make_symlink(
+                    &symlink.target.target,
+                    &symlink.source,
+                    &symlink.target.owner,
+                )
+                .context("create target symlink")?;
+            }
+            Ok(true)
+        }
+        SymlinkComparison::TargetNotSymlink => {
             error!(
                 "Updating {} but target is not a symlink. Skipping...",
                 symlink
             );
             Ok(false)
         }
-        s => {
+        SymlinkComparison::OnlySourceExists => {
+            warn!(
+                "Updating {} but target was missing. Creating it anyways.",
+                symlink
+            );
             debug!("Performing update");
             if act {
-                if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
-                    warn!(
-                        "Updating {} but target wasn't what was expected. Forcing.",
-                        symlink
-                    );
-                    filesystem::remove_file(&symlink.target.target)
-                        .context("remove symlink target while forcing")?;
-                } else if s == SymlinkComparison::OnlySourceExists {
-                    warn!(
-                        "Updating {} but target was missing. Creating it anyways.",
-                        symlink
-                    );
-                }
-                if !symlink.target.target.exists() {
-                    fs::create_dir_all(
-                        &symlink
-                            .target
-                            .target
-                            .parent()
-                            .context("get parent of target file")?,
-                    )
-                    .context("create parent for target file")?;
-                    filesystem::make_symlink(
-                        &symlink.target.target,
-                        &symlink.source,
-                        &symlink.target.owner,
-                    )
-                    .context("create target symlink")?;
-                } else if !filesystem::is_owned_by_user(&symlink.target.target)
-                    .context("detect if target file is owned by the current user")?
-                    || symlink.target.owner.is_some()
-                {
-                    // Must be identical, just update owner
-                    filesystem::set_owner(&symlink.target.target, &symlink.target.owner)
-                        .context("set target symlink owner")?;
-                }
+                fs::create_dir_all(
+                    &symlink
+                        .target
+                        .target
+                        .parent()
+                        .context("get parent of target file")?,
+                )
+                .context("create parent for target file")?;
+                filesystem::make_symlink(
+                    &symlink.target.target,
+                    &symlink.source,
+                    &symlink.target.owner,
+                )
+                .context("create target symlink")?;
+            }
+            Ok(true)
+        }
+        SymlinkComparison::Identical => {
+            debug!("Performing update");
+            if act {
+                filesystem::set_owner(&symlink.target.target, &symlink.target.owner)
+                    .context("set target symlink owner")?;
             }
             Ok(true)
         }
@@ -709,6 +762,48 @@ fn update_template(
     debug!("Current state: {}", comparison);
 
     match comparison {
+        TemplateComparison::Identical => {
+            if log_enabled!(log::Level::Info) {
+                match difference::generate_diff(&template, handlebars, &variables) {
+                    Ok(diff) => {
+                        if difference::diff_nonempty(&diff) {
+                            info!("{} {}", "[~]".yellow(), template);
+                            difference::print_diff(diff, diff_context_lines);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to generate diff for {} on step: {}", template, e);
+                    }
+                }
+            }
+
+            debug!("Performing update");
+            if act {
+                filesystem::set_owner(&template.target.target, &template.target.owner)
+                    .context("set target file owner")?;
+                perform_template_deploy(template, handlebars, variables)
+                    .context("perform template cache")?;
+            }
+            Ok(true)
+        }
+        TemplateComparison::OnlyCacheExists => {
+            warn!(
+                "Updating {} but target is missing. Creating it anyways.",
+                template
+            );
+            filesystem::create_dir_all(
+                &template
+                    .target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &template.target.owner,
+            )
+            .context("create parent for target file")?;
+            perform_template_deploy(template, handlebars, variables)
+                .context("perform template cache")?;
+            Ok(true)
+        }
         TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
             error!(
                 "Updating {} but cache is missing. Cache is CORRUPTED.",
@@ -717,20 +812,11 @@ fn update_template(
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(true)
         }
-        TemplateComparison::Changed if !force => {
-            error!(
-                "Updating {} but target's contents were changed. Skipping...",
+        TemplateComparison::Changed if force => {
+            warn!(
+                "Updating {} but target's contents were changed. Forcing.",
                 template
             );
-            Ok(false)
-        }
-        t => {
-            if t == TemplateComparison::Changed {
-                warn!(
-                    "Updating {} but target's contents were changed. Forcing.",
-                    template
-                );
-            }
 
             if log_enabled!(log::Level::Info) {
                 match difference::generate_diff(&template, handlebars, &variables) {
@@ -748,50 +834,25 @@ fn update_template(
 
             debug!("Performing update");
             if act {
-                perform_template_cache(template, handlebars, variables)
-                    .context("perform template cache")?;
+                filesystem::set_owner(&template.target.target, &template.target.owner)
+                    .context("set target file owner")?;
 
-                // Handle TemplateComparison::TargetMissing
-                if !template.target.target.exists() {
-                    warn!(
-                        "Updating {} but target is missing. Creating it anyways.",
-                        template
-                    );
-                    filesystem::create_dir_all(
-                        &template
-                            .target
-                            .target
-                            .parent()
-                            .context("get parent of target file")?,
-                        &template.target.owner,
-                    )
-                    .context("create parent for target file")?;
-                } else if !filesystem::is_owned_by_user(&template.target.target)
-                    .context("detect if target file is owned by the current user")?
-                    || template.target.owner.is_some()
-                {
-                    filesystem::set_owner(&template.target.target, &template.target.owner)
-                        .context("set target file owner")?;
-                }
-                filesystem::copy_file(
-                    &template.cache,
-                    &template.target.target,
-                    &template.target.owner,
-                )
-                .context("copy template from cache to target")?;
-                filesystem::copy_permissions(
-                    &template.source,
-                    &template.target.target,
-                    &template.target.owner,
-                )
-                .context("copy permissions from source to target")?;
+                perform_template_deploy(template, handlebars, variables)
+                    .context("perform template cache")?;
             }
             Ok(true)
+        }
+        TemplateComparison::Changed => {
+            error!(
+                "Updating {} but target's contents were changed. Skipping...",
+                template
+            );
+            Ok(false)
         }
     }
 }
 
-fn perform_template_cache(
+fn perform_template_deploy(
     template: &TemplateDescription,
     handlebars: &Handlebars,
     variables: &Variables,
@@ -811,6 +872,18 @@ fn perform_template_cache(
     )
     .context("create parent for cache file")?;
     fs::write(&template.cache, rendered).context("write rendered template to cache")?;
+    filesystem::copy_file(
+        &template.cache,
+        &template.target.target,
+        &template.target.owner,
+    )
+    .context("copy template from cache to target")?;
+    filesystem::copy_permissions(
+        &template.source,
+        &template.target.target,
+        &template.target.owner,
+    )
+    .context("copy permissions from source to target")?;
 
     Ok(())
 }
