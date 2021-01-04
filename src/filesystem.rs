@@ -256,10 +256,6 @@ mod filesystem_impl {
         dunce::simplified(&path).into()
     }
 
-    pub fn is_owned_by_user(path: &Path) -> Result<bool> {
-        Ok(true)
-    }
-
     pub fn remove_file(path: &Path) -> Result<()> {
         std::fs::remove_file(path).context("remove file")
     }
@@ -365,7 +361,7 @@ mod filesystem_impl {
         path.into()
     }
 
-    pub fn is_owned_by_user(path: &Path) -> Result<bool> {
+    fn is_owned_by_user(path: &Path) -> Result<bool> {
         let file_uid = path.metadata().context("get file metadata")?.st_uid();
         let process_uid = std::path::PathBuf::from("/proc/self")
             .metadata()
