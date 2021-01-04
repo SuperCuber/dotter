@@ -339,6 +339,8 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     Ok(error_occurred)
 }
 
+// == DELETE ==
+
 /// Returns true if symlink should be deleted from cache
 fn delete_symlink(
     act: bool,
@@ -360,37 +362,51 @@ fn delete_symlink(
             );
             Ok(true)
         }
-        SymlinkComparison::Changed if !force => {
-            error!(
-                "Deleting {} but target doesn't point at source file. Skipping...",
-                symlink
-            );
-            Ok(false)
-        }
-        SymlinkComparison::TargetNotSymlink if !force => {
-            error!(
-                "Deleting {} but target isn't a symlink. Skipping...",
-                symlink
-            );
-            Ok(false)
-        }
-        s => {
-            if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
+            if force {
                 warn!(
                     "Deleting {} but target wasn't what was expected. Forcing.",
                     symlink
                 );
+                debug!("Performing deletion");
+                if act {
+                    perform_symlink_target_deletion(symlink, interactive)
+                        .context("perform symlink target deletion")?;
+                }
+                Ok(true)
+            } else {
+                if comparison == SymlinkComparison::Changed {
+                    error!(
+                        "Deleting {} but target doesn't point at source file. Skipping...",
+                        symlink
+                    );
+                } else {
+                    // SymlinkComparison::TargetNotSymlink
+                    error!(
+                        "Deleting {} but target isn't a symlink. Skipping...",
+                        symlink
+                    );
+                }
+                Ok(false)
             }
-
+        }
+        SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
             if act {
-                filesystem::remove_file(&symlink.target.target).context("remove symlink")?;
-                filesystem::delete_parents(&symlink.target.target, interactive)
-                    .context("delete parents of symlink")?;
+                perform_symlink_target_deletion(symlink, interactive)
+                    .context("perform symlink target deletion")?;
             }
             Ok(true)
         }
     }
+}
+
+fn perform_symlink_target_deletion(symlink: &SymlinkDescription, interactive: bool) -> Result<()> {
+    debug!("Performing symlink target deletion...");
+    filesystem::remove_file(&symlink.target.target).context("remove symlink")?;
+    filesystem::delete_parents(&symlink.target.target, interactive)
+        .context("delete parents of symlink")?;
+    Ok(())
 }
 
 /// Returns true if template should be deleted from cache
@@ -413,9 +429,7 @@ fn delete_template(
                 template
             );
             if act {
-                fs::remove_file(&template.cache).context("delete template cache")?;
-                filesystem::delete_parents(&template.cache, false)
-                    .context("delete parent directory in cache")?;
+                perform_cache_deletion(template).context("perform cache deletion")?;
             }
             Ok(true)
         }
@@ -427,34 +441,58 @@ fn delete_template(
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(false)
         }
-        TemplateComparison::Changed if !force => {
-            error!(
-                "Deleting {} but target contents were changed. Skipping...",
-                template
-            );
-            Ok(false)
-        }
-        t => {
-            if t == TemplateComparison::Changed {
+        TemplateComparison::Changed => {
+            if force {
+                error!(
+                    "Deleting {} but target contents were changed. Skipping...",
+                    template
+                );
+                Ok(false)
+            } else {
                 warn!(
                     "Deleting {} but target contents were changed. Forcing.",
                     template
                 );
+                if act {
+                    perform_cache_deletion(template).context("perform cache deletion")?;
+                    perform_template_target_deletion(template, interactive)
+                        .context("perform template target deletion")?;
+                }
+                Ok(true)
             }
-
+        }
+        TemplateComparison::Identical => {
             debug!("Performing deletion");
             if act {
-                filesystem::remove_file(&template.target.target).context("delete target file")?;
-                filesystem::delete_parents(&template.target.target, interactive)
-                    .context("delete parent directory in target location")?;
-                fs::remove_file(&template.cache).context("delete cache file")?;
-                filesystem::delete_parents(&template.cache, false)
-                    .context("delete parent directory in cache")?;
+                perform_cache_deletion(template).context("perform cache deletion")?;
+                perform_template_target_deletion(template, interactive)
+                    .context("perform template target deletion")?;
             }
             Ok(true)
         }
     }
 }
+
+fn perform_cache_deletion(template: &TemplateDescription) -> Result<()> {
+    debug!("Performing cache deletion...");
+    fs::remove_file(&template.cache).context("delete template cache")?;
+    filesystem::delete_parents(&template.cache, false)
+        .context("delete parent directory in cache")?;
+    Ok(())
+}
+
+fn perform_template_target_deletion(
+    template: &TemplateDescription,
+    interactive: bool,
+) -> Result<()> {
+    debug!("Performing template target deletion...");
+    filesystem::remove_file(&template.target.target).context("delete target file")?;
+    filesystem::delete_parents(&template.target.target, interactive)
+        .context("delete parent directory in target location")?;
+    Ok(())
+}
+
+// == CREATE ==
 
 /// Returns true if symlink should be added to cache
 fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
