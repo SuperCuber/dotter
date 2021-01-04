@@ -612,7 +612,7 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             Ok(false)
         }
         s => {
-            debug!("Performing creation.");
+            debug!("Performing update");
             if act {
                 if s == SymlinkComparison::Changed || s == SymlinkComparison::TargetNotSymlink {
                     warn!(
@@ -621,12 +621,13 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                     );
                     filesystem::remove_file(&symlink.target.target)
                         .context("remove symlink target while forcing")?;
-                }
-                if !symlink.target.target.exists() {
+                } else if s == SymlinkComparison::OnlySourceExists {
                     warn!(
                         "Updating {} but target was missing. Creating it anyways.",
                         symlink
                     );
+                }
+                if !symlink.target.target.exists() {
                     fs::create_dir_all(
                         &symlink
                             .target

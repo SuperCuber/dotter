@@ -132,6 +132,9 @@ impl std::fmt::Display for TemplateComparison {
 }
 
 pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateComparison> {
+    if fs::read_link(target).is_ok() {
+        return Ok(TemplateComparison::Changed);
+    }
     let target = match fs::read_to_string(target) {
         Ok(t) => Some(t),
         Err(e) if e.kind() == ErrorKind::NotFound => None,
@@ -505,12 +508,19 @@ mod filesystem_impl {
     }
 
     pub fn remove_file(path: &Path) -> Result<()> {
-        match std::fs::remove_file(path) {
+        let metadata = path.metadata().context("get metadata")?;
+        let result = if metadata.is_dir() {
+            std::fs::remove_dir_all(path)
+        } else {
+            std::fs::remove_file(path)
+        };
+        match result {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                 debug!("Removing file {:?} as root", path);
                 let success = std::process::Command::new("sudo")
                     .arg("rm")
+                    .arg("-r")
                     .arg(path)
                     .spawn()
                     .context("spawn sudo rm command")?
