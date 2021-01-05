@@ -490,17 +490,14 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
         map.insert(source.into(), target);
         Ok(map)
     } else {
-        let target = match target {
-            FileTarget::Automatic(target) => target,
-            _ => anyhow::bail!("Complex file target not implemented for directories yet."),
-        };
         let expanded = fs::read_dir(source)
             .context("read contents of directory")?
             .map(|child| -> Result<Files> {
                 let child = child?.file_name();
                 let child_source = PathBuf::from(source).join(&child);
-                let child_target = target.clone().join(&child);
-                expand_directory(&child_source, child_target.into())
+                let mut child_target = target.clone();
+                child_target.set_path(child_target.path().join(&child));
+                expand_directory(&child_source, child_target)
                     .context(format!("expand file {:?}", child_source))
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
