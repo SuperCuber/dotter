@@ -1,17 +1,16 @@
 use std::process::{Command, Stdio};
 
-use config::{Files, Helpers, Variables};
+use crate::config::{Files, Helpers, Variables};
 
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
 
-use meval;
 use toml::value::{Table, Value};
 
 fn math_helper(
-    h: &Helper,
-    _: &Handlebars,
+    h: &Helper<'_, '_>,
+    _: &Handlebars<'_>,
     _: &Context,
-    _: &mut RenderContext,
+    _: &mut RenderContext<'_, '_>,
     out: &mut dyn Output,
 ) -> HelperResult {
     let params = h
@@ -43,10 +42,10 @@ fn math_helper(
 }
 
 fn include_template_helper(
-    h: &Helper,
-    handlebars: &Handlebars,
+    h: &Helper<'_, '_>,
+    handlebars: &Handlebars<'_>,
     ctx: &Context,
-    _: &mut RenderContext,
+    _: &mut RenderContext<'_, '_>,
     out: &mut dyn Output,
 ) -> HelperResult {
     let mut params = h.params().iter();
@@ -72,10 +71,10 @@ fn include_template_helper(
 }
 
 fn is_executable_helper(
-    h: &Helper,
-    _: &Handlebars,
+    h: &Helper<'_, '_>,
+    _: &Handlebars<'_>,
     _: &Context,
-    _: &mut RenderContext,
+    _: &mut RenderContext<'_, '_>,
     out: &mut dyn Output,
 ) -> HelperResult {
     let mut params = h.params().iter();
@@ -100,10 +99,10 @@ fn is_executable_helper(
 }
 
 fn command_success_helper(
-    h: &Helper,
-    _: &Handlebars,
+    h: &Helper<'_, '_>,
+    _: &Handlebars<'_>,
     _: &Context,
-    _: &mut RenderContext,
+    _: &mut RenderContext<'_, '_>,
     out: &mut dyn Output,
 ) -> HelperResult {
     let mut params = h.params().iter();
@@ -133,10 +132,10 @@ fn command_success_helper(
 }
 
 fn command_output_helper(
-    h: &Helper,
-    _: &Handlebars,
+    h: &Helper<'_, '_>,
+    _: &Handlebars<'_>,
     _: &Context,
-    _: &mut RenderContext,
+    _: &mut RenderContext<'_, '_>,
     out: &mut dyn Output,
 ) -> HelperResult {
     let mut params = h.params().iter();
@@ -204,7 +203,7 @@ fn os_shell() -> Command {
     cmd
 }
 
-pub fn register_rust_helpers(handlebars: &mut Handlebars) {
+pub fn register_rust_helpers(handlebars: &mut Handlebars<'_>) {
     handlebars_misc_helpers::register(handlebars);
     handlebars.register_helper("math", Box::new(math_helper));
 
@@ -214,7 +213,7 @@ pub fn register_rust_helpers(handlebars: &mut Handlebars) {
     handlebars.register_helper("command_output", Box::new(command_output_helper));
 }
 
-pub fn register_script_helpers(handlebars: &mut Handlebars, helpers: &Helpers) {
+pub fn register_script_helpers(handlebars: &mut Handlebars<'_>, helpers: &Helpers) {
     debug!("Registering script helpers...");
     for (helper_name, helper_path) in helpers {
         if let Err(e) = handlebars.register_script_helper_file(&helper_name, &helper_path) {

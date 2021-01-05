@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use thiserror::Error;
 
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read};
@@ -6,8 +7,6 @@ use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
-
-use toml;
 
 #[derive(Error, Debug)]
 pub enum FileLoadError {
@@ -64,7 +63,7 @@ pub enum SymlinkComparison {
 }
 
 impl std::fmt::Display for SymlinkComparison {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         use self::SymlinkComparison::*;
         match self {
             Identical => "target points at source",
@@ -119,7 +118,7 @@ pub enum TemplateComparison {
 }
 
 impl std::fmt::Display for TemplateComparison {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         use self::TemplateComparison::*;
         match self {
             Identical => "target and cache's contents are equal",
@@ -319,7 +318,7 @@ mod filesystem_impl {
     use std::os::unix::fs;
     use std::path::{Path, PathBuf};
 
-    use config::UnixUser;
+    use crate::config::UnixUser;
 
     pub fn make_symlink(link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
         if let Some(owner) = owner {
@@ -340,7 +339,7 @@ mod filesystem_impl {
                 .context("wait for sudo ln")?
                 .success();
 
-            ensure!(success, "sudo ln failed");
+            anyhow::ensure!(success, "sudo ln failed");
         } else {
             debug!(
                 "Creating symlink {:?} -> {:?} as current user...",
@@ -387,7 +386,7 @@ mod filesystem_impl {
                 .context("wait for sudo mkdir")?
                 .success();
 
-            ensure!(success, "sudo mkdir failed");
+            anyhow::ensure!(success, "sudo mkdir failed");
         } else {
             debug!("Creating directory {:?} as current user...", path);
             std::fs::create_dir_all(path).context("create directories")?;
@@ -420,7 +419,7 @@ mod filesystem_impl {
 
             let success = child.wait().context("wait for sudo tee")?.success();
 
-            ensure!(success, "sudo tee failed");
+            anyhow::ensure!(success, "sudo tee failed");
         } else {
             debug!("Copying {:?} -> {:?} as current user", source, target);
             std::fs::copy(source, target).context("copy file")?;
@@ -453,7 +452,7 @@ mod filesystem_impl {
             .context("wait for sudo chown command")?
             .success();
 
-        ensure!(success, "sudo chown command failed");
+        anyhow::ensure!(success, "sudo chown command failed");
         Ok(())
     }
 
@@ -474,7 +473,7 @@ mod filesystem_impl {
                 .context("wait for sudo chmod command")?
                 .success();
 
-            ensure!(success, "sudo chmod failed");
+            anyhow::ensure!(success, "sudo chmod failed");
         } else {
             debug!(
                 "Copying permissions {:?} -> {:?} as current user",
@@ -505,7 +504,7 @@ mod filesystem_impl {
                     .context("wait for sudo rmdir")?
                     .success();
 
-                ensure!(success, "sudo rmdir failed");
+                anyhow::ensure!(success, "sudo rmdir failed");
                 Ok(())
             }
             Err(e) => Err(e).context("remove dir"),
@@ -533,7 +532,7 @@ mod filesystem_impl {
                     .context("wait for sudo rm command")?
                     .success();
 
-                ensure!(success, "sudo rm command failed");
+                anyhow::ensure!(success, "sudo rm command failed");
                 Ok(())
             }
             Err(e) => Err(e).context("remove file"),

@@ -8,14 +8,14 @@ use std::fs;
 use std::io::{self, Read};
 
 use super::display_error;
-use args::Options;
-use config::{self, Variables};
-use difference;
-use file_state::{
+use crate::args::Options;
+use crate::config::{self, Variables};
+use crate::difference;
+use crate::file_state::{
     file_state_from_configuration, FileState, SymlinkDescription, TemplateDescription,
 };
-use filesystem::{self, SymlinkComparison, TemplateComparison};
-use handlebars_helpers;
+use crate::filesystem::{self, SymlinkComparison, TemplateComparison};
+use crate::handlebars_helpers;
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
@@ -446,7 +446,7 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
 fn create_template(
     act: bool,
     template: &TemplateDescription,
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
     force: bool,
 ) -> Result<bool> {
@@ -601,7 +601,7 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
 fn update_template(
     act: bool,
     template: &TemplateDescription,
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
     force: bool,
     diff_context_lines: usize,
@@ -668,7 +668,7 @@ fn update_template(
 
 fn perform_template_deploy(
     template: &TemplateDescription,
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<()> {
     let file_contents =

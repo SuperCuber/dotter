@@ -1,20 +1,19 @@
 use anyhow::{Context, Result};
 use crossterm::style::Colorize;
-use diff;
 use handlebars::Handlebars;
 
 use std::cmp::{max, min};
 use std::fs;
 
-use config::Variables;
-use file_state;
+use crate::config::Variables;
+use crate::file_state;
 
 pub type Diff = Vec<diff::Result<String>>;
 pub type HunkDiff = Vec<(usize, usize, Diff)>;
 
 pub fn print_template_diff(
     template: &file_state::TemplateDescription,
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
     diff_context_lines: usize,
 ) {
@@ -35,7 +34,7 @@ pub fn print_template_diff(
 
 pub fn generate_diff(
     template: &file_state::TemplateDescription,
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<Diff> {
     let file_contents =

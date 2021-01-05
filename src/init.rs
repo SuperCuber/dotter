@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 
 use std::collections::BTreeMap;
 
-use args::Options;
-use config;
+use crate::args::Options;
+use crate::config;
 
 pub fn init(opt: Options) -> Result<()> {
     info!("Looking for existing configuration...");
@@ -11,7 +11,7 @@ pub fn init(opt: Options) -> Result<()> {
         if opt.force {
             warn!("Configuration already exists. Overwriting because of --force");
         } else {
-            bail!("Configuration already exists. Use --force to overwrite.");
+            anyhow::bail!("Configuration already exists. Use --force to overwrite.");
         }
     } else {
         info!("No existing configuration.");
@@ -24,7 +24,7 @@ pub fn init(opt: Options) -> Result<()> {
         let name = file
             .file_name()
             .into_string()
-            .map_err(|f| anyhow!("filename {:?} is not valid unicode", f))?;
+            .map_err(|f| anyhow::anyhow!("filename {:?} is not valid unicode", f))?;
         if name.starts_with('.') {
             debug!("Ignored file {:?}", name);
             continue;

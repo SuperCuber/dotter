@@ -1,25 +1,5 @@
-#[cfg(windows)]
-extern crate dunce;
-
-#[macro_use]
-extern crate anyhow;
-extern crate clap;
-extern crate crossterm;
-extern crate diff;
-extern crate handlebars;
-extern crate handlebars_misc_helpers;
 #[macro_use]
 extern crate log;
-extern crate meval;
-#[macro_use]
-extern crate serde;
-extern crate shellexpand;
-extern crate simplelog;
-extern crate structopt;
-#[macro_use]
-extern crate thiserror;
-extern crate toml;
-extern crate watchexec;
 
 mod args;
 mod config;

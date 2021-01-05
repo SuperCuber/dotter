@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
+use serde::{Serialize, Deserialize};
 
-use filesystem;
+use crate::filesystem;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -238,7 +239,7 @@ fn merge_configuration_files(
             }
 
             if !included.is_empty() {
-                bail!(
+                anyhow::bail!(
                     "unknown packages: {:?}",
                     included.keys().into_iter().cloned().collect::<Vec<_>>()
                 );
@@ -273,7 +274,7 @@ fn merge_configuration_files(
         || -> Result<()> {
             for (file_name, file_target) in package.files {
                 if first_package.files.contains_key(&file_name) {
-                    bail!("file {:?} already encountered", file_name);
+                    anyhow::bail!("file {:?} already encountered", file_name);
                 } else {
                     first_package.files.insert(file_name, file_target);
                 }
@@ -281,7 +282,7 @@ fn merge_configuration_files(
 
             for (variable_name, variable_value) in package.variables {
                 if first_package.variables.contains_key(&variable_name) {
-                    bail!("variable {:?} already encountered", variable_name);
+                    anyhow::bail!("variable {:?} already encountered", variable_name);
                 } else {
                     first_package
                         .variables
@@ -336,7 +337,7 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
         impl<'de> serde::de::Visitor<'de> for FileTargetVisitor {
             type Value = FileTarget;
 
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("a string or a map")
             }
 
@@ -497,7 +498,7 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
     } else {
         let target = match target {
             FileTarget::Automatic(target) => target,
-            _ => bail!("Complex file target not implemented for directories yet."),
+            _ => anyhow::bail!("Complex file target not implemented for directories yet."),
         };
         let expanded = fs::read_dir(source)
             .context("read contents of directory")?

@@ -1,10 +1,8 @@
 use anyhow::{Context, Result};
 
-use watchexec;
-
 use super::display_error;
-use args::Options;
-use deploy;
+use crate::args::Options;
+use crate::deploy;
 
 struct WatchDeployHandler(Options);
 

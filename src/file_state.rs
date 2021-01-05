@@ -5,8 +5,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use config;
-use filesystem;
+use crate::config;
+use crate::filesystem;
 
 #[derive(Debug)]
 pub struct FileState {

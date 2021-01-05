@@ -3,6 +3,7 @@ name = "dotter"
 version = "0.11.0"
 authors = ["SuperCuber <amit.gold00@gmail.com>"]
 description = "A dotfile manager and templater written in rust"
+edition = "2018"
 repository = "https://www.github.com/SuperCuber/dotter"
 readme = "README.md"
 keywords = ["dotter", "dotfiles", "manager"]
