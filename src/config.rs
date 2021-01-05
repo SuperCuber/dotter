@@ -105,17 +105,15 @@ pub fn load_configuration(
     merged_config.files = merged_config
         .files
         .into_iter()
-        .map(|(k, v)| {
-            (
-                k,
-                v.map(|path| {
-                    shellexpand::tilde(&path.to_string_lossy())
-                        .to_string()
-                        .into()
-                }),
-            )
+        .map(|(k, mut v)| -> Result<_, anyhow::Error> {
+            let path = v.path();
+            let path = shellexpand::full(&path.to_string_lossy())
+                .context("failed to expand file path")?
+                .to_string();
+            v.set_path(path);
+            Ok((k, v))
         })
-        .collect();
+        .collect::<Result<_, _>>()?;
 
     trace!("Final files: {:#?}", merged_config.files);
     trace!("Final variables: {:#?}", merged_config.variables);
@@ -427,25 +425,21 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
 }
 
 impl FileTarget {
-    fn map<F: FnOnce(PathBuf) -> PathBuf>(self, func: F) -> Self {
-        match self {
-            FileTarget::Automatic(path) => FileTarget::Automatic(func(path)),
-            FileTarget::Symbolic(mut s) => {
-                s.target = func(s.target);
-                FileTarget::Symbolic(s)
-            }
-            FileTarget::ComplexTemplate(mut t) => {
-                t.target = func(t.target);
-                FileTarget::ComplexTemplate(t)
-            }
-        }
-    }
-
     pub fn path(&self) -> &Path {
         match self {
             FileTarget::Automatic(path) => &path,
             FileTarget::Symbolic(SymbolicTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
+        }
+    }
+
+    pub fn set_path(&mut self, new_path: impl Into<PathBuf>) {
+        match self {
+            FileTarget::Automatic(ref mut path) => *path = new_path.into(),
+            FileTarget::Symbolic(SymbolicTarget { target, .. })
+            | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => {
+                *target = new_path.into()
+            }
         }
     }
 }
