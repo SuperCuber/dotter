@@ -214,7 +214,7 @@ mod filesystem_impl {
     use std::os::windows::fs;
     use std::path::{Path, PathBuf};
 
-    use config::UnixUser;
+    use crate::config::UnixUser;
 
     pub fn make_symlink(link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
         if let Some(owner) = owner {
