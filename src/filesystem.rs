@@ -209,7 +209,6 @@ pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
 #[cfg(windows)]
 mod filesystem_impl {
     use anyhow::{Context, Result};
-    use dunce;
 
     use std::os::windows::fs;
     use std::path::{Path, PathBuf};
