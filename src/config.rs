@@ -513,6 +513,7 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
     }
 }
 
+#[cfg(unix)]
 impl UnixUser {
     pub fn as_sudo_arg(&self) -> String {
         match self {

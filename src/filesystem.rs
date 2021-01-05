@@ -68,10 +68,10 @@ impl std::fmt::Display for SymlinkComparison {
         use self::SymlinkComparison::*;
         match self {
             Identical => "target points at source",
-            OnlySourceExists => "source exists, target missing",
-            OnlyTargetExists => "source missing, target exists",
+            OnlySourceExists => "target missing",
+            OnlyTargetExists => "source is missing",
             TargetNotSymlink => "target isn't a symlink",
-            Changed => "target isn't point at source",
+            Changed => "target doesn't point at source",
             BothMissing => "source and target are missing",
         }
         .fmt(f)
@@ -114,6 +114,7 @@ pub enum TemplateComparison {
     OnlyCacheExists,
     OnlyTargetExists,
     Changed,
+    TargetNotRegularFile,
     BothMissing,
 }
 
@@ -122,9 +123,10 @@ impl std::fmt::Display for TemplateComparison {
         use self::TemplateComparison::*;
         match self {
             Identical => "target and cache's contents are equal",
-            OnlyCacheExists => "cache exists, target missing",
-            OnlyTargetExists => "cache missing, target exists",
-            Changed => "target and cache's contents differ",
+            OnlyCacheExists => "target doesn't exist",
+            OnlyTargetExists => "cache doesn't exist",
+            Changed => "target contents were changed",
+            TargetNotRegularFile => "target is a symbolic link or directory",
             BothMissing => "cache and target are missing",
         }
         .fmt(f)
@@ -132,8 +134,8 @@ impl std::fmt::Display for TemplateComparison {
 }
 
 pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateComparison> {
-    if fs::read_link(target).is_ok() {
-        return Ok(TemplateComparison::Changed);
+    if fs::read_link(target).is_ok() || fs::read_dir(target).is_ok() {
+        return Ok(TemplateComparison::TargetNotRegularFile);
     }
     let target = match fs::read_to_string(target) {
         Ok(t) => Some(t),
@@ -256,10 +258,6 @@ mod filesystem_impl {
         dunce::simplified(&path).into()
     }
 
-    pub fn is_owned_by_user(path: &Path) -> Result<bool> {
-        Ok(true)
-    }
-
     pub fn remove_file(path: &Path) -> Result<()> {
         std::fs::remove_file(path).context("remove file")
     }
@@ -365,7 +363,7 @@ mod filesystem_impl {
         path.into()
     }
 
-    pub fn is_owned_by_user(path: &Path) -> Result<bool> {
+    fn is_owned_by_user(path: &Path) -> Result<bool> {
         let file_uid = path.metadata().context("get file metadata")?.st_uid();
         let process_uid = std::path::PathBuf::from("/proc/self")
             .metadata()
@@ -432,6 +430,13 @@ mod filesystem_impl {
     }
 
     pub fn set_owner(file: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if is_owned_by_user(file).context("detect if file is owned by the current user")?
+            && owner.is_none()
+        {
+            // Nothing to do, no need to elevate
+            return Ok(());
+        }
+
         let owner = owner.clone().unwrap_or(UnixUser::Name(
             std::env::var("USER").context("get USER env var")?,
         ));

@@ -1,7 +1,12 @@
+use anyhow::{Context, Result};
+
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use config;
+use filesystem;
 
 #[derive(Debug)]
 pub struct FileState {
@@ -22,6 +27,100 @@ pub struct TemplateDescription {
     pub source: PathBuf,
     pub target: config::TemplateTarget,
     pub cache: PathBuf,
+}
+
+pub fn file_state_from_configuration(
+    config: &config::Configuration,
+    cache: &config::Cache,
+    cache_directory: &Path,
+) -> Result<FileState> {
+    // On Windows, you need developer mode to create symlinks.
+    let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
+        .context("check whether symlinks are enabled")?
+    {
+        true
+    } else {
+        warn!(
+            "No permission to create symbolic links.\n
+On Windows, in order to create symbolic links you need to enable Developer Mode.\n
+Proceeding by copying instead of symlinking."
+        );
+        false
+    };
+
+    let mut desired_symlinks = BTreeMap::new();
+    let mut desired_templates = BTreeMap::new();
+
+    for (source, target) in config.files.clone() {
+        match target {
+            config::FileTarget::Automatic(target) => {
+                if symlinks_enabled
+                    && !is_template(&source)
+                        .context(format!("check whether {:?} is a template", source))?
+                {
+                    desired_symlinks.insert(
+                        source,
+                        config::SymbolicTarget {
+                            target,
+                            owner: None,
+                        },
+                    );
+                } else {
+                    desired_templates.insert(
+                        source,
+                        config::TemplateTarget {
+                            target,
+                            owner: None,
+                            append: None,
+                            prepend: None,
+                        },
+                    );
+                }
+            }
+            config::FileTarget::Symbolic(target) => {
+                if symlinks_enabled {
+                    desired_symlinks.insert(source, target);
+                } else {
+                    desired_templates.insert(
+                        source,
+                        config::TemplateTarget {
+                            target: target.target,
+                            owner: target.owner,
+                            append: None,
+                            prepend: None,
+                        },
+                    );
+                }
+            }
+            config::FileTarget::ComplexTemplate(target) => {
+                desired_templates.insert(source, target);
+            }
+        }
+    }
+
+    trace!("Desired symlinks: {:#?}", desired_symlinks);
+    trace!("Desired templates: {:#?}", desired_templates);
+
+    let state = FileState::new(
+        desired_symlinks,
+        desired_templates,
+        cache.symlinks.clone(),
+        cache.templates.clone(),
+        cache_directory,
+    );
+
+    Ok(state)
+}
+
+fn is_template(source: &Path) -> Result<bool> {
+    let mut file = File::open(source).context("open file")?;
+    let mut buf = String::new();
+    if file.read_to_string(&mut buf).is_err() {
+        warn!("File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.", source);
+        Ok(false)
+    } else {
+        Ok(buf.contains("{{"))
+    }
 }
 
 // For use in FileState's Sets
