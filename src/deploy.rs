@@ -357,7 +357,6 @@ fn delete_template(
                 "Deleting {} but target doesn't exist. Deleting cache anyways.",
                 template
             );
-            debug!("Performing deletion");
             if act {
                 perform_cache_deletion(template).context("perform cache deletion")?;
             }
