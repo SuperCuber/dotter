@@ -68,10 +68,10 @@ impl std::fmt::Display for SymlinkComparison {
         use self::SymlinkComparison::*;
         match self {
             Identical => "target points at source",
-            OnlySourceExists => "source exists, target missing",
-            OnlyTargetExists => "source missing, target exists",
+            OnlySourceExists => "target missing",
+            OnlyTargetExists => "source is missing",
             TargetNotSymlink => "target isn't a symlink",
-            Changed => "target isn't point at source",
+            Changed => "target doesn't point at source",
             BothMissing => "source and target are missing",
         }
         .fmt(f)
@@ -114,6 +114,7 @@ pub enum TemplateComparison {
     OnlyCacheExists,
     OnlyTargetExists,
     Changed,
+    TargetNotRegularFile,
     BothMissing,
 }
 
@@ -122,9 +123,10 @@ impl std::fmt::Display for TemplateComparison {
         use self::TemplateComparison::*;
         match self {
             Identical => "target and cache's contents are equal",
-            OnlyCacheExists => "cache exists, target missing",
-            OnlyTargetExists => "cache missing, target exists",
-            Changed => "target and cache's contents differ",
+            OnlyCacheExists => "target doesn't exist",
+            OnlyTargetExists => "cache doesn't exist",
+            Changed => "target contents were changed",
+            TargetNotRegularFile => "target is a symbolic link or directory",
             BothMissing => "cache and target are missing",
         }
         .fmt(f)
@@ -132,8 +134,8 @@ impl std::fmt::Display for TemplateComparison {
 }
 
 pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateComparison> {
-    if fs::read_link(target).is_ok() {
-        return Ok(TemplateComparison::Changed);
+    if fs::read_link(target).is_ok() || fs::read_dir(target).is_ok() {
+        return Ok(TemplateComparison::TargetNotRegularFile);
     }
     let target = match fs::read_to_string(target) {
         Ok(t) => Some(t),

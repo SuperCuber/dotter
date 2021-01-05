@@ -288,35 +288,15 @@ fn delete_symlink(
             );
             Ok(true)
         }
-        SymlinkComparison::Changed if force => {
-            warn!(
-                "Deleting {} but target doesn't point at source file. Forcing.",
-                symlink
-            );
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
+            warn!("Deleting {} but {}. Forcing.", symlink, comparison);
             // -f > -v
             perform_symlink_target_deletion(symlink, interactive)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
-        SymlinkComparison::Changed => {
-            error!(
-                "Deleting {} but target doesn't point at source file. Skipping...",
-                symlink
-            );
-            Ok(false)
-        }
-        SymlinkComparison::TargetNotSymlink if force => {
-            warn!("Deleting {} but target isn't a symlink. Forcing.", symlink);
-            // -f > -v
-            perform_symlink_target_deletion(symlink, interactive)
-                .context("perform symlink target deletion")?;
-            Ok(true)
-        }
-        SymlinkComparison::TargetNotSymlink => {
-            error!(
-                "Deleting {} but target isn't a symlink. Skipping...",
-                symlink
-            );
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
+            error!("Deleting {} but {}. Skipping.", symlink, comparison);
             Ok(false)
         }
     }
@@ -354,8 +334,8 @@ fn delete_template(
         }
         TemplateComparison::OnlyCacheExists => {
             warn!(
-                "Deleting {} but target doesn't exist. Deleting cache anyways.",
-                template
+                "Deleting {} but {}. Deleting cache anyways.",
+                template, comparison
             );
             if act {
                 perform_cache_deletion(template).context("perform cache deletion")?;
@@ -370,22 +350,16 @@ fn delete_template(
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(false)
         }
-        TemplateComparison::Changed if force => {
-            warn!(
-                "Deleting {} but target contents were changed. Forcing.",
-                template
-            );
+        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
+            warn!("Deleting {} but {}. Forcing.", template, comparison);
             // -f > -v
             perform_cache_deletion(template).context("perform cache deletion")?;
             perform_template_target_deletion(template, interactive)
                 .context("perform template target deletion")?;
             Ok(true)
         }
-        TemplateComparison::Changed => {
-            error!(
-                "Deleting {} but target contents were changed. Skipping...",
-                template
-            );
+        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {
+            error!("Deleting {} but {}. Skipping.", template, comparison);
             Ok(false)
         }
     }
@@ -419,38 +393,6 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
     debug!("Current state: {}", comparison);
 
     match comparison {
-        SymlinkComparison::Identical => {
-            warn!("Creating {} but target already exists and points at source. Adding to cache anyways", symlink);
-            Ok(true)
-        }
-        SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
-            error!("Creating {} but source is missing. Skipping...", symlink);
-            Ok(false)
-        }
-        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
-            if force {
-                warn!(
-                    "Creating {} but target already exists and differs from expected. Forcing.",
-                    symlink
-                );
-                std::fs::remove_file(&symlink.target.target)
-                    .context("remove symlink target while forcing")?;
-                // -f > -v
-                filesystem::make_symlink(
-                    &symlink.target.target,
-                    &symlink.source,
-                    &symlink.target.owner,
-                )
-                .context("create target symlink")?;
-                Ok(true)
-            } else {
-                error!(
-                    "Creating {} but target already exists and differs from expected. Skipping...",
-                    symlink
-                );
-                Ok(false)
-            }
-        }
         SymlinkComparison::OnlySourceExists => {
             debug!("Performing creation");
             if act {
@@ -471,6 +413,31 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                 .context("create target symlink")?;
             }
             Ok(true)
+        }
+        SymlinkComparison::Identical => {
+            warn!("Creating {} but target already exists and points at source. Adding to cache anyways", symlink);
+            Ok(true)
+        }
+        SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
+            error!("Creating {} but {}. Skipping.", symlink, comparison);
+            Ok(false)
+        }
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
+            warn!("Creating {} but {}. Forcing.", symlink, comparison);
+            std::fs::remove_file(&symlink.target.target)
+                .context("remove symlink target while forcing")?;
+            // -f > -v
+            filesystem::make_symlink(
+                &symlink.target.target,
+                &symlink.source,
+                &symlink.target.owner,
+            )
+            .context("create target symlink")?;
+            Ok(true)
+        }
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
+            error!("Creating {} but {}. Skipping.", symlink, comparison);
+            Ok(false)
         }
     }
 }
@@ -507,14 +474,11 @@ fn create_template(
             }
             Ok(true)
         }
-        TemplateComparison::OnlyCacheExists
-        | TemplateComparison::Identical
-        | TemplateComparison::Changed => {
+        TemplateComparison::OnlyCacheExists | TemplateComparison::Identical => {
             warn!(
                 "Creating {} but cache file already exists. This is probably a result of an error in the last run.",
                 template
             );
-            debug!("Performing creation");
             if act {
                 filesystem::create_dir_all(
                     &template
@@ -530,7 +494,11 @@ fn create_template(
             }
             Ok(true)
         }
-        TemplateComparison::OnlyTargetExists if force => {
+        TemplateComparison::TargetNotRegularFile
+        | TemplateComparison::Changed
+        | TemplateComparison::OnlyTargetExists
+            if force =>
+        {
             warn!(
                 "Creating {} but target file already exists. Forcing.",
                 template
@@ -551,9 +519,11 @@ fn create_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::OnlyTargetExists => {
+        TemplateComparison::TargetNotRegularFile
+        | TemplateComparison::Changed
+        | TemplateComparison::OnlyTargetExists => {
             error!(
-                "Creating {} but target file already exists. Skipping...",
+                "Creating {} but target file already exists. Skipping.",
                 template
             );
             Ok(false)
@@ -581,14 +551,11 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             Ok(true)
         }
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
-            error!("Updating {} but source is missing. Skipping...", symlink);
+            error!("Updating {} but source is missing. Skipping.", symlink);
             Ok(false)
         }
-        SymlinkComparison::Changed if force => {
-            warn!(
-                "Updating {} but target doesn't point at source. Forcing.",
-                symlink
-            );
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
+            warn!("Updating {} but {}. Forcing.", symlink, comparison);
             filesystem::remove_file(&symlink.target.target)
                 .context("remove symlink target while forcing")?;
             // -f > -v
@@ -600,37 +567,14 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
             .context("create target symlink")?;
             Ok(true)
         }
-        SymlinkComparison::Changed => {
-            error!(
-                "Updating {} but target doesn't point at source. Skipping...",
-                symlink
-            );
-            Ok(false)
-        }
-        SymlinkComparison::TargetNotSymlink if force => {
-            warn!("Updating {} but target is not a symlink. Forcing.", symlink);
-            filesystem::remove_file(&symlink.target.target)
-                .context("remove symlink target while forcing")?;
-            // -f > -v
-            filesystem::make_symlink(
-                &symlink.target.target,
-                &symlink.source,
-                &symlink.target.owner,
-            )
-            .context("create target symlink")?;
-            Ok(true)
-        }
-        SymlinkComparison::TargetNotSymlink => {
-            error!(
-                "Updating {} but target is not a symlink. Skipping...",
-                symlink
-            );
+        SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
+            error!("Updating {} but {}. Skipping.", symlink, comparison);
             Ok(false)
         }
         SymlinkComparison::OnlySourceExists => {
             warn!(
-                "Updating {} but target was missing. Creating it anyways.",
-                symlink
+                "Updating {} but {}. Creating it anyways.",
+                symlink, comparison
             );
             if act {
                 fs::create_dir_all(
@@ -705,27 +649,18 @@ fn update_template(
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(true)
         }
-        TemplateComparison::Changed if force => {
-            warn!(
-                "Updating {} but target's contents were changed. Forcing.",
-                template
-            );
+        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
+            warn!("Updating {} but {}. Forcing.", template, comparison);
             difference::print_template_diff(template, handlebars, variables, diff_context_lines);
-            debug!("Performing update");
-            if act {
-                filesystem::set_owner(&template.target.target, &template.target.owner)
-                    .context("set target file owner")?;
-
-                perform_template_deploy(template, handlebars, variables)
-                    .context("perform template cache")?;
-            }
+            // -f > -v
+            filesystem::remove_file(&template.target.target)
+                .context("remove target while forcing")?;
+            perform_template_deploy(template, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::Changed => {
-            error!(
-                "Updating {} but target's contents were changed. Skipping...",
-                template
-            );
+        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {
+            error!("Updating {} but {}. Skipping.", template, comparison);
             Ok(false)
         }
     }
