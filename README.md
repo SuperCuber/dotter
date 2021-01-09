@@ -67,6 +67,16 @@ OPTIONS:
 
     -g, --global-config <global-config>              Location of the global configuration [default: .dotter/global.toml]
     -l, --local-config <local-config>                Location of the local configuration [default: .dotter/local.toml]
+        --post-deploy <post-deploy>
+            Location of optional post-deploy hook [default: .dotter/post_deploy.sh]
+
+        --post-undeploy <post-undeploy>
+            Location of optional post-undeploy hook [default: .dotter/post_undeploy.sh]
+
+        --pre-deploy <pre-deploy>                    Location of optional pre-deploy hook [default: .dotter/pre_deploy.sh]
+        --pre-undeploy <pre-undeploy>
+            Location of optional pre-undeploy hook [default: .dotter/pre_undeploy.sh]
+
 
 SUBCOMMANDS:
     deploy      Deploy the files to their respective targets. This is the default subcommand
