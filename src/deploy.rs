@@ -424,7 +424,7 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!("Creating {} but {}. Forcing.", symlink, comparison);
-            std::fs::remove_file(&symlink.target.target)
+            filesystem::remove_file(&symlink.target.target)
                 .context("remove symlink target while forcing")?;
             // -f > -v
             filesystem::make_symlink(
@@ -577,12 +577,13 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                 symlink, comparison
             );
             if act {
-                fs::create_dir_all(
+                filesystem::create_dir_all(
                     &symlink
                         .target
                         .target
                         .parent()
                         .context("get parent of target file")?,
+                    &symlink.target.owner,
                 )
                 .context("create parent for target file")?;
                 filesystem::make_symlink(
