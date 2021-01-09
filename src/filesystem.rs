@@ -302,8 +302,10 @@ mod filesystem_impl {
         std::fs::remove_dir(path).context("remove dir")
     }
 
-    pub fn set_owner(file: &Path, _owner: &Option<UnixUser>) -> Result<()> {
-        warn!("ignoring `owner` field on file {:?}", file);
+    pub fn set_owner(file: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if owner.is_some() {
+            warn!("ignoring `owner` field on file {:?}", file);
+        }
         Ok(())
     }
 }
