@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read};
 
-use super::display_error;
+use crate::display_error;
 use crate::args::Options;
 use crate::config::{self, Variables};
 use crate::difference;
@@ -68,7 +68,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     debug!("Running pre-deploy hook");
     if opt.act {
-        hooks::run_hook(&opt.pre_deploy, &handlebars, &variables).context("run pre-deploy hook")?;
+        hooks::run_hook(&opt.pre_deploy, &opt.cache_directory, &handlebars, &variables).context("run pre-deploy hook")?;
     }
 
     let mut suggest_force = false;
@@ -193,7 +193,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     debug!("Running post-deploy hook");
     if opt.act {
-        hooks::run_hook(&opt.post_deploy, &handlebars, &variables)
+        hooks::run_hook(&opt.post_deploy, &opt.cache_directory, &handlebars, &variables)
             .context("run post-deploy hook")?;
     }
 
@@ -225,7 +225,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
         BTreeMap::default(),
         existing_symlinks.clone(),
         existing_templates.clone(),
-        opt.cache_directory,
+        opt.cache_directory.clone(),
     );
     trace!("File state: {:#?}", state);
 
@@ -240,7 +240,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     debug!("Running pre-undeploy hook");
     if opt.act {
-        hooks::run_hook(&opt.pre_undeploy, &handlebars, &variables)
+        hooks::run_hook(&opt.pre_undeploy, &opt.cache_directory, &handlebars, &variables)
             .context("run pre-undeploy hook")?;
     }
 
@@ -292,7 +292,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     debug!("Running post-undeploy hook");
     if opt.act {
-        hooks::run_hook(&opt.post_undeploy, &handlebars, &variables)
+        hooks::run_hook(&opt.post_undeploy, &opt.cache_directory, &handlebars, &variables)
             .context("run post-undeploy hook")?;
     }
 
@@ -709,7 +709,7 @@ fn update_template(
     }
 }
 
-fn perform_template_deploy(
+pub(crate) fn perform_template_deploy(
     template: &TemplateDescription,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
