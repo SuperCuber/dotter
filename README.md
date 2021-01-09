@@ -73,7 +73,8 @@ OPTIONS:
         --post-undeploy <post-undeploy>
             Location of optional post-undeploy hook [default: .dotter/post_undeploy.sh]
 
-        --pre-deploy <pre-deploy>                    Location of optional pre-deploy hook [default: .dotter/pre_deploy.sh]
+        --pre-deploy <pre-deploy>
+            Location of optional pre-deploy hook [default: .dotter/pre_deploy.sh]
         --pre-undeploy <pre-undeploy>
             Location of optional pre-undeploy hook [default: .dotter/pre_undeploy.sh]
 
