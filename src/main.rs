@@ -8,6 +8,7 @@ mod difference;
 mod file_state;
 mod filesystem;
 mod handlebars_helpers;
+mod hooks;
 mod init;
 mod watch;
 

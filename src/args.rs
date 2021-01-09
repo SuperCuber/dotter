@@ -22,6 +22,22 @@ pub struct Options {
     #[structopt(long, default_value = ".dotter/cache")]
     pub cache_directory: PathBuf,
 
+    /// Location of optional pre-deploy hook
+    #[structopt(long, default_value = ".dotter/pre_deploy.sh")]
+    pub pre_deploy: PathBuf,
+
+    /// Location of optional post-deploy hook
+    #[structopt(long, default_value = ".dotter/post_deploy.sh")]
+    pub post_deploy: PathBuf,
+
+    /// Location of optional pre-undeploy hook
+    #[structopt(long, default_value = ".dotter/pre_undeploy.sh")]
+    pub pre_undeploy: PathBuf,
+
+    /// Location of optional post-undeploy hook
+    #[structopt(long, default_value = ".dotter/post_undeploy.sh")]
+    pub post_undeploy: PathBuf,
+
     /// Dry run - don't do anything, only print information.
     /// Implies -v at least once
     #[structopt(short = "d", long = "dry-run", parse(from_flag = std::ops::Not::not), global = true)]

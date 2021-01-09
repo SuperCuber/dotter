@@ -16,6 +16,7 @@ use crate::file_state::{
 };
 use crate::filesystem::{self, SymlinkComparison, TemplateComparison};
 use crate::handlebars_helpers;
+use crate::hooks;
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
@@ -56,6 +57,20 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         templates: mut actual_templates,
     } = cache;
 
+    debug!("Creating Handlebars instance...");
+    let mut handlebars = Handlebars::new();
+    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
+    handlebars.set_strict_mode(true); // Report missing variables as errors
+    handlebars_helpers::register_rust_helpers(&mut handlebars);
+    handlebars_helpers::register_script_helpers(&mut handlebars, &helpers);
+    handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
+    trace!("Handlebars instance: {:#?}", handlebars);
+
+    debug!("Running pre-deploy hook");
+    if opt.act {
+        hooks::run_hook(&opt.pre_deploy, &handlebars, &variables).context("run pre-deploy hook")?;
+    }
+
     let mut suggest_force = false;
     let mut error_occurred = false;
 
@@ -90,16 +105,6 @@ pub fn deploy(opt: &Options) -> Result<bool> {
             }
         }
     }
-
-    // Prepare handlebars instance
-    debug!("Creating Handlebars instance...");
-    let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
-    handlebars.set_strict_mode(true); // Report missing variables as errors
-    handlebars_helpers::register_rust_helpers(&mut handlebars);
-    handlebars_helpers::register_script_helpers(&mut handlebars, &helpers);
-    handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
-    trace!("Handlebars instance: {:#?}", handlebars);
 
     let (new_symlinks, new_templates) = state.new_files();
     trace!("New symlinks: {:#?}", new_symlinks);
@@ -186,12 +191,27 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         )?;
     }
 
+    debug!("Running post-deploy hook");
+    if opt.act {
+        hooks::run_hook(&opt.post_deploy, &handlebars, &variables).context("run post-deploy hook")?;
+    }
+
     Ok(error_occurred)
 }
 
 pub fn undeploy(opt: Options) -> Result<()> {
+    let config = config::load_configuration(&opt.local_config, &opt.global_config, None)
+        .context("get a configuration")?;
+
     let cache = config::load_cache(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
+
+    let config::Configuration {
+        files,
+        mut variables,
+        helpers,
+        packages,
+    } = config;
 
     let config::Cache {
         symlinks: existing_symlinks,
@@ -207,6 +227,20 @@ pub fn undeploy(opt: Options) -> Result<()> {
         opt.cache_directory,
     );
     trace!("File state: {:#?}", state);
+
+    debug!("Creating Handlebars instance...");
+    let mut handlebars = Handlebars::new();
+    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
+    handlebars.set_strict_mode(true); // Report missing variables as errors
+    handlebars_helpers::register_rust_helpers(&mut handlebars);
+    handlebars_helpers::register_script_helpers(&mut handlebars, &helpers);
+    handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
+    trace!("Handlebars instance: {:#?}", handlebars);
+
+    debug!("Running pre-undeploy hook");
+    if opt.act {
+        hooks::run_hook(&opt.pre_undeploy, &handlebars, &variables).context("run pre-undeploy hook")?;
+    }
 
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
 
@@ -252,6 +286,11 @@ pub fn undeploy(opt: Options) -> Result<()> {
                 templates: actual_templates,
             },
         )?;
+    }
+
+    debug!("Running post-undeploy hook");
+    if opt.act {
+        hooks::run_hook(&opt.post_undeploy, &handlebars, &variables).context("run post-undeploy hook")?;
     }
 
     Ok(())
