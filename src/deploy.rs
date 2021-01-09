@@ -7,10 +7,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read};
 
-use crate::display_error;
 use crate::args::Options;
 use crate::config::{self, Variables};
 use crate::difference;
+use crate::display_error;
 use crate::file_state::{
     file_state_from_configuration, FileState, SymlinkDescription, TemplateDescription,
 };
@@ -68,7 +68,13 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     debug!("Running pre-deploy hook");
     if opt.act {
-        hooks::run_hook(&opt.pre_deploy, &opt.cache_directory, &handlebars, &variables).context("run pre-deploy hook")?;
+        hooks::run_hook(
+            &opt.pre_deploy,
+            &opt.cache_directory,
+            &handlebars,
+            &variables,
+        )
+        .context("run pre-deploy hook")?;
     }
 
     let mut suggest_force = false;
@@ -193,8 +199,13 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     debug!("Running post-deploy hook");
     if opt.act {
-        hooks::run_hook(&opt.post_deploy, &opt.cache_directory, &handlebars, &variables)
-            .context("run post-deploy hook")?;
+        hooks::run_hook(
+            &opt.post_deploy,
+            &opt.cache_directory,
+            &handlebars,
+            &variables,
+        )
+        .context("run post-deploy hook")?;
     }
 
     Ok(error_occurred)
@@ -240,8 +251,13 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     debug!("Running pre-undeploy hook");
     if opt.act {
-        hooks::run_hook(&opt.pre_undeploy, &opt.cache_directory, &handlebars, &variables)
-            .context("run pre-undeploy hook")?;
+        hooks::run_hook(
+            &opt.pre_undeploy,
+            &opt.cache_directory,
+            &handlebars,
+            &variables,
+        )
+        .context("run pre-undeploy hook")?;
     }
 
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
@@ -292,8 +308,13 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     debug!("Running post-undeploy hook");
     if opt.act {
-        hooks::run_hook(&opt.post_undeploy, &opt.cache_directory, &handlebars, &variables)
-            .context("run post-undeploy hook")?;
+        hooks::run_hook(
+            &opt.post_undeploy,
+            &opt.cache_directory,
+            &handlebars,
+            &variables,
+        )
+        .context("run post-undeploy hook")?;
     }
 
     Ok(())
