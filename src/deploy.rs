@@ -193,7 +193,8 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     debug!("Running post-deploy hook");
     if opt.act {
-        hooks::run_hook(&opt.post_deploy, &handlebars, &variables).context("run post-deploy hook")?;
+        hooks::run_hook(&opt.post_deploy, &handlebars, &variables)
+            .context("run post-deploy hook")?;
     }
 
     Ok(error_occurred)
@@ -239,7 +240,8 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     debug!("Running pre-undeploy hook");
     if opt.act {
-        hooks::run_hook(&opt.pre_undeploy, &handlebars, &variables).context("run pre-undeploy hook")?;
+        hooks::run_hook(&opt.pre_undeploy, &handlebars, &variables)
+            .context("run pre-undeploy hook")?;
     }
 
     let (deleted_symlinks, deleted_templates) = state.deleted_files();
@@ -290,7 +292,8 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
     debug!("Running post-undeploy hook");
     if opt.act {
-        hooks::run_hook(&opt.post_undeploy, &handlebars, &variables).context("run post-undeploy hook")?;
+        hooks::run_hook(&opt.post_undeploy, &handlebars, &variables)
+            .context("run post-undeploy hook")?;
     }
 
     Ok(())
