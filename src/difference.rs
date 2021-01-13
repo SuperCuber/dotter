@@ -75,26 +75,12 @@ pub fn diff_nonempty(diff: &[diff::Result<String>]) -> bool {
 fn hunkify_diff(diff: Diff, extra_lines: usize) -> HunkDiff {
     let mut hunks = vec![];
 
-    let mut left_line_number: usize = 0;
-    let mut right_line_number: usize = 0;
+    let mut left_line_number: usize = 1;
+    let mut right_line_number: usize = 1;
 
     let mut current_hunk = None;
 
     for (position, line) in diff.iter().enumerate() {
-        // Keep track of line numbers
-        match line {
-            diff::Result::Left(_) => {
-                left_line_number += 1;
-            }
-            diff::Result::Right(_) => {
-                right_line_number += 1;
-            }
-            diff::Result::Both(_, _) => {
-                left_line_number += 1;
-                right_line_number += 1;
-            }
-        }
-
         match line {
             diff::Result::Left(_) | diff::Result::Right(_) => {
                 // The central part of a hunk
@@ -125,6 +111,20 @@ fn hunkify_diff(diff: Diff, extra_lines: usize) -> HunkDiff {
                 }
             }
         }
+
+        // Keep track of line numbers
+        match line {
+            diff::Result::Left(_) => {
+                left_line_number += 1;
+            }
+            diff::Result::Right(_) => {
+                right_line_number += 1;
+            }
+            diff::Result::Both(_, _) => {
+                left_line_number += 1;
+                right_line_number += 1;
+            }
+        }
     }
 
     // Last hunk - in case the last line is included in a hunk, it was never added
@@ -143,7 +143,6 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
     for line in hunk {
         match line {
             diff::Result::Left(l) => {
-                left_line += 1;
                 println!(
                     " {:>width$} | {:>width$} | {}",
                     left_line.to_string().red(),
@@ -151,10 +150,9 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
                     l.red(),
                     width = max_digits
                 );
+                left_line += 1;
             }
             diff::Result::Both(l, _) => {
-                left_line += 1;
-                right_line += 1;
                 println!(
                     " {:>width$} | {:>width$} | {}",
                     left_line.to_string().dark_grey(),
@@ -162,9 +160,10 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
                     l,
                     width = max_digits
                 );
+                left_line += 1;
+                right_line += 1;
             }
             diff::Result::Right(r) => {
-                right_line += 1;
                 println!(
                     " {:>width$} | {:>width$} | {}",
                     "",
@@ -172,6 +171,7 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
                     r.green(),
                     width = max_digits
                 );
+                right_line += 1;
             }
         }
     }
