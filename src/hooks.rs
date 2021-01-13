@@ -13,6 +13,7 @@ pub(crate) fn run_hook(
     variables: &crate::config::Variables,
 ) -> Result<()> {
     if !location.exists() {
+        debug!("Hook file at {:?} missing", location);
         return Ok(());
     }
 
