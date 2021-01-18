@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+mod actions;
 mod args;
 mod config;
 mod deploy;
