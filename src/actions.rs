@@ -106,7 +106,7 @@ fn plan_deploy(state: FileState) -> Vec<Action> {
         ));
     }
 
-    for updated_template in desired_templates_sources.intersection(cached_templates_sources) {
+    for updated_template in desired_templates_sources.intersection(&cached_templates_sources) {
         actions.push(Action::UpdateTemplate(
             desired_templates.remove(updated_template).unwrap(),
         ));
