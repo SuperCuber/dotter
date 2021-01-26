@@ -1,6 +1,6 @@
 [package]
 name = "dotter"
-version = "0.11.1"
+version = "0.11.2"
 authors = ["SuperCuber <amit.gold00@gmail.com>"]
 description = "A dotfile manager and templater written in rust"
 edition = "2018"
