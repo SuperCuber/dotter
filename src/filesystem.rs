@@ -315,8 +315,7 @@ mod filesystem_impl {
     use anyhow::{Context, Result};
 
     use std::io::Write;
-    use std::os::linux::fs::MetadataExt;
-    use std::os::unix::fs;
+    use std::os::unix::fs::{self, MetadataExt};
     use std::path::{Path, PathBuf};
 
     use crate::config::UnixUser;
@@ -364,11 +363,11 @@ mod filesystem_impl {
     }
 
     fn is_owned_by_user(path: &Path) -> Result<bool> {
-        let file_uid = path.metadata().context("get file metadata")?.st_uid();
+        let file_uid = path.metadata().context("get file metadata")?.uid();
         let process_uid = std::path::PathBuf::from("/proc/self")
             .metadata()
             .context("get metadata of /proc/self")?
-            .st_uid();
+            .uid();
         Ok(file_uid == process_uid)
     }
 
