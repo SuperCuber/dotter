@@ -52,6 +52,31 @@ where
     Ok(())
 }
 
+#[mockall::automock]
+pub trait Filesystem {
+    /// Removes a file or folder, elevating privileges if needed
+    fn remove_file(&mut self, path: &Path) -> Result<()>;
+}
+
+#[cfg(windows)]
+pub struct RealFilesystem;
+
+#[cfg(windows)]
+impl Filesystem for RealFilesystem {
+    fn remove_file(&mut self, path: &Path) -> Result<()> {
+        // TODO: test if this removes a folder too
+        std::fs::remove_file(path).context("remove file")
+    }
+}
+
+#[cfg(unix)]
+pub struct RealFilesystem {
+    sudo_occurred: bool,
+}
+
+#[cfg(unix)]
+impl Filesystem for RealFilesystem {}
+
 #[derive(Debug, PartialEq)]
 pub enum SymlinkComparison {
     Identical,

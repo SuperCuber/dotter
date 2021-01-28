@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, StructOpt, Default)]
 #[structopt(name = "Dotter")]
 /// A small dotfile manager.
 pub struct Options {

@@ -323,7 +323,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
 // == DELETE ==
 
 /// Returns true if symlink should be deleted from cache
-fn delete_symlink(
+pub fn delete_symlink(
     act: bool,
     symlink: &SymlinkDescription,
     force: bool,
