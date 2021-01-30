@@ -239,15 +239,27 @@ pub fn plan_deploy(state: FileState) -> Vec<Action> {
 
 #[cfg(test)]
 mod test {
-    use crate::config::{SymbolicTarget, TemplateTarget};
-    use crate::file_state::{SymlinkDescription, TemplateDescription};
+    use crate::{
+        config::{SymbolicTarget, TemplateTarget},
+        filesystem::SymlinkComparison,
+    };
+    use crate::{
+        file_state::{SymlinkDescription, TemplateDescription},
+        filesystem::TemplateComparison,
+    };
 
-    use std::collections::BTreeSet;
+    use std::{
+        collections::BTreeSet,
+        path::{Path, PathBuf},
+    };
 
     use super::*;
 
+    use mockall::predicate::*;
+
     #[test]
     fn initial_deploy() {
+        // File state
         let a = SymlinkDescription {
             source: "a_in".into(),
             target: SymbolicTarget {
@@ -276,15 +288,95 @@ mod test {
             existing_templates: BTreeSet::new(),
         };
 
+        // Plan
         let actions = plan_deploy(file_state);
         assert_eq!(
             actions,
             [Action::CreateSymlink(a), Action::CreateTemplate(b)]
         );
 
+        // Setup
         let mut fs = crate::filesystem::MockFilesystem::new();
-        fs.expect_remove_file().times(1).returning(|_p| Ok(()));
+        let mut seq = mockall::Sequence::new();
 
-        actions[0].run(&mut fs, &Options::default(), todo!(), todo!()).unwrap();
+        let options = Options::default();
+        let handlebars = handlebars::Handlebars::new();
+        let variables = Default::default();
+
+        fn path_eq(expected: &str) -> impl Fn(&Path) -> bool {
+            let expected = PathBuf::from(expected);
+            move |actual| actual == expected
+        }
+
+        // Action 1
+        fs.expect_compare_symlink()
+            .times(1)
+            .with(function(path_eq("a_in")), function(path_eq("a_out")))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(SymlinkComparison::OnlySourceExists));
+        fs.expect_create_dir_all()
+            .times(1)
+            .with(function(path_eq("")), eq(None)) // parent of a_out
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_make_symlink()
+            .times(1)
+            .with(
+                function(path_eq("a_out")),
+                function(path_eq("a_in")),
+                eq(None),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+
+        actions[0]
+            .run(&mut fs, &options, &handlebars, &variables)
+            .unwrap();
+
+        fs.checkpoint();
+
+        // Action 2
+        fs.expect_compare_template()
+            .times(1)
+            .with(
+                function(path_eq("b_out")),
+                function(path_eq("cache/b_cache")),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(TemplateComparison::BothMissing));
+        fs.expect_create_dir_all()
+            .times(1)
+            .with(function(path_eq("")), eq(None)) // parent of b_out
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_read_to_string()
+            .times(1)
+            .with(function(path_eq("b_in")))
+            .in_sequence(&mut seq)
+            .returning(|_| Ok("".into()));
+        fs.expect_create_dir_all()
+            .times(1)
+            .with(function(path_eq("cache")), eq(None))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_write()
+            .times(1)
+            .with(function(path_eq("cache/b_cache")), eq(String::from("")))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_copy_file()
+            .times(1)
+            .with(function(path_eq("cache/b_cache")), function(path_eq("b_out")), eq(None))
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+        fs.expect_copy_permissions()
+            .times(1)
+            .with(function(path_eq("b_in")), function(path_eq("b_out")), eq(None))
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+
+        actions[1]
+            .run(&mut fs, &options, &handlebars, &variables)
+            .unwrap();
     }
 }

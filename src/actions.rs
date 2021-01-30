@@ -2,8 +2,6 @@ use anyhow::{Context, Result};
 use crossterm::style::Colorize;
 use handlebars::Handlebars;
 
-use std::fs;
-
 use crate::args::Options;
 use crate::config::Variables;
 use crate::difference;
@@ -476,7 +474,7 @@ pub(crate) fn perform_template_deploy(
     variables: &Variables,
 ) -> Result<()> {
     let file_contents =
-        fs::read_to_string(&template.source).context("read template source file")?;
+        fs.read_to_string(&template.source).context("read template source file")?;
     let file_contents = template.apply_actions(file_contents);
     let rendered = handlebars
         .render_template(&file_contents, variables)
@@ -491,7 +489,7 @@ pub(crate) fn perform_template_deploy(
         &None,
     )
     .context("create parent for cache file")?;
-    fs::write(&template.cache, rendered).context("write rendered template to cache")?;
+    fs.write(&template.cache, rendered).context("write rendered template to cache")?;
 
     // Target
     fs.copy_file(

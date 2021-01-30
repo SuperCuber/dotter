@@ -69,6 +69,12 @@ pub trait Filesystem {
     /// Removes a file or folder, elevating privileges if needed
     fn remove_file(&mut self, path: &Path) -> Result<()>;
 
+    /// Read contents of file into a string
+    fn read_to_string(&mut self, path: &Path) -> Result<String>;
+
+    /// Write string to file, without elevating privileges
+    fn write(&mut self, path: &Path, content: String) -> Result<()>;
+
     /// Delete parents of target file if they're empty
     fn delete_parents(&mut self, path: &Path) -> Result<()>;
 
@@ -181,6 +187,14 @@ impl Filesystem for RealFilesystem {
             }
             Err(e) => Err(e).context("remove file"),
         }
+    }
+
+    fn read_to_string(&mut self, path: &Path) -> Result<String> {
+        fs::read_to_string(path).context("read from file")
+    }
+
+    fn write(&mut self, path: &Path, content: String) -> Result<()> {
+        fs::write(path, content).context("write to file")
     }
 
     fn delete_parents(&mut self, path: &Path) -> Result<()> {
@@ -636,7 +650,6 @@ mod filesystem_impl {
     pub fn platform_dunce(path: &Path) -> PathBuf {
         path.into()
     }
-
 }
 
 pub use self::filesystem_impl::*;
