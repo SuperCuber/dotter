@@ -68,7 +68,7 @@ Proceeding by copying instead of symlinking."
                 if symlinks_enabled {
                     desired_symlinks.insert(source, target);
                 } else {
-                    desired_templates.insert(source, target.to_template());
+                    desired_templates.insert(source, target.into_template());
                 }
             }
             config::FileTarget::ComplexTemplate(target) => {
@@ -236,43 +236,6 @@ impl FileState {
                 cache: cache_dir.join(&source),
             })
             .collect()
-    }
-
-    pub fn deleted_files(&self) -> (Vec<SymlinkDescription>, Vec<TemplateDescription>) {
-        (
-            self.existing_symlinks
-                .difference(&self.desired_symlinks)
-                .cloned()
-                .collect(),
-            self.existing_templates
-                .difference(&self.desired_templates)
-                .cloned()
-                .collect(),
-        )
-    }
-    pub fn new_files(&self) -> (Vec<SymlinkDescription>, Vec<TemplateDescription>) {
-        (
-            self.desired_symlinks
-                .difference(&self.existing_symlinks)
-                .cloned()
-                .collect(),
-            self.desired_templates
-                .difference(&self.existing_templates)
-                .cloned()
-                .collect(),
-        )
-    }
-    pub fn old_files(&self) -> (Vec<SymlinkDescription>, Vec<TemplateDescription>) {
-        (
-            self.desired_symlinks
-                .intersection(&self.existing_symlinks)
-                .cloned()
-                .collect(),
-            self.desired_templates
-                .intersection(&self.existing_templates)
-                .cloned()
-                .collect(),
-        )
     }
 }
 

@@ -471,7 +471,7 @@ impl<T: Into<PathBuf>> From<T> for TemplateTarget {
 }
 
 impl SymbolicTarget {
-    pub fn to_template(self) -> TemplateTarget {
+    pub fn into_template(self) -> TemplateTarget {
         TemplateTarget {
             target: self.target,
             owner: self.owner,

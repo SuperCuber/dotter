@@ -8,7 +8,7 @@ use crate::args::Options;
 use crate::config::Variables;
 use crate::difference;
 use crate::file_state::{SymlinkDescription, TemplateDescription};
-use crate::filesystem::{self, Filesystem, SymlinkComparison, TemplateComparison};
+use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
@@ -35,8 +35,9 @@ impl Action {
             Action::CreateSymlink(s) => create_symlink(&s, fs, opt.force),
             Action::CreateTemplate(s) => create_template(&s, fs, handlebars, variables, opt.force),
             Action::UpdateSymlink(s) => update_symlink(&s, fs, opt.force),
-            Action::UpdateTemplate(s) => update_template(&s, fs, handlebars, variables, opt.force, todo!()),
-            _ => todo!(),
+            Action::UpdateTemplate(s) => {
+                update_template(&s, fs, handlebars, variables, opt.force, opt.diff_context_lines)
+            }
         }
     }
 
@@ -45,7 +46,21 @@ impl Action {
             Action::DeleteSymlink(s) => {
                 cache.symlinks.remove(&s.source);
             }
-            _ => todo!(),
+            Action::DeleteTemplate(s) => {
+                cache.templates.remove(&s.source);
+            }
+            Action::CreateSymlink(s) => {
+                cache
+                    .symlinks
+                    .insert(s.source.clone(), s.target.target.clone());
+            }
+            Action::CreateTemplate(s) => {
+                cache
+                    .templates
+                    .insert(s.source.clone(), s.target.target.clone());
+            }
+            Action::UpdateSymlink(_) => {}
+            Action::UpdateTemplate(_) => {}
         }
     }
 }
@@ -262,7 +277,7 @@ fn create_template(
                 &template.target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(template, handlebars, variables)
+            perform_template_deploy(template, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -280,7 +295,7 @@ fn create_template(
                 &template.target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(template, handlebars, variables)
+            perform_template_deploy(template, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -304,7 +319,7 @@ fn create_template(
                 &template.target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(template, handlebars, variables)
+            perform_template_deploy(template, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -408,7 +423,7 @@ fn update_template(
             difference::print_template_diff(template, handlebars, variables, diff_context_lines);
             fs.set_owner(&template.target.target, &template.target.owner)
                 .context("set target file owner")?;
-            perform_template_deploy(template, handlebars, variables)
+            perform_template_deploy(template, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -426,7 +441,7 @@ fn update_template(
                 &template.target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(template, handlebars, variables)
+            perform_template_deploy(template, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -443,7 +458,7 @@ fn update_template(
             difference::print_template_diff(template, handlebars, variables, diff_context_lines);
             fs.remove_file(&template.target.target)
                 .context("remove target while forcing")?;
-            perform_template_deploy(template, handlebars, variables)
+            perform_template_deploy(template, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -456,6 +471,7 @@ fn update_template(
 
 pub(crate) fn perform_template_deploy(
     template: &TemplateDescription,
+    fs: &mut impl Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<()> {
@@ -467,23 +483,24 @@ pub(crate) fn perform_template_deploy(
         .context("render template")?;
 
     // Cache
-    fs::create_dir_all(
+    fs.create_dir_all(
         &template
             .cache
             .parent()
             .context("get parent of cache file")?,
+        &None,
     )
     .context("create parent for cache file")?;
     fs::write(&template.cache, rendered).context("write rendered template to cache")?;
 
     // Target
-    filesystem::copy_file(
+    fs.copy_file(
         &template.cache,
         &template.target.target,
         &template.target.owner,
     )
     .context("copy template from cache to target")?;
-    filesystem::copy_permissions(
+    fs.copy_permissions(
         &template.source,
         &template.target.target,
         &template.target.owner,

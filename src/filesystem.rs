@@ -501,28 +501,6 @@ pub fn ask_boolean(prompt: &str) -> bool {
     buf.to_lowercase().starts_with('y')
 }
 
-pub fn delete_parents(path: &Path, ask: bool) -> Result<()> {
-    let mut path = path.parent().context("get parent")?;
-    while path.is_dir()
-        && path
-            .read_dir()
-            .context("read the contents of parent directory")?
-            .next()
-            .is_none()
-    {
-        if !ask
-            || ask_boolean(&format!(
-                "Directory at {:?} is now empty. Delete [y/N]? ",
-                path
-            ))
-        {
-            remove_dir(path).context(format!("remove directory {:?}", path))?;
-        }
-        path = path.parent().context(format!("get parent of {:?}", path))?;
-    }
-    Ok(())
-}
-
 #[cfg(windows)]
 mod filesystem_impl {
     use anyhow::{Context, Result};
@@ -629,185 +607,7 @@ mod filesystem_impl {
 
 #[cfg(unix)]
 mod filesystem_impl {
-    use anyhow::{Context, Result};
-
-    use std::io::Write;
-    use std::os::linux::fs::MetadataExt;
-    use std::os::unix::fs;
-    use std::path::{Path, PathBuf};
-
-    use crate::config::UnixUser;
-
-    pub fn make_symlink(link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            debug!(
-                "Creating symlink {:?} -> {:?} from user {:?}",
-                link, target, owner
-            );
-            let success = std::process::Command::new("sudo")
-                .arg("-u")
-                .arg(owner.as_sudo_arg())
-                .arg("ln")
-                .arg("-s")
-                .arg(super::real_path(target).context("get real path of source file")?)
-                .arg(link)
-                .spawn()
-                .context("spawn sudo ln")?
-                .wait()
-                .context("wait for sudo ln")?
-                .success();
-
-            anyhow::ensure!(success, "sudo ln failed");
-        } else {
-            debug!(
-                "Creating symlink {:?} -> {:?} as current user...",
-                link, target
-            );
-            fs::symlink(
-                super::real_path(target).context("get real path of source file")?,
-                link,
-            )
-            .context("create symlink")?;
-        }
-        Ok(())
-    }
-
-    pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
-        Ok(true)
-    }
-
-    pub fn platform_dunce(path: &Path) -> PathBuf {
-        path.into()
-    }
-
-    fn is_owned_by_user(path: &Path) -> Result<bool> {
-        let file_uid = path.metadata().context("get file metadata")?.st_uid();
-        let process_uid = std::path::PathBuf::from("/proc/self")
-            .metadata()
-            .context("get metadata of /proc/self")?
-            .st_uid();
-        Ok(file_uid == process_uid)
-    }
-
-    pub fn create_dir_all(path: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            debug!("Creating directory {:?} from user {:?}...", path, owner);
-            let success = std::process::Command::new("sudo")
-                .arg("-u")
-                .arg(owner.as_sudo_arg())
-                .arg("mkdir")
-                .arg("-p")
-                .arg(path)
-                .spawn()
-                .context("spawn sudo mkdir")?
-                .wait()
-                .context("wait for sudo mkdir")?
-                .success();
-
-            anyhow::ensure!(success, "sudo mkdir failed");
-        } else {
-            debug!("Creating directory {:?} as current user...", path);
-            std::fs::create_dir_all(path).context("create directories")?;
-        }
-        Ok(())
-    }
-
-    pub fn copy_file(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            debug!("Copying {:?} -> {:?} as user {:?}", source, target, owner);
-            let contents = std::fs::read_to_string(source).context("read file contents")?;
-            let mut child = std::process::Command::new("sudo")
-                .arg("-u")
-                .arg(owner.as_sudo_arg())
-                .arg("tee")
-                .arg(target)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::null())
-                .spawn()
-                .context("spawn sudo tee")?;
-
-            // At this point we should've gone through another sudo at the mkdir step already,
-            // so sudo will not ask for the password
-            child
-                .stdin
-                .as_ref()
-                .expect("has stdin")
-                .write_all(contents.as_bytes())
-                .context("give input to tee")?;
-
-            let success = child.wait().context("wait for sudo tee")?.success();
-
-            anyhow::ensure!(success, "sudo tee failed");
-        } else {
-            debug!("Copying {:?} -> {:?} as current user", source, target);
-            std::fs::copy(source, target).context("copy file")?;
-        }
-
-        Ok(())
-    }
-
-    pub fn set_owner(file: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if is_owned_by_user(file).context("detect if file is owned by the current user")?
-            && owner.is_none()
-        {
-            // Nothing to do, no need to elevate
-            return Ok(());
-        }
-
-        let owner = owner.clone().unwrap_or(UnixUser::Name(
-            std::env::var("USER").context("get USER env var")?,
-        ));
-        debug!("Setting owner of {:?} to {:?}...", file, owner);
-
-        let success = std::process::Command::new("sudo")
-            .arg("chown")
-            .arg(owner.as_chown_arg())
-            .arg("-h") // no-dereference
-            .arg(file)
-            .spawn()
-            .context("spawn sudo chown command")?
-            .wait()
-            .context("wait for sudo chown command")?
-            .success();
-
-        anyhow::ensure!(success, "sudo chown command failed");
-        Ok(())
-    }
-
-    pub fn copy_permissions(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            debug!(
-                "Copying permissions {:?} -> {:?} as user {:?}",
-                source, target, owner
-            );
-            let success = std::process::Command::new("sudo")
-                .arg("chmod")
-                .arg("--reference")
-                .arg(source)
-                .arg(target)
-                .spawn()
-                .context("spawn sudo chmod command")?
-                .wait()
-                .context("wait for sudo chmod command")?
-                .success();
-
-            anyhow::ensure!(success, "sudo chmod failed");
-        } else {
-            debug!(
-                "Copying permissions {:?} -> {:?} as current user",
-                source, target
-            );
-            std::fs::set_permissions(
-                target,
-                source
-                    .metadata()
-                    .context("get source metadata")?
-                    .permissions(),
-            )
-            .context("set target permissions")?;
-        }
-        Ok(())
-    }
+    use super::*;
 
     pub fn remove_dir(path: &Path) -> Result<()> {
         match std::fs::remove_dir(path) {
@@ -829,33 +629,14 @@ mod filesystem_impl {
         }
     }
 
-    pub fn remove_file(path: &Path) -> Result<()> {
-        let metadata = path.metadata().context("get metadata")?;
-        let result = if metadata.is_dir() {
-            std::fs::remove_dir_all(path)
-        } else {
-            std::fs::remove_file(path)
-        };
-        match result {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                debug!("Removing file {:?} as root", path);
-                let success = std::process::Command::new("sudo")
-                    .arg("rm")
-                    .arg("-r")
-                    .arg(path)
-                    .spawn()
-                    .context("spawn sudo rm command")?
-                    .wait()
-                    .context("wait for sudo rm command")?
-                    .success();
-
-                anyhow::ensure!(success, "sudo rm command failed");
-                Ok(())
-            }
-            Err(e) => Err(e).context("remove file"),
-        }
+    pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
+        Ok(true)
     }
+
+    pub fn platform_dunce(path: &Path) -> PathBuf {
+        path.into()
+    }
+
 }
 
 pub use self::filesystem_impl::*;

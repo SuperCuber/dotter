@@ -28,8 +28,13 @@ pub(crate) fn run_hook(
         target: std::env::temp_dir().join("dotter_temp").into(),
         cache: script_file.clone(),
     };
-    crate::actions::perform_template_deploy(&template, handlebars, variables)
-        .context("deploy script")?;
+    crate::actions::perform_template_deploy(
+        &template,
+        &mut crate::filesystem::RealFilesystem::new(false),
+        handlebars,
+        variables,
+    )
+    .context("deploy script")?;
 
     debug!("Running script file ");
     let mut child = if cfg!(windows) {
