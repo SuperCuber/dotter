@@ -28,7 +28,7 @@ pub(crate) fn run_hook(
         target: std::env::temp_dir().join("dotter_temp").into(),
         cache: script_file.clone(),
     };
-    crate::deploy::perform_template_deploy(&template, handlebars, variables)
+    crate::actions::perform_template_deploy(&template, handlebars, variables)
         .context("deploy script")?;
 
     debug!("Running script file ");
