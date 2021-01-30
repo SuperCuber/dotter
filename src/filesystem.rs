@@ -70,7 +70,7 @@ pub trait Filesystem {
     fn remove_file(&mut self, path: &Path) -> Result<()>;
 
     /// Delete parents of target file if they're empty
-    fn delete_parents(&mut self, path: &Path, ask: bool) -> Result<()>;
+    fn delete_parents(&mut self, path: &Path) -> Result<()>;
 
     /// Makes a symlink owned by the selected user, elevating privileges as needed
     fn make_symlink(&mut self, link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()>;
@@ -113,14 +113,16 @@ impl Filesystem for RealFilesystem {
 
 #[cfg(unix)]
 pub struct RealFilesystem {
+    interactive: bool,
     sudo_occurred: bool,
 }
 
 #[cfg(unix)]
 impl RealFilesystem {
-    pub fn new() -> RealFilesystem {
+    pub fn new(interactive: bool) -> RealFilesystem {
         RealFilesystem {
             sudo_occurred: false,
+            interactive,
         }
     }
 
@@ -181,7 +183,7 @@ impl Filesystem for RealFilesystem {
         }
     }
 
-    fn delete_parents(&mut self, path: &Path, ask: bool) -> Result<()> {
+    fn delete_parents(&mut self, path: &Path) -> Result<()> {
         let mut path = path.parent().context("get parent")?;
         while path.is_dir()
             && path
@@ -190,7 +192,7 @@ impl Filesystem for RealFilesystem {
                 .next()
                 .is_none()
         {
-            if !ask
+            if !self.interactive
                 || ask_boolean(&format!(
                     "Directory at {:?} is now empty. Delete [y/N]? ",
                     path

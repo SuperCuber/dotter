@@ -76,7 +76,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let mut error_occurred = false;
 
     let plan = crate::actions::plan_deploy(state);
-    let mut fs = crate::filesystem::RealFilesystem::new();
+    let mut fs = crate::filesystem::RealFilesystem::new(opt.interactive);
 
     for action in plan {
         match action.run(&mut fs, opt) {
@@ -165,7 +165,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     let mut error_occurred = false;
 
     let plan = crate::actions::plan_deploy(state);
-    let mut fs = crate::filesystem::RealFilesystem::new();
+    let mut fs = crate::filesystem::RealFilesystem::new(opt.interactive);
 
     for action in plan {
         match action.run(&mut fs, &opt) {
@@ -212,7 +212,6 @@ pub fn delete_symlink(
     symlink: &SymlinkDescription,
     fs: &mut impl Filesystem,
     force: bool,
-    interactive: bool,
 ) -> Result<bool> {
     info!("{} {}", "[-]".red(), symlink);
 
@@ -224,7 +223,7 @@ pub fn delete_symlink(
     match comparison {
         SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
-            perform_symlink_target_deletion(fs, symlink, interactive)
+            perform_symlink_target_deletion(fs, symlink)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
@@ -238,7 +237,7 @@ pub fn delete_symlink(
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!("Deleting {} but {}. Forcing.", symlink, comparison);
             // -f > -v
-            perform_symlink_target_deletion(fs, symlink, interactive)
+            perform_symlink_target_deletion(fs, symlink)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
@@ -252,11 +251,10 @@ pub fn delete_symlink(
 fn perform_symlink_target_deletion(
     fs: &mut impl Filesystem,
     symlink: &SymlinkDescription,
-    interactive: bool,
 ) -> Result<()> {
     fs.remove_file(&symlink.target.target)
         .context("remove symlink")?;
-    fs.delete_parents(&symlink.target.target, interactive)
+    fs.delete_parents(&symlink.target.target)
         .context("delete parents of symlink")?;
     Ok(())
 }

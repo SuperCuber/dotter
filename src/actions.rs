@@ -60,7 +60,7 @@ impl Action {
     /// Returns true if action was successfully performed (false if --force needed for it)
     pub fn run(&self, fs: &mut impl Filesystem, opt: &Options) -> Result<bool> {
         match self {
-            Action::DeleteSymlink(s) => delete_symlink(&s, fs, opt.force, opt.interactive),
+            Action::DeleteSymlink(s) => delete_symlink(&s, fs, opt.force),
             _ => todo!(),
         }
     }
