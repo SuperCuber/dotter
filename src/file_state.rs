@@ -53,43 +53,22 @@ Proceeding by copying instead of symlinking."
 
     for (source, target) in config.files.clone() {
         match target {
+            // TODO: transpose `if symlinks_enabled` and `match`
             config::FileTarget::Automatic(target) => {
                 if symlinks_enabled
                     && !is_template(&source)
                         .context(format!("check whether {:?} is a template", source))?
                 {
-                    desired_symlinks.insert(
-                        source,
-                        config::SymbolicTarget {
-                            target,
-                            owner: None,
-                        },
-                    );
+                    desired_symlinks.insert(source, target.into());
                 } else {
-                    desired_templates.insert(
-                        source,
-                        config::TemplateTarget {
-                            target,
-                            owner: None,
-                            append: None,
-                            prepend: None,
-                        },
-                    );
+                    desired_templates.insert(source, target.into());
                 }
             }
             config::FileTarget::Symbolic(target) => {
                 if symlinks_enabled {
                     desired_symlinks.insert(source, target);
                 } else {
-                    desired_templates.insert(
-                        source,
-                        config::TemplateTarget {
-                            target: target.target,
-                            owner: target.owner,
-                            append: None,
-                            prepend: None,
-                        },
-                    );
+                    desired_templates.insert(source, target.to_template());
                 }
             }
             config::FileTarget::ComplexTemplate(target) => {
