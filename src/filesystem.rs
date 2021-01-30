@@ -60,8 +60,17 @@ where
 
 #[mockall::automock]
 pub trait Filesystem {
+    /// Check state of expected symlink on disk
+    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison>;
+
+    /// Check state of expected symbolic link on disk
+    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison>;
+
     /// Removes a file or folder, elevating privileges if needed
     fn remove_file(&mut self, path: &Path) -> Result<()>;
+
+    /// Delete parents of target file if they're empty
+    fn delete_parents(&mut self, path: &Path, ask: bool) -> Result<()>;
 
     /// Makes a symlink owned by the selected user, elevating privileges as needed
     fn make_symlink(&mut self, link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()>;
@@ -135,6 +144,14 @@ impl RealFilesystem {
 
 #[cfg(unix)]
 impl Filesystem for RealFilesystem {
+    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
+        compare_symlink(source, link)
+    }
+
+    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+        compare_template(target, cache)
+    }
+
     fn remove_file(&mut self, path: &Path) -> Result<()> {
         let metadata = path.metadata().context("get metadata")?;
         let result = if metadata.is_dir() {
@@ -162,6 +179,28 @@ impl Filesystem for RealFilesystem {
             }
             Err(e) => Err(e).context("remove file"),
         }
+    }
+
+    fn delete_parents(&mut self, path: &Path, ask: bool) -> Result<()> {
+        let mut path = path.parent().context("get parent")?;
+        while path.is_dir()
+            && path
+                .read_dir()
+                .context("read the contents of parent directory")?
+                .next()
+                .is_none()
+        {
+            if !ask
+                || ask_boolean(&format!(
+                    "Directory at {:?} is now empty. Delete [y/N]? ",
+                    path
+                ))
+            {
+                remove_dir(path).context(format!("remove directory {:?}", path))?;
+            }
+            path = path.parent().context(format!("get parent of {:?}", path))?;
+        }
+        Ok(())
     }
 
     fn make_symlink(&mut self, link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {

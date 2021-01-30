@@ -14,7 +14,7 @@ use crate::display_error;
 use crate::file_state::{
     file_state_from_configuration, FileState, SymlinkDescription, TemplateDescription,
 };
-use crate::filesystem::{self, SymlinkComparison, TemplateComparison};
+use crate::filesystem::{self, Filesystem, SymlinkComparison, TemplateComparison};
 use crate::handlebars_helpers;
 use crate::hooks;
 
@@ -34,7 +34,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let config = config::load_configuration(&opt.local_config, &opt.global_config, patch)
         .context("get a configuration")?;
 
-    let cache = if let Some(cache) = config::load_cache(&opt.cache_file)? {
+    let mut cache = if let Some(cache) = config::load_cache(&opt.cache_file)? {
         cache
     } else {
         warn!("Cache file not found. Assuming cache is empty.");
@@ -51,11 +51,6 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         helpers,
         packages,
     } = config;
-
-    let config::Cache {
-        symlinks: mut actual_symlinks,
-        templates: mut actual_templates,
-    } = cache;
 
     debug!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
@@ -81,15 +76,23 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let mut error_occurred = false;
 
     let plan = crate::actions::plan_deploy(state);
-
     let mut fs = crate::filesystem::RealFilesystem::new();
 
     for action in plan {
-        action.run(&mut fs, opt);
+        match action.run(&mut fs, opt) {
+            Ok(true) => action.affect_cache(&mut cache),
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => {
+                error_occurred = true;
+                display_error(e);
+            }
+        }
     }
 
-    trace!("Actual symlinks: {:#?}", actual_symlinks);
-    trace!("Actual templates: {:#?}", actual_templates);
+    trace!("Actual symlinks: {:#?}", cache.symlinks);
+    trace!("Actual templates: {:#?}", cache.templates);
 
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
@@ -97,13 +100,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     }
 
     if opt.act {
-        config::save_cache(
-            &opt.cache_file,
-            config::Cache {
-                symlinks: actual_symlinks,
-                templates: actual_templates,
-            },
-        )?;
+        config::save_cache(&opt.cache_file, cache)?;
     }
 
     debug!("Running post-deploy hook");
@@ -120,11 +117,11 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     Ok(error_occurred)
 }
 
-pub fn undeploy(opt: Options) -> Result<()> {
+pub fn undeploy(opt: Options) -> Result<bool> {
     let config = config::load_configuration(&opt.local_config, &opt.global_config, None)
         .context("get a configuration")?;
 
-    let cache = config::load_cache(&opt.cache_file)?
+    let mut cache = config::load_cache(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
 
     let config::Configuration {
@@ -134,17 +131,12 @@ pub fn undeploy(opt: Options) -> Result<()> {
         packages,
     } = config;
 
-    let config::Cache {
-        symlinks: existing_symlinks,
-        templates: existing_templates,
-    } = cache;
-
     // Used just to transform them into Description structs
     let state = FileState::new(
         BTreeMap::default(),
         BTreeMap::default(),
-        existing_symlinks.clone(),
-        existing_templates.clone(),
+        cache.symlinks.clone(),
+        cache.templates.clone(),
         opt.cache_directory.clone(),
     );
     trace!("File state: {:#?}", state);
@@ -169,34 +161,34 @@ pub fn undeploy(opt: Options) -> Result<()> {
         .context("run pre-undeploy hook")?;
     }
 
-    let (deleted_symlinks, deleted_templates) = state.deleted_files();
-
-    let mut actual_symlinks = existing_symlinks;
-    let mut actual_templates = existing_templates;
     let mut suggest_force = false;
+    let mut error_occurred = false;
 
     let plan = crate::actions::plan_deploy(state);
-
     let mut fs = crate::filesystem::RealFilesystem::new();
 
     for action in plan {
-        action.run(&mut fs, &opt);
+        match action.run(&mut fs, &opt) {
+            Ok(true) => action.affect_cache(&mut cache),
+            Ok(false) => {
+                suggest_force = true;
+            }
+            Err(e) => {
+                error_occurred = true;
+                display_error(e);
+            }
+        }
     }
 
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error_occurred = true;
     }
 
     if opt.act {
         // Should be empty if everything went well, but if some things were skipped this contains
         // them.
-        config::save_cache(
-            &opt.cache_file,
-            config::Cache {
-                symlinks: actual_symlinks,
-                templates: actual_templates,
-            },
-        )?;
+        config::save_cache(&opt.cache_file, cache)?;
     }
 
     debug!("Running post-undeploy hook");
@@ -210,7 +202,7 @@ pub fn undeploy(opt: Options) -> Result<()> {
         .context("run post-undeploy hook")?;
     }
 
-    Ok(())
+    Ok(error_occurred)
 }
 
 // == DELETE ==
@@ -218,24 +210,22 @@ pub fn undeploy(opt: Options) -> Result<()> {
 /// Returns true if symlink should be deleted from cache
 pub fn delete_symlink(
     symlink: &SymlinkDescription,
-    fs: &mut impl crate::filesystem::Filesystem,
-    act: bool,
+    fs: &mut impl Filesystem,
     force: bool,
     interactive: bool,
 ) -> Result<bool> {
     info!("{} {}", "[-]".red(), symlink);
 
-    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
+    let comparison = fs
+        .compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
-            if act {
-                perform_symlink_target_deletion(symlink, interactive)
-                    .context("perform symlink target deletion")?;
-            }
+            perform_symlink_target_deletion(fs, symlink, interactive)
+                .context("perform symlink target deletion")?;
             Ok(true)
         }
         SymlinkComparison::OnlySourceExists | SymlinkComparison::BothMissing => {
@@ -248,7 +238,7 @@ pub fn delete_symlink(
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!("Deleting {} but {}. Forcing.", symlink, comparison);
             // -f > -v
-            perform_symlink_target_deletion(symlink, interactive)
+            perform_symlink_target_deletion(fs, symlink, interactive)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
@@ -259,9 +249,14 @@ pub fn delete_symlink(
     }
 }
 
-fn perform_symlink_target_deletion(symlink: &SymlinkDescription, interactive: bool) -> Result<()> {
-    filesystem::remove_file(&symlink.target.target).context("remove symlink")?;
-    filesystem::delete_parents(&symlink.target.target, interactive)
+fn perform_symlink_target_deletion(
+    fs: &mut impl Filesystem,
+    symlink: &SymlinkDescription,
+    interactive: bool,
+) -> Result<()> {
+    fs.remove_file(&symlink.target.target)
+        .context("remove symlink")?;
+    fs.delete_parents(&symlink.target.target, interactive)
         .context("delete parents of symlink")?;
     Ok(())
 }
