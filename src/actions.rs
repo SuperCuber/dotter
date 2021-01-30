@@ -7,47 +7,8 @@ use std::fs;
 use crate::args::Options;
 use crate::config::Variables;
 use crate::difference;
-use crate::file_state::{
-    FileState, SymlinkDescription, TemplateDescription,
-};
+use crate::file_state::{SymlinkDescription, TemplateDescription};
 use crate::filesystem::{self, Filesystem, SymlinkComparison, TemplateComparison};
-
-pub fn plan_deploy(state: FileState) -> Vec<Action> {
-    let mut actions = Vec::new();
-
-    let FileState {
-        desired_symlinks,
-        desired_templates,
-        existing_symlinks,
-        existing_templates,
-    } = state;
-
-    for deleted_symlink in existing_symlinks.difference(&desired_symlinks) {
-        actions.push(Action::DeleteSymlink(deleted_symlink.clone()));
-    }
-
-    for deleted_template in existing_templates.difference(&desired_templates) {
-        actions.push(Action::DeleteTemplate(deleted_template.clone()));
-    }
-
-    for created_symlink in desired_symlinks.difference(&existing_symlinks) {
-        actions.push(Action::CreateSymlink(created_symlink.clone()));
-    }
-
-    for created_template in desired_templates.difference(&existing_templates) {
-        actions.push(Action::CreateTemplate(created_template.clone()));
-    }
-
-    for updated_symlink in desired_symlinks.intersection(&existing_symlinks) {
-        actions.push(Action::UpdateSymlink(updated_symlink.clone()));
-    }
-
-    for updated_template in desired_templates.intersection(&existing_templates) {
-        actions.push(Action::UpdateTemplate(updated_template.clone()));
-    }
-
-    actions
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
@@ -61,9 +22,20 @@ pub enum Action {
 
 impl Action {
     /// Returns true if action was successfully performed (false if --force needed for it)
-    pub fn run(&self, fs: &mut impl Filesystem, opt: &Options) -> Result<bool> {
+    pub fn run(
+        &self,
+        fs: &mut impl Filesystem,
+        opt: &Options,
+        handlebars: &Handlebars<'_>,
+        variables: &Variables,
+    ) -> Result<bool> {
         match self {
             Action::DeleteSymlink(s) => delete_symlink(&s, fs, opt.force),
+            Action::DeleteTemplate(s) => delete_template(&s, fs, opt.force),
+            Action::CreateSymlink(s) => create_symlink(&s, fs, opt.force),
+            Action::CreateTemplate(s) => create_template(&s, fs, handlebars, variables, opt.force),
+            Action::UpdateSymlink(s) => update_symlink(&s, fs, opt.force),
+            Action::UpdateTemplate(s) => update_template(&s, fs, handlebars, variables, opt.force, todo!()),
             _ => todo!(),
         }
     }
@@ -81,7 +53,7 @@ impl Action {
 // == DELETE ==
 
 /// Returns true if symlink should be deleted from cache
-pub fn delete_symlink(
+fn delete_symlink(
     symlink: &SymlinkDescription,
     fs: &mut impl Filesystem,
     force: bool,
@@ -133,25 +105,23 @@ fn perform_symlink_target_deletion(
 
 /// Returns true if template should be deleted from cache
 fn delete_template(
-    act: bool,
     template: &TemplateDescription,
+    fs: &mut impl Filesystem,
     force: bool,
-    interactive: bool,
 ) -> Result<bool> {
     info!("{} {}", "[-]".red(), template);
 
-    let comparison = filesystem::compare_template(&template.target.target, &template.cache)
+    let comparison = fs
+        .compare_template(&template.target.target, &template.cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::Identical => {
             debug!("Performing deletion");
-            if act {
-                perform_cache_deletion(template).context("perform cache deletion")?;
-                perform_template_target_deletion(template, interactive)
-                    .context("perform template target deletion")?;
-            }
+            perform_cache_deletion(fs, template).context("perform cache deletion")?;
+            perform_template_target_deletion(fs, template)
+                .context("perform template target deletion")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists => {
@@ -159,9 +129,7 @@ fn delete_template(
                 "Deleting {} but {}. Deleting cache anyways.",
                 template, comparison
             );
-            if act {
-                perform_cache_deletion(template).context("perform cache deletion")?;
-            }
+            perform_cache_deletion(fs, template).context("perform cache deletion")?;
             Ok(true)
         }
         TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
@@ -174,9 +142,8 @@ fn delete_template(
         }
         TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
             warn!("Deleting {} but {}. Forcing.", template, comparison);
-            // -f > -v
-            perform_cache_deletion(template).context("perform cache deletion")?;
-            perform_template_target_deletion(template, interactive)
+            perform_cache_deletion(fs, template).context("perform cache deletion")?;
+            perform_template_target_deletion(fs, template)
                 .context("perform template target deletion")?;
             Ok(true)
         }
@@ -187,19 +154,21 @@ fn delete_template(
     }
 }
 
-fn perform_cache_deletion(template: &TemplateDescription) -> Result<()> {
-    fs::remove_file(&template.cache).context("delete template cache")?;
-    filesystem::delete_parents(&template.cache, false)
+fn perform_cache_deletion(fs: &mut impl Filesystem, template: &TemplateDescription) -> Result<()> {
+    fs.remove_file(&template.cache)
+        .context("delete template cache")?;
+    fs.delete_parents(&template.cache)
         .context("delete parent directory in cache")?;
     Ok(())
 }
 
 fn perform_template_target_deletion(
+    fs: &mut impl Filesystem,
     template: &TemplateDescription,
-    interactive: bool,
 ) -> Result<()> {
-    filesystem::remove_file(&template.target.target).context("delete target file")?;
-    filesystem::delete_parents(&template.target.target, interactive)
+    fs.remove_file(&template.target.target)
+        .context("delete target file")?;
+    fs.delete_parents(&template.target.target)
         .context("delete parent directory in target location")?;
     Ok(())
 }
@@ -207,33 +176,36 @@ fn perform_template_target_deletion(
 // == CREATE ==
 
 /// Returns true if symlink should be added to cache
-fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
+fn create_symlink(
+    symlink: &SymlinkDescription,
+    fs: &mut impl Filesystem,
+    force: bool,
+) -> Result<bool> {
     info!("{} {}", "[+]".green(), symlink);
 
-    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
+    let comparison = fs
+        .compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::OnlySourceExists => {
             debug!("Performing creation");
-            if act {
-                filesystem::create_dir_all(
-                    &symlink
-                        .target
-                        .target
-                        .parent()
-                        .context("get parent of target file")?,
-                    &symlink.target.owner,
-                )
-                .context("create parent for target file")?;
-                filesystem::make_symlink(
-                    &symlink.target.target,
-                    &symlink.source,
-                    &symlink.target.owner,
-                )
-                .context("create target symlink")?;
-            }
+            fs.create_dir_all(
+                &symlink
+                    .target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &symlink.target.owner,
+            )
+            .context("create parent for target file")?;
+            fs.make_symlink(
+                &symlink.target.target,
+                &symlink.source,
+                &symlink.target.owner,
+            )
+            .context("create target symlink")?;
             Ok(true)
         }
         SymlinkComparison::Identical => {
@@ -246,10 +218,9 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!("Creating {} but {}. Forcing.", symlink, comparison);
-            filesystem::remove_file(&symlink.target.target)
+            fs.remove_file(&symlink.target.target)
                 .context("remove symlink target while forcing")?;
-            // -f > -v
-            filesystem::make_symlink(
+            fs.make_symlink(
                 &symlink.target.target,
                 &symlink.source,
                 &symlink.target.owner,
@@ -266,34 +237,33 @@ fn create_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
 
 // Returns true if the template should be added to cache
 fn create_template(
-    act: bool,
     template: &TemplateDescription,
+    fs: &mut impl Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
     force: bool,
 ) -> Result<bool> {
     info!("{} {}", "[+]".green(), template);
 
-    let comparison = filesystem::compare_template(&template.target.target, &template.cache)
+    let comparison = fs
+        .compare_template(&template.target.target, &template.cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::BothMissing => {
             debug!("Performing creation");
-            if act {
-                filesystem::create_dir_all(
-                    &template
-                        .target
-                        .target
-                        .parent()
-                        .context("get parent of target file")?,
-                    &template.target.owner,
-                )
-                .context("create parent for target file")?;
-                perform_template_deploy(template, handlebars, variables)
-                    .context("perform template cache")?;
-            }
+            fs.create_dir_all(
+                &template
+                    .target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &template.target.owner,
+            )
+            .context("create parent for target file")?;
+            perform_template_deploy(template, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists | TemplateComparison::Identical => {
@@ -301,19 +271,17 @@ fn create_template(
                 "Creating {} but cache file already exists. This is probably a result of an error in the last run.",
                 template
             );
-            if act {
-                filesystem::create_dir_all(
-                    &template
-                        .target
-                        .target
-                        .parent()
-                        .context("get parent of target file")?,
-                    &template.target.owner,
-                )
-                .context("create parent for target file")?;
-                perform_template_deploy(template, handlebars, variables)
-                    .context("perform template cache")?;
-            }
+            fs.create_dir_all(
+                &template
+                    .target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &template.target.owner,
+            )
+            .context("create parent for target file")?;
+            perform_template_deploy(template, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::TargetNotRegularFile
@@ -325,10 +293,9 @@ fn create_template(
                 "Creating {} but target file already exists. Forcing.",
                 template
             );
-            filesystem::remove_file(&template.target.target)
+            fs.remove_file(&template.target.target)
                 .context("remove existing file while forcing")?;
-            // -f > -v
-            filesystem::create_dir_all(
+            fs.create_dir_all(
                 &template
                     .target
                     .target
@@ -356,20 +323,23 @@ fn create_template(
 // == UPDATE ==
 
 /// Returns true if the symlink wasn't skipped
-fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Result<bool> {
+fn update_symlink(
+    symlink: &SymlinkDescription,
+    fs: &mut impl Filesystem,
+    force: bool,
+) -> Result<bool> {
     debug!("Updating {}...", symlink);
 
-    let comparison = filesystem::compare_symlink(&symlink.source, &symlink.target.target)
+    let comparison = fs
+        .compare_symlink(&symlink.source, &symlink.target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::Identical => {
             debug!("Performing update");
-            if act {
-                filesystem::set_owner(&symlink.target.target, &symlink.target.owner)
-                    .context("set target symlink owner")?;
-            }
+            fs.set_owner(&symlink.target.target, &symlink.target.owner)
+                .context("set target symlink owner")?;
             Ok(true)
         }
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
@@ -378,10 +348,9 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!("Updating {} but {}. Forcing.", symlink, comparison);
-            filesystem::remove_file(&symlink.target.target)
+            fs.remove_file(&symlink.target.target)
                 .context("remove symlink target while forcing")?;
-            // -f > -v
-            filesystem::make_symlink(
+            fs.make_symlink(
                 &symlink.target.target,
                 &symlink.source,
                 &symlink.target.owner,
@@ -398,23 +367,21 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
                 "Updating {} but {}. Creating it anyways.",
                 symlink, comparison
             );
-            if act {
-                filesystem::create_dir_all(
-                    &symlink
-                        .target
-                        .target
-                        .parent()
-                        .context("get parent of target file")?,
-                    &symlink.target.owner,
-                )
-                .context("create parent for target file")?;
-                filesystem::make_symlink(
-                    &symlink.target.target,
-                    &symlink.source,
-                    &symlink.target.owner,
-                )
-                .context("create target symlink")?;
-            }
+            fs.create_dir_all(
+                &symlink
+                    .target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &symlink.target.owner,
+            )
+            .context("create parent for target file")?;
+            fs.make_symlink(
+                &symlink.target.target,
+                &symlink.source,
+                &symlink.target.owner,
+            )
+            .context("create target symlink")?;
             Ok(true)
         }
     }
@@ -422,15 +389,16 @@ fn update_symlink(act: bool, symlink: &SymlinkDescription, force: bool) -> Resul
 
 /// Returns true if the template was not skipped
 fn update_template(
-    act: bool,
     template: &TemplateDescription,
+    fs: &mut impl Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
     force: bool,
     diff_context_lines: usize,
 ) -> Result<bool> {
     debug!("Updating {}...", template);
-    let comparison = filesystem::compare_template(&template.target.target, &template.cache)
+    let comparison = fs
+        .compare_template(&template.target.target, &template.cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -438,12 +406,10 @@ fn update_template(
         TemplateComparison::Identical => {
             debug!("Performing update");
             difference::print_template_diff(template, handlebars, variables, diff_context_lines);
-            if act {
-                filesystem::set_owner(&template.target.target, &template.target.owner)
-                    .context("set target file owner")?;
-                perform_template_deploy(template, handlebars, variables)
-                    .context("perform template cache")?;
-            }
+            fs.set_owner(&template.target.target, &template.target.owner)
+                .context("set target file owner")?;
+            perform_template_deploy(template, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists => {
@@ -451,7 +417,7 @@ fn update_template(
                 "Updating {} but target is missing. Creating it anyways.",
                 template
             );
-            filesystem::create_dir_all(
+            fs.create_dir_all(
                 &template
                     .target
                     .target
@@ -475,8 +441,7 @@ fn update_template(
         TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
             warn!("Updating {} but {}. Forcing.", template, comparison);
             difference::print_template_diff(template, handlebars, variables, diff_context_lines);
-            // -f > -v
-            filesystem::remove_file(&template.target.target)
+            fs.remove_file(&template.target.target)
                 .context("remove target while forcing")?;
             perform_template_deploy(template, handlebars, variables)
                 .context("perform template cache")?;
@@ -526,54 +491,4 @@ pub(crate) fn perform_template_deploy(
     .context("copy permissions from source to target")?;
 
     Ok(())
-}
-#[cfg(test)]
-mod test {
-    use crate::config::{SymbolicTarget, TemplateTarget};
-
-    use std::collections::BTreeSet;
-
-    use super::*;
-
-    #[test]
-    fn initial_deploy() {
-        let a = SymlinkDescription {
-            source: "a_in".into(),
-            target: SymbolicTarget {
-                target: "a_out".into(),
-                owner: None,
-            },
-        };
-        let b = TemplateDescription {
-            source: "b_in".into(),
-            target: TemplateTarget {
-                target: "b_out".into(),
-                owner: None,
-                append: None,
-                prepend: None,
-            },
-            cache: "cache/b_cache".into(),
-        };
-        let file_state = FileState {
-            desired_symlinks: maplit::btreeset! {
-                a.clone()
-            },
-            desired_templates: maplit::btreeset! {
-                b.clone()
-            },
-            existing_symlinks: BTreeSet::new(),
-            existing_templates: BTreeSet::new(),
-        };
-
-        let actions = plan_deploy(file_state);
-        assert_eq!(
-            actions,
-            [Action::CreateSymlink(a), Action::CreateTemplate(b)]
-        );
-
-        let mut fs = crate::filesystem::MockFilesystem::new();
-        fs.expect_remove_file().times(1).returning(|_p| Ok(()));
-
-        actions[0].run(&mut fs, &Options::default()).unwrap();
-    }
 }
