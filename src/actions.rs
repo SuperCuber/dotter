@@ -1,21 +1,16 @@
 use anyhow::Result;
 
-use std::path::PathBuf;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::Path,
-};
+use crate::file_state::FileState;
 
 use crate::{
     args::Options,
-    config::Cache,
     deploy::delete_symlink,
     file_state::{SymlinkDescription, TemplateDescription},
     filesystem::Filesystem,
 };
 
 #[derive(Debug, PartialEq, Eq)]
-enum Action {
+pub enum Action {
     DeleteSymlink(SymlinkDescription),
     DeleteTemplate(TemplateDescription),
     CreateSymlink(SymlinkDescription),
@@ -24,15 +19,7 @@ enum Action {
     UpdateTemplate(TemplateDescription),
 }
 
-#[derive(Debug)]
-pub struct FileState {
-    pub desired_symlinks: BTreeSet<SymlinkDescription>,
-    pub desired_templates: BTreeSet<TemplateDescription>,
-    pub existing_symlinks: BTreeSet<SymlinkDescription>,
-    pub existing_templates: BTreeSet<TemplateDescription>,
-}
-
-fn plan_deploy(state: FileState) -> Vec<Action> {
+pub fn plan_deploy(state: FileState) -> Vec<Action> {
     let mut actions = Vec::new();
 
     let FileState {
@@ -71,9 +58,9 @@ fn plan_deploy(state: FileState) -> Vec<Action> {
 
 impl Action {
     /// Returns true if action was successfully performed
-    fn run(&self, fs: &mut impl Filesystem, opt: &Options) -> Result<bool> {
+    pub fn run(&self, fs: &mut impl Filesystem, opt: &Options) -> Result<bool> {
         match self {
-            Action::DeleteSymlink(s) => delete_symlink(opt.act, &s, opt.force, opt.interactive),
+            Action::DeleteSymlink(s) => delete_symlink(&s, fs, opt.act, opt.force, opt.interactive),
             _ => todo!(),
         }
     }
@@ -82,6 +69,8 @@ impl Action {
 #[cfg(test)]
 mod test {
     use crate::config::{SymbolicTarget, TemplateTarget};
+
+    use std::collections::BTreeSet;
 
     use super::*;
 

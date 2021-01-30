@@ -80,103 +80,12 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let mut suggest_force = false;
     let mut error_occurred = false;
 
-    let (deleted_symlinks, deleted_templates) = state.deleted_files();
-    trace!("Deleted symlinks: {:#?}", deleted_symlinks);
-    trace!("Deleted templates: {:#?}", deleted_templates);
-    for deleted_symlink in deleted_symlinks {
-        match delete_symlink(opt.act, &deleted_symlink, opt.force, opt.interactive) {
-            Ok(true) => {
-                actual_symlinks.remove(&deleted_symlink.source);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => {
-                display_error(e.context(format!("delete {}", deleted_symlink)));
-                error_occurred = true;
-            }
-        }
-    }
-    for deleted_template in deleted_templates {
-        match delete_template(opt.act, &deleted_template, opt.force, opt.interactive) {
-            Ok(true) => {
-                actual_templates.remove(&deleted_template.source);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => {
-                display_error(e.context(format!("delete {}", deleted_template)));
-                error_occurred = true;
-            }
-        }
-    }
+    let plan = crate::actions::plan_deploy(state);
 
-    let (new_symlinks, new_templates) = state.new_files();
-    trace!("New symlinks: {:#?}", new_symlinks);
-    trace!("New templates: {:#?}", new_templates);
-    for new_symlink in new_symlinks {
-        match create_symlink(opt.act, &new_symlink, opt.force) {
-            Ok(true) => {
-                actual_symlinks.insert(new_symlink.source, new_symlink.target.target);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => {
-                display_error(e.context(format!("create {}", new_symlink)));
-                error_occurred = true;
-            }
-        }
-    }
-    for new_template in new_templates {
-        match create_template(opt.act, &new_template, &handlebars, &variables, opt.force) {
-            Ok(true) => {
-                actual_templates.insert(new_template.source, new_template.target.target);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => {
-                display_error(e.context(format!("create {}", new_template)));
-                error_occurred = true;
-            }
-        }
-    }
+    let mut fs = crate::filesystem::RealFilesystem::new();
 
-    let (old_symlinks, old_templates) = state.old_files();
-    trace!("Old symlinks: {:#?}", old_symlinks);
-    trace!("Old templates: {:#?}", old_templates);
-    for old_symlink in old_symlinks {
-        match update_symlink(opt.act, &old_symlink, opt.force) {
-            Ok(true) => {}
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => {
-                display_error(e.context(format!("update {}", old_symlink)));
-                error_occurred = true;
-            }
-        }
-    }
-    for old_template in old_templates {
-        match update_template(
-            opt.act,
-            &old_template,
-            &handlebars,
-            &variables,
-            opt.force,
-            opt.diff_context_lines,
-        ) {
-            Ok(true) => {}
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => {
-                display_error(e.context(format!("update {}", old_template)));
-                error_occurred = true;
-            }
-        }
+    for action in plan {
+        action.run(&mut fs, opt);
     }
 
     trace!("Actual symlinks: {:#?}", actual_symlinks);
@@ -266,28 +175,12 @@ pub fn undeploy(opt: Options) -> Result<()> {
     let mut actual_templates = existing_templates;
     let mut suggest_force = false;
 
-    for symlink in deleted_symlinks {
-        match delete_symlink(opt.act, &symlink, opt.force, opt.interactive) {
-            Ok(true) => {
-                actual_symlinks.remove(&symlink.source);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => display_error(e.context(format!("delete {}", symlink))),
-        }
-    }
+    let plan = crate::actions::plan_deploy(state);
 
-    for template in deleted_templates {
-        match delete_template(opt.act, &template, opt.force, opt.interactive) {
-            Ok(true) => {
-                actual_templates.remove(&template.source);
-            }
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => display_error(e.context(format!("delete {}", template))),
-        }
+    let mut fs = crate::filesystem::RealFilesystem::new();
+
+    for action in plan {
+        action.run(&mut fs, &opt);
     }
 
     if suggest_force {
@@ -324,8 +217,9 @@ pub fn undeploy(opt: Options) -> Result<()> {
 
 /// Returns true if symlink should be deleted from cache
 pub fn delete_symlink(
-    act: bool,
     symlink: &SymlinkDescription,
+    fs: &mut impl crate::filesystem::Filesystem,
+    act: bool,
     force: bool,
     interactive: bool,
 ) -> Result<bool> {
