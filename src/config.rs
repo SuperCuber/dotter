@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::filesystem;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -56,6 +56,8 @@ pub struct Package {
     files: Files,
     #[serde(default)]
     variables: Variables,
+    #[serde(default)]
+    depends: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -140,6 +142,7 @@ pub fn save_dummy_config(
     let package = Package {
         files: files.into_iter().map(|f| (f.into(), "".into())).collect(),
         variables: Variables::new(),
+        depends: vec![],
     };
     trace!("Default package: {:#?}", package);
 
@@ -230,18 +233,39 @@ fn merge_configuration_files(
         .with_context(|| format!("including file {:?}", included_path))?;
     }
 
+    // Enable depended packages
+    let mut enabled_packages = local.packages.clone().into_iter().collect::<BTreeSet<_>>();
+    let mut package_count = 0;
+
+    // Keep iterating until there's nothing new added
+    while enabled_packages.len() > package_count {
+        let mut new_packages = BTreeSet::new();
+        for package in &enabled_packages {
+            new_packages.extend(
+                global
+                    .packages
+                    .get(package)
+                    .with_context(|| format!("get info of package {}", package))?
+                    .depends
+                    .clone(),
+            );
+        }
+        package_count = enabled_packages.len();
+        enabled_packages.extend(new_packages);
+    }
+
     // Apply packages filter
     global.packages = global
         .packages
         .into_iter()
-        .filter(|(k, _)| local.packages.contains(&k))
+        .filter(|(k, _)| enabled_packages.contains(k))
         .collect();
 
     let mut output = Configuration {
         helpers: global.helpers,
         files: Files::default(),
         variables: Variables::default(),
-        packages: local.packages,
+        packages: enabled_packages.into_iter().collect(),
     };
 
     // Merge all the packages

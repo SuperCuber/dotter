@@ -5,8 +5,15 @@ on:
     types: [published]
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
+  build-artifact:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            exe_suffix: ""
+          - os: windows-latest
+            exe_suffix: ".exe"
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -25,32 +32,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          asset_path: target/release/dotter
-          asset_name: dotter
-          asset_content_type: application/octet-stream
-          upload_url: ${{ github.event.release.upload_url }}
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --locked --verbose
-      - name: Upload asset
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          asset_path: target/release/dotter.exe
-          asset_name: dotter.exe
+          asset_path: target/release/dotter${{ matrix.exe_suffix }}
+          asset_name: dotter${{ matrix.exe_suffix }}
           asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
   cargo-publish:
