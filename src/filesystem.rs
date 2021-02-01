@@ -492,6 +492,67 @@ impl Filesystem for RealFilesystem {
     }
 }
 
+// == Dry run Filesystem ==
+pub struct DryRunFilesystem;
+
+impl DryRunFilesystem {
+    pub fn new() -> DryRunFilesystem {
+        DryRunFilesystem
+    }
+}
+
+#[allow(unused_variables)]
+impl Filesystem for DryRunFilesystem {
+    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
+        todo!()
+    }
+
+    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+        todo!()
+    }
+
+    fn remove_file(&mut self, path: &Path) -> Result<()> {
+        todo!()
+    }
+
+    fn read_to_string(&mut self, path: &Path) -> Result<String> {
+        todo!()
+    }
+
+    fn write(&mut self, path: &Path, content: String) -> Result<()> {
+        todo!()
+    }
+
+    fn delete_parents(&mut self, path: &Path) -> Result<()> {
+        todo!()
+    }
+
+    fn make_symlink(&mut self, link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        todo!()
+    }
+
+    fn create_dir_all(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        todo!()
+    }
+
+    fn copy_file(&mut self, source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        todo!()
+    }
+
+    fn set_owner(&mut self, file: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        todo!()
+    }
+
+    fn copy_permissions(
+        &mut self,
+        source: &Path,
+        target: &Path,
+        owner: &Option<UnixUser>,
+    ) -> Result<()> {
+        todo!()
+    }
+}
+
 // === Comparisons ===
 
 #[derive(Debug, PartialEq)]

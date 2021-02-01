@@ -5,13 +5,13 @@ use handlebars::Handlebars;
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 
-use crate::actions::Action;
 use crate::args::Options;
 use crate::config;
 use crate::display_error;
 use crate::file_state::{file_state_from_configuration, FileState};
 use crate::handlebars_helpers;
 use crate::hooks;
+use crate::{actions::Action, filesystem::Filesystem};
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
@@ -71,10 +71,17 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let mut error_occurred = false;
 
     let plan = plan_deploy(state);
-    let mut fs = crate::filesystem::RealFilesystem::new(opt.interactive);
+    let (mut real_fs, mut dry_run_fs);
+    let fs: &mut dyn Filesystem = if opt.act {
+        real_fs = crate::filesystem::RealFilesystem::new(opt.interactive);
+        &mut real_fs
+    } else {
+        dry_run_fs = crate::filesystem::DryRunFilesystem::new();
+        &mut dry_run_fs
+    };
 
     for action in plan {
-        match action.run(&mut fs, opt, &handlebars, &variables) {
+        match action.run(fs, opt, &handlebars, &variables) {
             Ok(true) => action.affect_cache(&mut cache),
             Ok(false) => {
                 suggest_force = true;
@@ -160,10 +167,17 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     let mut error_occurred = false;
 
     let plan = plan_deploy(state);
-    let mut fs = crate::filesystem::RealFilesystem::new(opt.interactive);
+    let (mut real_fs, mut dry_run_fs);
+    let fs: &mut dyn Filesystem = if opt.act {
+        real_fs = crate::filesystem::RealFilesystem::new(opt.interactive);
+        &mut real_fs
+    } else {
+        dry_run_fs = crate::filesystem::DryRunFilesystem::new();
+        &mut dry_run_fs
+    };
 
     for action in plan {
-        match action.run(&mut fs, &opt, &handlebars, &variables) {
+        match action.run(fs, &opt, &handlebars, &variables) {
             Ok(true) => action.affect_cache(&mut cache),
             Ok(false) => {
                 suggest_force = true;

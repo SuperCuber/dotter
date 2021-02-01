@@ -22,7 +22,7 @@ impl Action {
     /// Returns true if action was successfully performed (false if --force needed for it)
     pub fn run(
         &self,
-        fs: &mut impl Filesystem,
+        fs: &mut dyn Filesystem,
         opt: &Options,
         handlebars: &Handlebars<'_>,
         variables: &Variables,
@@ -73,7 +73,7 @@ impl Action {
 /// Returns true if symlink should be deleted from cache
 fn delete_symlink(
     symlink: &SymlinkDescription,
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
     info!("{} {}", "[-]".red(), symlink);
@@ -111,7 +111,7 @@ fn delete_symlink(
 }
 
 fn perform_symlink_target_deletion(
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     symlink: &SymlinkDescription,
 ) -> Result<()> {
     fs.remove_file(&symlink.target.target)
@@ -124,7 +124,7 @@ fn perform_symlink_target_deletion(
 /// Returns true if template should be deleted from cache
 fn delete_template(
     template: &TemplateDescription,
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
     info!("{} {}", "[-]".red(), template);
@@ -172,7 +172,7 @@ fn delete_template(
     }
 }
 
-fn perform_cache_deletion(fs: &mut impl Filesystem, template: &TemplateDescription) -> Result<()> {
+fn perform_cache_deletion(fs: &mut dyn Filesystem, template: &TemplateDescription) -> Result<()> {
     fs.remove_file(&template.cache)
         .context("delete template cache")?;
     fs.delete_parents(&template.cache)
@@ -181,7 +181,7 @@ fn perform_cache_deletion(fs: &mut impl Filesystem, template: &TemplateDescripti
 }
 
 fn perform_template_target_deletion(
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     template: &TemplateDescription,
 ) -> Result<()> {
     fs.remove_file(&template.target.target)
@@ -196,7 +196,7 @@ fn perform_template_target_deletion(
 /// Returns true if symlink should be added to cache
 fn create_symlink(
     symlink: &SymlinkDescription,
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
     info!("{} {}", "[+]".green(), symlink);
@@ -256,7 +256,7 @@ fn create_symlink(
 // Returns true if the template should be added to cache
 fn create_template(
     template: &TemplateDescription,
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
     force: bool,
@@ -343,7 +343,7 @@ fn create_template(
 /// Returns true if the symlink wasn't skipped
 fn update_symlink(
     symlink: &SymlinkDescription,
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
     debug!("Updating {}...", symlink);
@@ -408,7 +408,7 @@ fn update_symlink(
 /// Returns true if the template was not skipped
 fn update_template(
     template: &TemplateDescription,
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
     force: bool,
@@ -474,7 +474,7 @@ fn update_template(
 
 pub(crate) fn perform_template_deploy(
     template: &TemplateDescription,
-    fs: &mut impl Filesystem,
+    fs: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<()> {
