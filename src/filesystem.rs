@@ -306,7 +306,7 @@ impl Filesystem for RealFilesystem {
                 ))
             {
                 match std::fs::remove_dir(path) {
-                    Ok(()) => Ok(()),
+                    Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                         let success = std::process::Command::new("sudo")
                             .arg("rmdir")
@@ -318,9 +318,10 @@ impl Filesystem for RealFilesystem {
                             .success();
 
                         anyhow::ensure!(success, "sudo rmdir failed");
-                        Ok(())
                     }
-                    Err(e) => Err(e).context("remove dir"),
+                    Err(e) => {
+                        Err(e).context("remove dir")?;
+                    }
                 }
             }
             path = path.parent().context(format!("get parent of {:?}", path))?;
@@ -388,6 +389,8 @@ impl Filesystem for RealFilesystem {
     }
 
     fn copy_file(&mut self, source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        use std::io::Write;
+
         if let Some(owner) = owner {
             debug!("Copying {:?} -> {:?} as user {:?}", source, target, owner);
             let contents = std::fs::read_to_string(source).context("read file contents")?;
