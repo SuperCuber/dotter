@@ -33,9 +33,14 @@ impl Action {
             Action::CreateSymlink(s) => create_symlink(&s, fs, opt.force),
             Action::CreateTemplate(s) => create_template(&s, fs, handlebars, variables, opt.force),
             Action::UpdateSymlink(s) => update_symlink(&s, fs, opt.force),
-            Action::UpdateTemplate(s) => {
-                update_template(&s, fs, handlebars, variables, opt.force, opt.diff_context_lines)
-            }
+            Action::UpdateTemplate(s) => update_template(
+                &s,
+                fs,
+                handlebars,
+                variables,
+                opt.force,
+                opt.diff_context_lines,
+            ),
         }
     }
 
@@ -473,8 +478,9 @@ pub(crate) fn perform_template_deploy(
     handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<()> {
-    let file_contents =
-        fs.read_to_string(&template.source).context("read template source file")?;
+    let file_contents = fs
+        .read_to_string(&template.source)
+        .context("read template source file")?;
     let file_contents = template.apply_actions(file_contents);
     let rendered = handlebars
         .render_template(&file_contents, variables)
@@ -489,7 +495,8 @@ pub(crate) fn perform_template_deploy(
         &None,
     )
     .context("create parent for cache file")?;
-    fs.write(&template.cache, rendered).context("write rendered template to cache")?;
+    fs.write(&template.cache, rendered)
+        .context("write rendered template to cache")?;
 
     // Target
     fs.copy_file(

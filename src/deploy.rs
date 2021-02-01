@@ -366,12 +366,20 @@ mod test {
             .returning(|_, _| Ok(()));
         fs.expect_copy_file()
             .times(1)
-            .with(function(path_eq("cache/b_cache")), function(path_eq("b_out")), eq(None))
+            .with(
+                function(path_eq("cache/b_cache")),
+                function(path_eq("b_out")),
+                eq(None),
+            )
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(()));
         fs.expect_copy_permissions()
             .times(1)
-            .with(function(path_eq("b_in")), function(path_eq("b_out")), eq(None))
+            .with(
+                function(path_eq("b_in")),
+                function(path_eq("b_out")),
+                eq(None),
+            )
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(()));
 
