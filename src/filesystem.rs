@@ -512,6 +512,8 @@ impl Filesystem for RealFilesystem {
     }
 }
 
+// === Comparisons ===
+
 #[derive(Debug, PartialEq)]
 pub enum SymlinkComparison {
     Identical,
@@ -621,6 +623,8 @@ pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateCompariso
         (None, None) => TemplateComparison::BothMissing,
     })
 }
+
+/// === Utility functions ===
 
 pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
     let path = std::fs::canonicalize(&path)?;
