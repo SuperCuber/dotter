@@ -104,7 +104,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     }
 
     if opt.act {
-        config::save_cache(&opt.cache_file, cache)?;
+        filesystem::save_file(&opt.cache_file, cache).context("save cache")?;
     }
 
     debug!("Running post-deploy hook");
@@ -199,7 +199,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     if opt.act {
         // Should be empty if everything went well, but if some things were skipped this contains
         // them.
-        config::save_cache(&opt.cache_file, cache)?;
+        filesystem::save_file(&opt.cache_file, cache).context("save cache")?;
     }
 
     debug!("Running post-undeploy hook");

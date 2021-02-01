@@ -131,13 +131,6 @@ pub struct Cache {
     pub templates: BTreeMap<PathBuf, PathBuf>,
 }
 
-pub fn save_cache(cache_file: &Path, cache: Cache) -> Result<()> {
-    debug!("Saving cache...");
-    filesystem::save_file(cache_file, cache).context("save cache")?;
-
-    Ok(())
-}
-
 pub fn save_dummy_config(
     files: Vec<String>,
     local_config_path: &Path,

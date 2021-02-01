@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 
 use std::collections::BTreeMap;
 
-use crate::args::Options;
 use crate::config;
+use crate::{args::Options, filesystem::save_file};
 
 pub fn init(opt: Options) -> Result<()> {
     info!("Looking for existing configuration...");
@@ -37,7 +37,7 @@ pub fn init(opt: Options) -> Result<()> {
         .context("save dummy config")?;
 
     debug!("Emptying cache...");
-    config::save_cache(
+    save_file(
         &opt.cache_file,
         config::Cache {
             symlinks: BTreeMap::default(),
