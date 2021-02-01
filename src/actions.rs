@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use anyhow::{Context, Result};
 use crossterm::style::Colorize;
 use handlebars::Handlebars;
@@ -10,8 +12,15 @@ use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Action {
-    DeleteSymlink(SymlinkDescription),
-    DeleteTemplate(TemplateDescription),
+    DeleteSymlink {
+        source: PathBuf,
+        target: PathBuf,
+    },
+    DeleteTemplate {
+        source: PathBuf,
+        cache: PathBuf,
+        target: PathBuf,
+    },
     CreateSymlink(SymlinkDescription),
     CreateTemplate(TemplateDescription),
     UpdateSymlink(SymlinkDescription),
@@ -28,8 +37,14 @@ impl Action {
         variables: &Variables,
     ) -> Result<bool> {
         match self {
-            Action::DeleteSymlink(s) => delete_symlink(&s, fs, opt.force),
-            Action::DeleteTemplate(s) => delete_template(&s, fs, opt.force),
+            Action::DeleteSymlink { source, target } => {
+                delete_symlink(source, target, fs, opt.force)
+            }
+            Action::DeleteTemplate {
+                source,
+                cache,
+                target,
+            } => delete_template(source, cache, target, fs, opt.force),
             Action::CreateSymlink(s) => create_symlink(&s, fs, opt.force),
             Action::CreateTemplate(s) => create_template(&s, fs, handlebars, variables, opt.force),
             Action::UpdateSymlink(s) => update_symlink(&s, fs, opt.force),
@@ -46,11 +61,11 @@ impl Action {
 
     pub fn affect_cache(&self, cache: &mut crate::config::Cache) {
         match self {
-            Action::DeleteSymlink(s) => {
-                cache.symlinks.remove(&s.source);
+            Action::DeleteSymlink { source, .. } => {
+                cache.symlinks.remove(source);
             }
-            Action::DeleteTemplate(s) => {
-                cache.templates.remove(&s.source);
+            Action::DeleteTemplate { source, .. } => {
+                cache.templates.remove(source);
             }
             Action::CreateSymlink(s) => {
                 cache
@@ -72,121 +87,127 @@ impl Action {
 
 /// Returns true if symlink should be deleted from cache
 fn delete_symlink(
-    symlink: &SymlinkDescription,
+    source: &Path,
+    target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    info!("{} {}", "[-]".red(), symlink);
+    info!("{} symlink {:?} -> {:?}", "[-]".red(), source, target);
 
     let comparison = fs
-        .compare_symlink(&symlink.source, &symlink.target.target)
+        .compare_symlink(source, target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
-            perform_symlink_target_deletion(fs, symlink)
+            perform_symlink_target_deletion(fs, target)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
         SymlinkComparison::OnlySourceExists | SymlinkComparison::BothMissing => {
             warn!(
-                "Deleting {} but target doesn't exist. Removing from cache anyways.",
-                symlink
+                "Deleting symlink {:?} -> {:?} but target doesn't exist. Removing from cache anyways.",
+                source, target
             );
             Ok(true)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
-            warn!("Deleting {} but {}. Forcing.", symlink, comparison);
-            perform_symlink_target_deletion(fs, symlink)
+            warn!(
+                "Deleting symlink {:?} -> {:?} but {}. Forcing.",
+                source, target, comparison
+            );
+            perform_symlink_target_deletion(fs, target)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
-            error!("Deleting {} but {}. Skipping.", symlink, comparison);
+            error!(
+                "Deleting {:?} -> {:?} but {}. Skipping.",
+                source, target, comparison
+            );
             Ok(false)
         }
     }
 }
 
-fn perform_symlink_target_deletion(
-    fs: &mut dyn Filesystem,
-    symlink: &SymlinkDescription,
-) -> Result<()> {
-    fs.remove_file(&symlink.target.target)
-        .context("remove symlink")?;
-    fs.delete_parents(&symlink.target.target)
+fn perform_symlink_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
+    fs.remove_file(target).context("remove symlink")?;
+    fs.delete_parents(target)
         .context("delete parents of symlink")?;
     Ok(())
 }
 
 /// Returns true if template should be deleted from cache
 fn delete_template(
-    template: &TemplateDescription,
+    source: &Path,
+    cache: &Path,
+    target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    info!("{} {}", "[-]".red(), template);
+    info!("{} template {:?} -> {:?}", "[-]".red(), source, target);
 
     let comparison = fs
-        .compare_template(&template.target.target, &template.cache)
+        .compare_template(target, cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         TemplateComparison::Identical => {
             debug!("Performing deletion");
-            perform_cache_deletion(fs, template).context("perform cache deletion")?;
-            perform_template_target_deletion(fs, template)
+            perform_cache_deletion(fs, cache).context("perform cache deletion")?;
+            perform_template_target_deletion(fs, target)
                 .context("perform template target deletion")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists => {
             warn!(
-                "Deleting {} but {}. Deleting cache anyways.",
-                template, comparison
+                "Deleting template {:?} -> {:?} but {}. Deleting cache anyways.",
+                source, target, comparison
             );
-            perform_cache_deletion(fs, template).context("perform cache deletion")?;
+            perform_cache_deletion(fs, cache).context("perform cache deletion")?;
             Ok(true)
         }
         TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
             error!(
-                "Deleting {} but cache doesn't exist. Cache probably CORRUPTED.",
-                template
+                "Deleting template {:?} -> {:?} but cache doesn't exist. Cache probably CORRUPTED.",
+                source, target
             );
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(false)
         }
         TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
-            warn!("Deleting {} but {}. Forcing.", template, comparison);
-            perform_cache_deletion(fs, template).context("perform cache deletion")?;
-            perform_template_target_deletion(fs, template)
+            warn!(
+                "Deleting template {:?} -> {:?} but {}. Forcing.",
+                source, target, comparison
+            );
+            perform_cache_deletion(fs, cache).context("perform cache deletion")?;
+            perform_template_target_deletion(fs, target)
                 .context("perform template target deletion")?;
             Ok(true)
         }
         TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {
-            error!("Deleting {} but {}. Skipping.", template, comparison);
+            error!(
+                "Deleting template {:?} -> {:?} but {}. Skipping.",
+                source, target, comparison
+            );
             Ok(false)
         }
     }
 }
 
-fn perform_cache_deletion(fs: &mut dyn Filesystem, template: &TemplateDescription) -> Result<()> {
-    fs.remove_file(&template.cache)
-        .context("delete template cache")?;
-    fs.delete_parents(&template.cache)
+fn perform_cache_deletion(fs: &mut dyn Filesystem, cache: &Path) -> Result<()> {
+    fs.remove_file(cache).context("delete template cache")?;
+    fs.delete_parents(cache)
         .context("delete parent directory in cache")?;
     Ok(())
 }
 
-fn perform_template_target_deletion(
-    fs: &mut dyn Filesystem,
-    template: &TemplateDescription,
-) -> Result<()> {
-    fs.remove_file(&template.target.target)
-        .context("delete target file")?;
-    fs.delete_parents(&template.target.target)
+fn perform_template_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
+    fs.remove_file(target).context("delete target file")?;
+    fs.delete_parents(target)
         .context("delete parent directory in target location")?;
     Ok(())
 }

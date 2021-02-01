@@ -1,10 +1,11 @@
 use anyhow::{Context, Result};
 
+use config::Cache;
 use filesystem::load_file;
 use handlebars::Handlebars;
 
-use std::collections::BTreeMap;
 use std::io::{self, Read};
+use std::{collections::BTreeMap, path::Path};
 
 use crate::args::Options;
 use crate::config;
@@ -128,16 +129,6 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     let mut cache: config::Cache = filesystem::load_file(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
 
-    // Used just to transform them into Description structs
-    let state = FileState::new(
-        BTreeMap::default(),
-        BTreeMap::default(),
-        cache.symlinks.clone(),
-        cache.templates.clone(),
-        opt.cache_directory.clone(),
-    );
-    trace!("File state: {:#?}", state);
-
     let config::Configuration {
         files,
         mut variables,
@@ -168,7 +159,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     let mut suggest_force = false;
     let mut error_occurred = false;
 
-    let plan = plan_deploy(state);
+    let plan = plan_undeploy(&cache, &opt.cache_directory);
     let (mut real_fs, mut dry_run_fs);
     let fs: &mut dyn Filesystem = if opt.act {
         real_fs = crate::filesystem::RealFilesystem::new(opt.interactive);
@@ -216,7 +207,26 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     Ok(error_occurred)
 }
 
-pub fn plan_deploy(state: FileState) -> Vec<Action> {
+fn plan_undeploy(cache: &Cache, cache_directory: &Path) -> Vec<Action> {
+    let mut actions = Vec::new();
+
+    for (source, target) in &cache.symlinks {
+        actions.push(Action::DeleteSymlink { source: source.clone(), target: target.clone() });
+    }
+
+    for (source, target) in &cache.templates {
+        let cache = cache_directory.join(&source);
+        actions.push(Action::DeleteTemplate {
+            source: source.clone(),
+            cache: cache.clone(),
+            target: target.clone(),
+        });
+    }
+
+    actions
+}
+
+fn plan_deploy(state: FileState) -> Vec<Action> {
     let mut actions = Vec::new();
 
     let FileState {
@@ -226,12 +236,19 @@ pub fn plan_deploy(state: FileState) -> Vec<Action> {
         existing_templates,
     } = state;
 
-    for deleted_symlink in existing_symlinks.difference(&desired_symlinks) {
-        actions.push(Action::DeleteSymlink(deleted_symlink.clone()));
+    for deleted_symlink in existing_symlinks.difference(&desired_symlinks).cloned() {
+        actions.push(Action::DeleteSymlink {
+            source: deleted_symlink.source,
+            target: deleted_symlink.target.target,
+        });
     }
 
-    for deleted_template in existing_templates.difference(&desired_templates) {
-        actions.push(Action::DeleteTemplate(deleted_template.clone()));
+    for deleted_template in existing_templates.difference(&desired_templates).cloned() {
+        actions.push(Action::DeleteTemplate {
+            source: deleted_template.source,
+            cache: deleted_template.cache,
+            target: deleted_template.target.target,
+        });
     }
 
     for created_symlink in desired_symlinks.difference(&existing_symlinks) {
