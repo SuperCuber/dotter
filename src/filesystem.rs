@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
 use std::fs::{self, File};
-use std::io::{self, ErrorKind, Read, Write};
+use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 
 use crate::config::UnixUser;
@@ -105,13 +105,126 @@ pub trait Filesystem {
 // == Windows Filesystem ==
 
 #[cfg(windows)]
-pub struct RealFilesystem;
+pub struct RealFilesystem {
+    interactive: bool,
+}
+
+#[cfg(windows)]
+impl RealFilesystem {
+    pub fn new(interactive: bool) -> RealFilesystem {
+        RealFilesystem { interactive }
+    }
+}
 
 #[cfg(windows)]
 impl Filesystem for RealFilesystem {
+    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
+        compare_symlink(source, link)
+    }
+
+    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+        compare_template(target, cache)
+    }
+
     fn remove_file(&mut self, path: &Path) -> Result<()> {
         // TODO: test if this removes a folder too
         std::fs::remove_file(path).context("remove file")
+    }
+
+    fn read_to_string(&mut self, path: &Path) -> Result<String> {
+        fs::read_to_string(path).context("read from file")
+    }
+
+    fn write(&mut self, path: &Path, content: String) -> Result<()> {
+        fs::write(path, content).context("write to file")
+    }
+
+    fn delete_parents(&mut self, path: &Path) -> Result<()> {
+        let mut path = path.parent().context("get parent")?;
+        while path.is_dir()
+            && path
+                .read_dir()
+                .context("read the contents of parent directory")?
+                .next()
+                .is_none()
+        {
+            if !self.interactive
+                || ask_boolean(&format!(
+                    "Directory at {:?} is now empty. Delete [y/N]? ",
+                    path
+                ))
+            {
+                std::fs::remove_dir(path).context(format!("remove directory {:?}", path))?;
+            }
+            path = path.parent().context(format!("get parent of {:?}", path))?;
+        }
+        Ok(())
+    }
+
+    fn make_symlink(&mut self, link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        use std::os::windows::fs;
+
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when creating symlink {:?} -> {:?}",
+                owner, link, target
+            );
+        }
+        Ok(fs::symlink_file(
+            real_path(target).context("get real path of source file")?,
+            link,
+        )
+        .context("create symlink")?)
+    }
+
+    fn create_dir_all(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when creating directory {:?}",
+                owner, path
+            );
+        }
+        std::fs::create_dir_all(path).context("create directories")
+    }
+
+    fn copy_file(&mut self, source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when copying {:?} -> {:?}",
+                owner, source, target
+            );
+        }
+        std::fs::copy(source, target).context("copy file")?;
+        Ok(())
+    }
+
+    fn set_owner(&mut self, file: &Path, owner: &Option<UnixUser>) -> Result<()> {
+        if owner.is_some() {
+            warn!("ignoring `owner` field on file {:?}", file);
+        }
+        Ok(())
+    }
+
+    fn copy_permissions(
+        &mut self,
+        source: &Path,
+        target: &Path,
+        owner: &Option<UnixUser>,
+    ) -> Result<()> {
+        if let Some(owner) = owner {
+            warn!(
+                "Ignoring `owner`={:?} when copying permissions {:?} -> {:?}",
+                owner, source, target
+            );
+        }
+        std::fs::set_permissions(
+            target,
+            source
+                .metadata()
+                .context("get source metadata")?
+                .permissions(),
+        )
+        .context("set target permissions")
     }
 }
 
@@ -212,7 +325,23 @@ impl Filesystem for RealFilesystem {
                     path
                 ))
             {
-                remove_dir(path).context(format!("remove directory {:?}", path))?;
+                match std::fs::remove_dir(path) {
+                    Ok(()) => Ok(()),
+                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                        let success = std::process::Command::new("sudo")
+                            .arg("rmdir")
+                            .arg(path)
+                            .spawn()
+                            .context("spawn sudo rmdir")?
+                            .wait()
+                            .context("wait for sudo rmdir")?
+                            .success();
+
+                        anyhow::ensure!(success, "sudo rmdir failed");
+                        Ok(())
+                    }
+                    Err(e) => Err(e).context("remove dir"),
+                }
             }
             path = path.parent().context(format!("get parent of {:?}", path))?;
         }
@@ -516,140 +645,41 @@ pub fn ask_boolean(prompt: &str) -> bool {
 }
 
 #[cfg(windows)]
-mod filesystem_impl {
-    use anyhow::{Context, Result};
-
+pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
     use std::os::windows::fs;
-    use std::path::{Path, PathBuf};
-
-    use crate::config::UnixUser;
-
-    pub fn make_symlink(link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            warn!(
-                "Ignoring `owner`={:?} when creating symlink {:?} -> {:?}",
-                owner, link, target
-            );
+    debug!(
+        "Testing whether symlinks are enabled on path {:?}",
+        test_file_path
+    );
+    let _ = std::fs::remove_file(&test_file_path);
+    match fs::symlink_file("test.txt", &test_file_path) {
+        Ok(()) => {
+            std::fs::remove_file(&test_file_path)
+                .context(format!("remove test file {:?}", test_file_path))?;
+            Ok(true)
         }
-        Ok(fs::symlink_file(
-            super::real_path(target).context("get real path of source file")?,
-            link,
-        )
-        .context("create symlink")?)
-    }
-
-    pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
-        debug!(
-            "Testing whether symlinks are enabled on path {:?}",
-            test_file_path
-        );
-        let _ = std::fs::remove_file(&test_file_path);
-        match fs::symlink_file("test.txt", &test_file_path) {
-            Ok(()) => {
-                std::fs::remove_file(&test_file_path)
-                    .context(format!("remove test file {:?}", test_file_path))?;
-                Ok(true)
-            }
-            Err(e) => {
-                // os error 1314: A required privilege is not held by the client.
-                if e.raw_os_error() == Some(1314) {
-                    Ok(false)
-                } else {
-                    Err(e).context(format!("create test symlink at {:?}", test_file_path))
-                }
+        Err(e) => {
+            // os error 1314: A required privilege is not held by the client.
+            if e.raw_os_error() == Some(1314) {
+                Ok(false)
+            } else {
+                Err(e).context(format!("create test symlink at {:?}", test_file_path))
             }
         }
-    }
-
-    pub fn platform_dunce(path: &Path) -> PathBuf {
-        dunce::simplified(&path).into()
-    }
-
-    pub fn remove_file(path: &Path) -> Result<()> {
-        std::fs::remove_file(path).context("remove file")
-    }
-
-    pub fn create_dir_all(path: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            warn!(
-                "Ignoring `owner`={:?} when creating directory {:?}",
-                owner, path
-            );
-        }
-        std::fs::create_dir_all(path).context("create directories")
-    }
-
-    pub fn copy_file(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            warn!(
-                "Ignoring `owner`={:?} when copying {:?} -> {:?}",
-                owner, source, target
-            );
-        }
-        std::fs::copy(source, target).context("copy file")?;
-        Ok(())
-    }
-
-    pub fn copy_permissions(source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if let Some(owner) = owner {
-            warn!(
-                "Ignoring `owner`={:?} when copying permissions {:?} -> {:?}",
-                owner, source, target
-            );
-        }
-        std::fs::set_permissions(
-            target,
-            source
-                .metadata()
-                .context("get source metadata")?
-                .permissions(),
-        )
-        .context("set target permissions")
-    }
-
-    pub fn remove_dir(path: &Path) -> Result<()> {
-        std::fs::remove_dir(path).context("remove dir")
-    }
-
-    pub fn set_owner(file: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if owner.is_some() {
-            warn!("ignoring `owner` field on file {:?}", file);
-        }
-        Ok(())
     }
 }
 
 #[cfg(unix)]
-mod filesystem_impl {
-    use super::*;
-
-    pub fn remove_dir(path: &Path) -> Result<()> {
-        match std::fs::remove_dir(path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                let success = std::process::Command::new("sudo")
-                    .arg("rmdir")
-                    .arg(path)
-                    .spawn()
-                    .context("spawn sudo rmdir")?
-                    .wait()
-                    .context("wait for sudo rmdir")?
-                    .success();
-
-                anyhow::ensure!(success, "sudo rmdir failed");
-                Ok(())
-            }
-            Err(e) => Err(e).context("remove dir"),
-        }
-    }
-
-    pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
-        Ok(true)
-    }
-
-    pub fn platform_dunce(path: &Path) -> PathBuf {
-        path.into()
-    }
+pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
+    Ok(true)
 }
 
-pub use self::filesystem_impl::*;
+#[cfg(windows)]
+pub fn platform_dunce(path: &Path) -> PathBuf {
+    dunce::simplified(&path).into()
+}
+
+#[cfg(unix)]
+pub fn platform_dunce(path: &Path) -> PathBuf {
+    path.into()
+}
