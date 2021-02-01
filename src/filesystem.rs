@@ -102,11 +102,17 @@ impl RealFilesystem {
 #[cfg(windows)]
 impl Filesystem for RealFilesystem {
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
-        compare_real_symlink(source, link)
+        let source_state = get_file_state(source).context("get source state")?;
+        let link_state = get_file_state(link).context("get link state")?;
+
+        compare_symlink(source, source_state, link_state)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
-        compare_real_template(target, cache)
+        let target_state = get_file_state(target).context("get state of target")?;
+        let cache_state = get_file_state(cache).context("get state of cache")?;
+
+        compare_template(target_state, cache_state)
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -249,11 +255,17 @@ impl RealFilesystem {
 #[cfg(unix)]
 impl Filesystem for RealFilesystem {
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
-        compare_symlink(source, link)
+        let source_state = get_file_state(source).context("get source state")?;
+        let link_state = get_file_state(link).context("get link state")?;
+
+        compare_symlink(source, source_state, link_state)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
-        compare_template(target, cache)
+        let target_state = get_file_state(target).context("get state of target")?;
+        let cache_state = get_file_state(cache).context("get state of cache")?;
+
+        compare_template(target_state, cache_state)
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -529,11 +541,45 @@ impl DryRunFilesystem {
 #[allow(unused_variables)]
 impl Filesystem for DryRunFilesystem {
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
-        todo!()
+        let source_state = if let Some(state) = self.file_states.get(source) {
+            debug!("Cached (probably not actual) source state: {:?}", state);
+            state.clone()
+        } else {
+            let state = get_file_state(source).context("get source state")?;
+            debug!("Source state: {:?}", state);
+            state
+        };
+        let link_state = if let Some(state) = self.file_states.get(link) {
+            debug!("Cached (probably not actual) link state: {:?}", state);
+            state.clone()
+        } else {
+            let state = get_file_state(link).context("get link state")?;
+            debug!("Link state: {:?}", state);
+            state
+        };
+
+        compare_symlink(source, source_state, link_state)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
-        todo!()
+        let target_state = if let Some(state) = self.file_states.get(target) {
+            debug!("Cached (probably not actual) target state: {:?}", state);
+            state.clone()
+        } else {
+            let state = get_file_state(target).context("get state of target")?;
+            debug!("Target state: {:?}", state);
+            state
+        };
+        let cache_state = if let Some(state) = self.file_states.get(cache) {
+            debug!("Cached (probably not actual) cache state: {:?}", state);
+            state.clone()
+        } else {
+            let state = get_file_state(cache).context("get state of cache")?;
+            debug!("Cache state: {:?}", state);
+            state
+        };
+
+        compare_template(target_state, cache_state)
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -544,11 +590,16 @@ impl Filesystem for DryRunFilesystem {
 
     fn read_to_string(&mut self, path: &Path) -> Result<String> {
         debug!("Reading contents of file {:?}", path);
-        Ok("".into())
+        match self.get_state(path).context("get file state")? {
+            FileState::File(s) => Ok(s),
+            other => anyhow::bail!("writing to non-file"),
+        }
     }
 
     fn write(&mut self, path: &Path, content: String) -> Result<()> {
         debug!("Writing contents {:?} to file {:?}", content, path);
+        self.file_states
+            .insert(path.into(), FileState::File(content));
         Ok(())
     }
 
@@ -570,10 +621,11 @@ impl Filesystem for DryRunFilesystem {
         Ok(())
     }
 
-    fn create_dir_all(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<()> {
+    fn create_dir_all(&mut self, mut path: &Path, owner: &Option<UnixUser>) -> Result<()> {
         debug!("Creating directory {:?} (owned by {:?})", path, owner);
         self.file_states.insert(path.into(), FileState::Directory);
-        while let Some(path) = path.parent() {
+        while path.parent().is_some() {
+            path = path.parent().unwrap();
             self.file_states.insert(path.into(), FileState::Directory);
         }
         Ok(())
@@ -662,13 +714,14 @@ impl std::fmt::Display for SymlinkComparison {
     }
 }
 
-pub fn compare_real_symlink(source: &Path, link: &Path) -> Result<SymlinkComparison> {
-    let source_state = get_file_state(source).context("get source state")?;
-    let link_state = get_file_state(link).context("get link state")?;
-
+fn compare_symlink(
+    source_path: &Path,
+    source_state: FileState,
+    link_state: FileState,
+) -> Result<SymlinkComparison> {
     Ok(match (source_state, link_state) {
         (FileState::File(_), FileState::SymbolicLink(t)) => {
-            if t == source {
+            if t == source_path {
                 SymlinkComparison::Identical
             } else {
                 SymlinkComparison::Changed
@@ -706,10 +759,7 @@ impl std::fmt::Display for TemplateComparison {
     }
 }
 
-pub fn compare_real_template(target: &Path, cache: &Path) -> Result<TemplateComparison> {
-    let target_state = get_file_state(target).context("get state of target")?;
-    let cache_state = get_file_state(cache).context("get state of cache")?;
-
+fn compare_template(target_state: FileState, cache_state: FileState) -> Result<TemplateComparison> {
     Ok(match (target_state, cache_state) {
         (FileState::File(t), FileState::File(c)) => {
             if t == c {

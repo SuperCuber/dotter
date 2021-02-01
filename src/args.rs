@@ -100,9 +100,6 @@ impl Default for Action {
 
 pub fn get_options() -> Options {
     let mut opt = Options::from_args();
-    if opt.force {
-        opt.act = true;
-    }
     if !opt.act {
         opt.verbosity = std::cmp::max(opt.verbosity, 1);
     }
