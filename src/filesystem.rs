@@ -58,7 +58,7 @@ where
 
 // === Mockable filesystem ===
 
-#[mockall::automock]
+#[cfg_attr(test, mockall::automock)]
 pub trait Filesystem {
     /// Check state of expected symlink on disk
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison>;
