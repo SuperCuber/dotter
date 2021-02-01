@@ -86,10 +86,12 @@ pub fn load_configuration(
     patch: Option<Package>,
 ) -> Result<Configuration> {
     let global: GlobalConfig = filesystem::load_file(global_config)
+        .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
         .with_context(|| format!("load global config {:?}", global_config))?;
     trace!("Global config: {:#?}", global);
 
     let local: LocalConfig = filesystem::load_file(local_config)
+        .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
         .with_context(|| format!("load local config {:?}", local_config))?;
     trace!("Local config: {:#?}", local);
 
@@ -129,14 +131,11 @@ pub struct Cache {
     pub templates: BTreeMap<PathBuf, PathBuf>,
 }
 
+// TODO: remove this
 pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
     debug!("Loading cache...");
 
-    let cache = match filesystem::load_file(cache) {
-        Ok(cache) => Some(cache),
-        Err(filesystem::FileLoadError::Open { .. }) => None,
-        Err(e) => Err(e).context("load cache file")?,
-    };
+    let cache = filesystem::load_file(cache).context("load cache file")?;
 
     trace!("Cache: {:#?}", cache);
 
@@ -222,8 +221,9 @@ fn merge_configuration_files(
     // Patch each package with included.toml's
     for included_path in &local.includes {
         || -> Result<()> {
-            let mut included: IncludedConfig =
-                filesystem::load_file(&included_path).context("load file")?;
+            let mut included: IncludedConfig = filesystem::load_file(&included_path)
+                .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
+                .context("load file")?;
 
             debug!("Included config {:?}", included_path);
             trace!("{:#?}", included);

@@ -24,7 +24,6 @@ serde = "1.*"
 shellexpand = "1.*"
 simplelog = "0.8.*"
 structopt = "0.3.*"
-thiserror = "1.*"
 toml = "0.4.*"
 watchexec = "=1.14.1"
 

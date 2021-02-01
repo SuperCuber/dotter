@@ -395,7 +395,6 @@ dependencies = [
  "shellexpand",
  "simplelog",
  "structopt",
- "thiserror",
  "toml 0.4.10",
  "watchexec",
 ]

@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use thiserror::Error;
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -12,48 +11,29 @@ use crate::config::UnixUser;
 
 // === Serialize/deserialize files ===
 
-#[derive(Error, Debug)]
-pub enum FileLoadError {
-    #[error("open file")]
-    Open(#[source] io::Error),
-
-    #[error("read opened file")]
-    Read(#[source] io::Error),
-
-    #[error("parse file")]
-    Parse(#[source] toml::de::Error),
-}
-
-pub fn load_file<T>(filename: &Path) -> Result<T, FileLoadError>
+/// Returns Ok(None) if file was not found, otherwise Ok(Some(data)) or Err
+pub fn load_file<T>(filename: &Path) -> Result<Option<T>>
 where
     T: DeserializeOwned,
 {
     let mut buf = String::new();
-    let mut f = File::open(filename).map_err(FileLoadError::Open)?;
-    f.read_to_string(&mut buf).map_err(FileLoadError::Read)?;
-    toml::from_str::<T>(&buf).map_err(FileLoadError::Parse)
+    let mut f = match File::open(filename) {
+        Ok(f) => Ok(f),
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+        e => e,
+    }
+    .context("open file")?;
+    f.read_to_string(&mut buf).context("read file")?;
+    let data = toml::from_str::<T>(&buf).context("deserialize file contents")?;
+    Ok(Some(data))
 }
 
-#[derive(Error, Debug)]
-pub enum FileSaveError {
-    #[error("write file")]
-    Write(#[source] io::Error),
-
-    #[error("serialize data")]
-    Serialize(
-        #[from]
-        #[source]
-        toml::ser::Error,
-    ),
-}
-
-pub fn save_file<T>(filename: &Path, data: T) -> Result<(), FileSaveError>
+pub fn save_file<T>(filename: &Path, data: T) -> Result<()>
 where
     T: Serialize,
 {
-    let data = toml::to_string(&data)?;
-    fs::write(filename, &data).map_err(FileSaveError::Write)?;
-    Ok(())
+    let data = toml::to_string(&data).context("serialize data")?;
+    fs::write(filename, &data).context("write to file")
 }
 
 // === Mockable filesystem ===
