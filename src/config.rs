@@ -131,17 +131,6 @@ pub struct Cache {
     pub templates: BTreeMap<PathBuf, PathBuf>,
 }
 
-// TODO: remove this
-pub fn load_cache(cache: &Path) -> Result<Option<Cache>> {
-    debug!("Loading cache...");
-
-    let cache = filesystem::load_file(cache).context("load cache file")?;
-
-    trace!("Cache: {:#?}", cache);
-
-    Ok(cache)
-}
-
 pub fn save_cache(cache_file: &Path, cache: Cache) -> Result<()> {
     debug!("Saving cache...");
     filesystem::save_file(cache_file, cache).context("save cache")?;

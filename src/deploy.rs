@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 
+use filesystem::load_file;
 use handlebars::Handlebars;
 
 use std::collections::BTreeMap;
@@ -9,6 +10,7 @@ use crate::args::Options;
 use crate::config;
 use crate::display_error;
 use crate::file_state::{file_state_from_configuration, FileState};
+use crate::filesystem;
 use crate::handlebars_helpers;
 use crate::hooks;
 use crate::{actions::Action, filesystem::Filesystem};
@@ -29,7 +31,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let config = config::load_configuration(&opt.local_config, &opt.global_config, patch)
         .context("get a configuration")?;
 
-    let mut cache = if let Some(cache) = config::load_cache(&opt.cache_file)? {
+    let mut cache = if let Some(cache) = load_file(&opt.cache_file)? {
         cache
     } else {
         warn!("Cache file not found. Assuming cache is empty.");
@@ -123,7 +125,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     let config = config::load_configuration(&opt.local_config, &opt.global_config, None)
         .context("get a configuration")?;
 
-    let mut cache = config::load_cache(&opt.cache_file)?
+    let mut cache: config::Cache = filesystem::load_file(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
 
     // Used just to transform them into Description structs
