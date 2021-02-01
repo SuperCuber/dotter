@@ -103,14 +103,18 @@ impl RealFilesystem {
 impl Filesystem for RealFilesystem {
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
         let source_state = get_file_state(source).context("get source state")?;
+        trace!("Source state: {:#?}", source_state);
         let link_state = get_file_state(link).context("get link state")?;
+        trace!("Link state: {:#?}", link_state);
 
         compare_symlink(source, source_state, link_state)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
         let target_state = get_file_state(target).context("get state of target")?;
+        trace!("Target state: {:#?}", target_state);
         let cache_state = get_file_state(cache).context("get state of cache")?;
+        trace!("Cache state: {:#?}", cache_state);
 
         compare_template(target_state, cache_state)
     }
@@ -670,12 +674,6 @@ impl Filesystem for DryRunFilesystem {
 // === Comparisons ===
 
 fn get_file_state(path: &Path) -> Result<FileState> {
-    let path = match real_path(path) {
-        Ok(s) => s,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(FileState::Missing),
-        e => e.context("get canonical path")?,
-    };
-
     if let Ok(target) = fs::read_link(&path) {
         return Ok(FileState::SymbolicLink(target));
     }
@@ -684,9 +682,11 @@ fn get_file_state(path: &Path) -> Result<FileState> {
         return Ok(FileState::Directory);
     }
 
-    Ok(FileState::File(fs::read_to_string(path).context(
-        "read contents of file that isn't symbolic or directory",
-    )?))
+    match fs::read_to_string(path) {
+        Ok(f) => Ok(FileState::File(f)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(FileState::Missing),
+        Err(e) => Err(e).context("read contents of file that isn't symbolic or directory")?,
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -719,6 +719,7 @@ fn compare_symlink(
     source_state: FileState,
     link_state: FileState,
 ) -> Result<SymlinkComparison> {
+    let source_path = real_path(source_path).context("get real path of source")?;
     Ok(match (source_state, link_state) {
         (FileState::File(_), FileState::SymbolicLink(t)) => {
             if t == source_path {
