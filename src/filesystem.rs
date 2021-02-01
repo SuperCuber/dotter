@@ -3,9 +3,12 @@ use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
-use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs::{self, File},
+};
 
 use crate::config::UnixUser;
 
@@ -99,11 +102,11 @@ impl RealFilesystem {
 #[cfg(windows)]
 impl Filesystem for RealFilesystem {
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
-        compare_symlink(source, link)
+        compare_real_symlink(source, link)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
-        compare_template(target, cache)
+        compare_real_template(target, cache)
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -496,11 +499,30 @@ impl Filesystem for RealFilesystem {
 }
 
 // == Dry run Filesystem ==
-pub struct DryRunFilesystem;
+pub struct DryRunFilesystem {
+    file_states: BTreeMap<PathBuf, FileState>,
+}
+
+#[derive(Debug, Clone)]
+enum FileState {
+    File(String),
+    SymbolicLink(PathBuf),
+    Directory,
+    Missing,
+}
 
 impl DryRunFilesystem {
     pub fn new() -> DryRunFilesystem {
-        DryRunFilesystem
+        DryRunFilesystem {
+            file_states: BTreeMap::new(),
+        }
+    }
+
+    fn get_state(&mut self, path: &Path) -> Result<FileState> {
+        match self.file_states.get(path) {
+            Some(state) => Ok(state.clone()),
+            None => get_file_state(path),
+        }
     }
 }
 
@@ -515,35 +537,68 @@ impl Filesystem for DryRunFilesystem {
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
-        todo!()
+        debug!("Removing file {:?}", path);
+        self.file_states.insert(path.into(), FileState::Missing);
+        Ok(())
     }
 
     fn read_to_string(&mut self, path: &Path) -> Result<String> {
-        todo!()
+        debug!("Reading contents of file {:?}", path);
+        Ok("".into())
     }
 
     fn write(&mut self, path: &Path, content: String) -> Result<()> {
-        todo!()
+        debug!("Writing contents {:?} to file {:?}", content, path);
+        Ok(())
     }
 
     fn delete_parents(&mut self, path: &Path) -> Result<()> {
-        todo!()
+        debug!(
+            "Recursively deleting parents of {:?} if they're empty",
+            path
+        );
+        Ok(())
     }
 
     fn make_symlink(&mut self, link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        todo!()
+        debug!(
+            "Making symlink {:?} -> {:?} (owned by {:?})",
+            link, target, owner
+        );
+        self.file_states
+            .insert(link.into(), FileState::SymbolicLink(target.into()));
+        Ok(())
     }
 
     fn create_dir_all(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        todo!()
+        debug!("Creating directory {:?} (owned by {:?})", path, owner);
+        self.file_states.insert(path.into(), FileState::Directory);
+        while let Some(path) = path.parent() {
+            self.file_states.insert(path.into(), FileState::Directory);
+        }
+        Ok(())
     }
 
     fn copy_file(&mut self, source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        todo!()
+        debug!(
+            "Copying file {:?} -> {:?} (target owned by {:?})",
+            source, target, owner
+        );
+        match self.get_state(source).context("get state of source file")? {
+            FileState::File(content) => {
+                self.file_states
+                    .insert(target.into(), FileState::File("".into()));
+                Ok(())
+            }
+            s @ FileState::SymbolicLink(_) | s @ FileState::Directory | s @ FileState::Missing => {
+                anyhow::bail!("file is not regular file but is a {:?}", s);
+            }
+        }
     }
 
     fn set_owner(&mut self, file: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        todo!()
+        debug!("Setting owner of file {:?} to {:?}", file, owner);
+        Ok(())
     }
 
     fn copy_permissions(
@@ -552,11 +607,35 @@ impl Filesystem for DryRunFilesystem {
         target: &Path,
         owner: &Option<UnixUser>,
     ) -> Result<()> {
-        todo!()
+        debug!(
+            "Copying permissions on files {:?} -> {:?} (target owned by {:?})",
+            source, target, owner
+        );
+        Ok(())
     }
 }
 
 // === Comparisons ===
+
+fn get_file_state(path: &Path) -> Result<FileState> {
+    let path = match real_path(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(FileState::Missing),
+        e => e.context("get canonical path")?,
+    };
+
+    if let Ok(target) = fs::read_link(&path) {
+        return Ok(FileState::SymbolicLink(target));
+    }
+
+    if path.is_dir() {
+        return Ok(FileState::Directory);
+    }
+
+    Ok(FileState::File(fs::read_to_string(path).context(
+        "read contents of file that isn't symbolic or directory",
+    )?))
+}
 
 #[derive(Debug, PartialEq)]
 pub enum SymlinkComparison {
@@ -583,33 +662,22 @@ impl std::fmt::Display for SymlinkComparison {
     }
 }
 
-pub fn compare_symlink(source: &Path, link: &Path) -> Result<SymlinkComparison> {
-    let source = match real_path(source) {
-        Ok(s) => Some(s),
-        Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context("get canonical path of source")?,
-    };
+pub fn compare_real_symlink(source: &Path, link: &Path) -> Result<SymlinkComparison> {
+    let source_state = get_file_state(source).context("get source state")?;
+    let link_state = get_file_state(link).context("get link state")?;
 
-    let link_content = match fs::symlink_metadata(link) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            Some(fs::read_link(link).context("read target of link")?)
-        }
-        Ok(_) => return Ok(SymlinkComparison::TargetNotSymlink),
-        Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context("read metadata of link")?,
-    };
-
-    Ok(match (source, link_content) {
-        (Some(s), Some(l)) => {
-            if s == l {
+    Ok(match (source_state, link_state) {
+        (FileState::File(_), FileState::SymbolicLink(t)) => {
+            if t == source {
                 SymlinkComparison::Identical
             } else {
                 SymlinkComparison::Changed
             }
         }
-        (None, Some(_)) => SymlinkComparison::OnlyTargetExists,
-        (Some(_), None) => SymlinkComparison::OnlySourceExists,
-        (None, None) => SymlinkComparison::BothMissing,
+        (FileState::Missing, FileState::SymbolicLink(_)) => SymlinkComparison::OnlyTargetExists,
+        (FileState::File(_), FileState::Missing) => SymlinkComparison::OnlySourceExists,
+        (FileState::Missing, FileState::Missing) => SymlinkComparison::BothMissing,
+        _ => SymlinkComparison::Changed,
     })
 }
 
@@ -638,33 +706,22 @@ impl std::fmt::Display for TemplateComparison {
     }
 }
 
-pub fn compare_template(target: &Path, cache: &Path) -> Result<TemplateComparison> {
-    if fs::read_link(target).is_ok() || fs::read_dir(target).is_ok() {
-        return Ok(TemplateComparison::TargetNotRegularFile);
-    }
-    let target = match fs::read_to_string(target) {
-        Ok(t) => Some(t),
-        Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context("read content of target file")?,
-    };
+pub fn compare_real_template(target: &Path, cache: &Path) -> Result<TemplateComparison> {
+    let target_state = get_file_state(target).context("get state of target")?;
+    let cache_state = get_file_state(cache).context("get state of cache")?;
 
-    let cache = match fs::read_to_string(cache) {
-        Ok(c) => Some(c),
-        Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => Err(e).context("read contents of cache file")?,
-    };
-
-    Ok(match (target, cache) {
-        (Some(t), Some(c)) => {
+    Ok(match (target_state, cache_state) {
+        (FileState::File(t), FileState::File(c)) => {
             if t == c {
                 TemplateComparison::Identical
             } else {
                 TemplateComparison::Changed
             }
         }
-        (Some(_), None) => TemplateComparison::OnlyTargetExists,
-        (None, Some(_)) => TemplateComparison::OnlyCacheExists,
-        (None, None) => TemplateComparison::BothMissing,
+        (FileState::File(_), FileState::Missing) => TemplateComparison::OnlyTargetExists,
+        (FileState::Missing, FileState::File(_)) => TemplateComparison::OnlyCacheExists,
+        (FileState::Missing, FileState::Missing) => TemplateComparison::BothMissing,
+        _ => TemplateComparison::Changed,
     })
 }
 
