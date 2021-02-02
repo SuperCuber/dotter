@@ -5,7 +5,7 @@ use filesystem::load_file;
 use handlebars::Handlebars;
 
 use std::io::{self, Read};
-use std::{collections::BTreeMap, path::Path};
+use std::path::Path;
 
 use crate::args::Options;
 use crate::config;
@@ -211,7 +211,10 @@ fn plan_undeploy(cache: &Cache, cache_directory: &Path) -> Vec<Action> {
     let mut actions = Vec::new();
 
     for (source, target) in &cache.symlinks {
-        actions.push(Action::DeleteSymlink { source: source.clone(), target: target.clone() });
+        actions.push(Action::DeleteSymlink {
+            source: source.clone(),
+            target: target.clone(),
+        });
     }
 
     for (source, target) in &cache.templates {
