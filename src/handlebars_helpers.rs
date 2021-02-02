@@ -1,10 +1,22 @@
 use std::process::{Command, Stdio};
 
-use crate::config::{Files, Helpers, Variables};
+use crate::config::{Configuration, Files, Helpers, Variables};
 
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
 
 use toml::value::{Table, Value};
+
+pub fn create_new_handlebars<'a, 'b>(config: &'a mut Configuration) -> Handlebars<'b> {
+    debug!("Creating Handlebars instance...");
+    let mut handlebars = Handlebars::new();
+    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
+    handlebars.set_strict_mode(true); // Report missing variables as errors
+    register_rust_helpers(&mut handlebars);
+    register_script_helpers(&mut handlebars, &config.helpers);
+    add_dotter_variable(&mut config.variables, &config.files, &config.packages);
+    trace!("Handlebars instance: {:#?}", handlebars);
+    handlebars
+}
 
 fn math_helper(
     h: &Helper<'_, '_>,
@@ -203,7 +215,7 @@ fn os_shell() -> Command {
     cmd
 }
 
-pub fn register_rust_helpers(handlebars: &mut Handlebars<'_>) {
+fn register_rust_helpers(handlebars: &mut Handlebars<'_>) {
     handlebars_misc_helpers::register(handlebars);
     handlebars.register_helper("math", Box::new(math_helper));
 
@@ -213,7 +225,7 @@ pub fn register_rust_helpers(handlebars: &mut Handlebars<'_>) {
     handlebars.register_helper("command_output", Box::new(command_output_helper));
 }
 
-pub fn register_script_helpers(handlebars: &mut Handlebars<'_>, helpers: &Helpers) {
+fn register_script_helpers(handlebars: &mut Handlebars<'_>, helpers: &Helpers) {
     debug!("Registering script helpers...");
     for (helper_name, helper_path) in helpers {
         if let Err(e) = handlebars.register_script_helper_file(&helper_name, &helper_path) {
@@ -239,7 +251,7 @@ fn files_as_toml(files: &Files) -> Value {
     )
 }
 
-pub fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[String]) {
+fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[String]) {
     let mut dotter = Table::new();
     dotter.insert(
         "packages".into(),

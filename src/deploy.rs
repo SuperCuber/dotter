@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 
 use config::Cache;
 use filesystem::load_file;
-use handlebars::Handlebars;
+use handlebars_helpers::create_new_handlebars;
 
 use std::io::{self, Read};
 use std::path::Path;
@@ -29,7 +29,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     }
     trace!("Manual patch: {:#?}", patch);
 
-    let config = config::load_configuration(&opt.local_config, &opt.global_config, patch)
+    let mut config = config::load_configuration(&opt.local_config, &opt.global_config, patch)
         .context("get a configuration")?;
 
     let mut cache = if let Some(cache) = load_file(&opt.cache_file)? {
@@ -43,21 +43,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         .context("get file state")?;
     trace!("File state: {:#?}", state);
 
-    let config::Configuration {
-        files,
-        mut variables,
-        helpers,
-        packages,
-    } = config;
-
-    debug!("Creating Handlebars instance...");
-    let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
-    handlebars.set_strict_mode(true); // Report missing variables as errors
-    handlebars_helpers::register_rust_helpers(&mut handlebars);
-    handlebars_helpers::register_script_helpers(&mut handlebars, &helpers);
-    handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
-    trace!("Handlebars instance: {:#?}", handlebars);
+    let handlebars = create_new_handlebars(&mut config);
 
     debug!("Running pre-deploy hook");
     if opt.act {
@@ -65,7 +51,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
             &opt.pre_deploy,
             &opt.cache_directory,
             &handlebars,
-            &variables,
+            &config.variables,
         )
         .context("run pre-deploy hook")?;
     }
@@ -84,7 +70,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     };
 
     for action in plan {
-        match action.run(fs, opt, &handlebars, &variables) {
+        match action.run(fs, opt, &handlebars, &config.variables) {
             Ok(true) => action.affect_cache(&mut cache),
             Ok(false) => {
                 suggest_force = true;
@@ -114,7 +100,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
             &opt.post_deploy,
             &opt.cache_directory,
             &handlebars,
-            &variables,
+            &config.variables,
         )
         .context("run post-deploy hook")?;
     }
@@ -123,27 +109,13 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 }
 
 pub fn undeploy(opt: Options) -> Result<bool> {
-    let config = config::load_configuration(&opt.local_config, &opt.global_config, None)
+    let mut config = config::load_configuration(&opt.local_config, &opt.global_config, None)
         .context("get a configuration")?;
 
     let mut cache: config::Cache = filesystem::load_file(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
 
-    let config::Configuration {
-        files,
-        mut variables,
-        helpers,
-        packages,
-    } = config;
-
-    debug!("Creating Handlebars instance...");
-    let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
-    handlebars.set_strict_mode(true); // Report missing variables as errors
-    handlebars_helpers::register_rust_helpers(&mut handlebars);
-    handlebars_helpers::register_script_helpers(&mut handlebars, &helpers);
-    handlebars_helpers::add_dotter_variable(&mut variables, &files, &packages);
-    trace!("Handlebars instance: {:#?}", handlebars);
+    let handlebars = create_new_handlebars(&mut config);
 
     debug!("Running pre-undeploy hook");
     if opt.act {
@@ -151,7 +123,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
             &opt.pre_undeploy,
             &opt.cache_directory,
             &handlebars,
-            &variables,
+            &config.variables,
         )
         .context("run pre-undeploy hook")?;
     }
@@ -170,7 +142,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     };
 
     for action in plan {
-        match action.run(fs, &opt, &handlebars, &variables) {
+        match action.run(fs, &opt, &handlebars, &config.variables) {
             Ok(true) => action.affect_cache(&mut cache),
             Ok(false) => {
                 suggest_force = true;
@@ -199,7 +171,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
             &opt.post_undeploy,
             &opt.cache_directory,
             &handlebars,
-            &variables,
+            &config.variables,
         )
         .context("run post-undeploy hook")?;
     }
