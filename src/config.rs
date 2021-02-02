@@ -487,6 +487,19 @@ impl SymbolicTarget {
     }
 }
 
+impl TemplateTarget {
+    pub fn apply_actions(&self, mut file: String) -> String {
+        if let Some(ref append) = self.append {
+            file = file + append;
+        }
+        if let Some(ref prepend) = self.prepend {
+            file = prepend.to_string() + &file;
+        }
+
+        file
+    }
+}
+
 fn expand_directories(files: Files) -> Result<Files> {
     let expanded = files
         .into_iter()

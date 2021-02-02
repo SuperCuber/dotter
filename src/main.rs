@@ -6,7 +6,6 @@ mod args;
 mod config;
 mod deploy;
 mod difference;
-mod file_state;
 mod filesystem;
 mod handlebars_helpers;
 mod hooks;

@@ -1,20 +1,23 @@
 use anyhow::{Context, Result};
 
-use config::Cache;
+use config::{FileTarget, SymbolicTarget, TemplateTarget};
 use filesystem::load_file;
 use handlebars_helpers::create_new_handlebars;
 
-use std::io::{self, Read};
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    io::{self, Read},
+    path::PathBuf,
+};
+use std::collections::BTreeSet;
 
+use crate::actions;
 use crate::args::Options;
 use crate::config;
 use crate::display_error;
-use crate::file_state::{file_state_from_configuration, FileState};
-use crate::filesystem;
+use crate::filesystem::{self, Filesystem};
 use crate::handlebars_helpers;
 use crate::hooks;
-use crate::{actions::Action, filesystem::Filesystem};
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
@@ -39,10 +42,6 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         config::Cache::default()
     };
 
-    let state = file_state_from_configuration(&config, &cache, &opt.cache_directory)
-        .context("get file state")?;
-    trace!("File state: {:#?}", state);
-
     let handlebars = create_new_handlebars(&mut config);
 
     debug!("Running pre-deploy hook");
@@ -59,7 +58,6 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     let mut suggest_force = false;
     let mut error_occurred = false;
 
-    let plan = plan_deploy(state);
     let (mut real_fs, mut dry_run_fs);
     let fs: &mut dyn Filesystem = if opt.act {
         real_fs = crate::filesystem::RealFilesystem::new(opt.interactive);
@@ -69,21 +67,172 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         &mut dry_run_fs
     };
 
-    for action in plan {
-        match action.run(fs, opt, &handlebars, &config.variables) {
-            Ok(true) => action.affect_cache(&mut cache),
-            Ok(false) => {
-                suggest_force = true;
+    // On Windows, you need developer mode to create symlinks.
+    let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
+        .context("check whether symlinks are enabled")?
+    {
+        true
+    } else {
+        warn!(
+            "No permission to create symbolic links.\n
+On Windows, in order to create symbolic links you need to enable Developer Mode.\n
+Proceeding by copying instead of symlinking."
+        );
+        false
+    };
+
+    let mut desired_symlinks = BTreeMap::<PathBuf, SymbolicTarget>::new();
+    let mut desired_templates = BTreeMap::<PathBuf, TemplateTarget>::new();
+
+    for (source, target) in config.files {
+        if symlinks_enabled {
+            match target {
+                FileTarget::Automatic(target) => {
+                    if fs
+                        .is_template(&source)
+                        .context(format!("check whether {:?} is a template", source))?
+                    {
+                        desired_templates.insert(source, target.into());
+                    }
+                }
+                FileTarget::Symbolic(target) => {
+                    desired_symlinks.insert(source, target);
+                }
+                FileTarget::ComplexTemplate(target) => {
+                    desired_templates.insert(source, target);
+                }
             }
-            Err(e) => {
-                error_occurred = true;
-                display_error(e);
+        } else {
+            match target {
+                FileTarget::Automatic(target) => {
+                    desired_templates.insert(source, target.into());
+                }
+                FileTarget::Symbolic(target) => {
+                    desired_templates.insert(source, target.into_template());
+                }
+                FileTarget::ComplexTemplate(target) => {
+                    desired_templates.insert(source, target);
+                }
             }
         }
     }
 
-    trace!("Actual symlinks: {:#?}", cache.symlinks);
-    trace!("Actual templates: {:#?}", cache.templates);
+    fn difference<T1, T2>(
+        map1: &BTreeMap<PathBuf, T1>,
+        map2: &BTreeMap<PathBuf, T2>,
+    ) -> BTreeSet<PathBuf> {
+        let keys1 = map1.keys().collect::<BTreeSet<_>>();
+        let keys2 = map2.keys().collect::<BTreeSet<_>>();
+        keys1.difference(&keys2).cloned().cloned().collect()
+    }
+
+    for deleted_symlink in difference(&cache.symlinks, &desired_symlinks) {
+        let target = cache.symlinks.get(&deleted_symlink).unwrap().clone();
+        execute_action(
+            actions::delete_symlink(&deleted_symlink, &target, fs, opt.force),
+            || cache.symlinks.remove(&deleted_symlink),
+            || format!("delete symlink {:?} -> {:?}", deleted_symlink, target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
+    for deleted_template in difference(&cache.templates, &desired_templates) {
+        let target = cache.templates.get(&deleted_template).unwrap().clone();
+        execute_action(
+            actions::delete_template(
+                &deleted_template,
+                &opt.cache_directory.join(&deleted_template),
+                &target,
+                fs,
+                opt.force,
+            ),
+            || cache.templates.remove(&deleted_template),
+            || format!("delete template {:?} -> {:?}", deleted_template, target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
+    for created_symlink in difference(&desired_symlinks, &cache.symlinks) {
+        let target = desired_symlinks.get(&created_symlink).unwrap().clone();
+        execute_action(
+            actions::create_symlink(
+                &created_symlink,
+                &target,
+                fs,
+                opt.force
+            ),
+            || cache.symlinks.insert(created_symlink.clone(), target.target.clone()),
+            || format!("create symlink {:?} -> {:?}", created_symlink, target.target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
+    for created_template in difference(&desired_templates, &cache.templates) {
+        let target = desired_templates.get(&created_template).unwrap().clone();
+        execute_action(
+            actions::create_template(
+                &created_template,
+                &target,
+                &opt.cache_directory,
+                fs,
+                &handlebars,
+                &config.variables,
+                opt.force
+            ),
+            || cache.templates.insert(created_template.clone(), target.target.clone()),
+            || format!("create template {:?} -> {:?}", created_template, target.target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
+    fn intersection<T1, T2>(
+        map1: &BTreeMap<PathBuf, T1>,
+        map2: &BTreeMap<PathBuf, T2>,
+    ) -> BTreeSet<PathBuf> {
+        let keys1 = map1.keys().collect::<BTreeSet<_>>();
+        let keys2 = map2.keys().collect::<BTreeSet<_>>();
+        keys1.intersection(&keys2).cloned().cloned().collect()
+    }
+
+    for updated_symlink in intersection(&desired_symlinks, &cache.symlinks) {
+        let target = desired_symlinks.get(&updated_symlink).unwrap().clone();
+        execute_action(
+            actions::update_symlink(
+                &updated_symlink,
+                &target,
+                fs,
+                opt.force,
+            ),
+            || (),
+            || format!("update symlink {:?} -> {:?}", updated_symlink, target.target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
+    for updated_template in intersection(&desired_templates, &cache.templates) {
+        let target = desired_templates.get(&updated_template).unwrap().clone();
+        execute_action(
+            actions::update_template(
+                &updated_template,
+                &target,
+                &opt.cache_directory,
+                fs,
+                &handlebars,
+                &config.variables,
+                opt.force,
+                opt.diff_context_lines,
+            ),
+            || (),
+            || format!("update template {:?} -> {:?}", updated_template, target.target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
 
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
@@ -131,7 +280,6 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     let mut suggest_force = false;
     let mut error_occurred = false;
 
-    let plan = plan_undeploy(&cache, &opt.cache_directory);
     let (mut real_fs, mut dry_run_fs);
     let fs: &mut dyn Filesystem = if opt.act {
         real_fs = crate::filesystem::RealFilesystem::new(opt.interactive);
@@ -141,18 +289,32 @@ pub fn undeploy(opt: Options) -> Result<bool> {
         &mut dry_run_fs
     };
 
-    for action in plan {
-        match action.run(fs, &opt, &handlebars, &config.variables) {
-            Ok(true) => action.affect_cache(&mut cache),
-            Ok(false) => {
-                suggest_force = true;
-            }
-            Err(e) => {
-                error_occurred = true;
-                display_error(e);
-            }
-        }
+    for (deleted_symlink, target) in cache.symlinks.clone() {
+        execute_action(
+            actions::delete_symlink(&deleted_symlink, &target, fs, opt.force),
+            || cache.symlinks.remove(&deleted_symlink),
+            || format!("delete symlink {:?} -> {:?}", deleted_symlink, target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
     }
+
+    for (deleted_template, target) in cache.templates.clone() {
+        execute_action(
+            actions::delete_template(
+                &deleted_template,
+                &opt.cache_directory.join(&deleted_template),
+                &target,
+                fs,
+                opt.force,
+            ),
+            || cache.templates.remove(&deleted_template),
+            || format!("delete template {:?} -> {:?}", deleted_template, target),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
 
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
@@ -179,70 +341,26 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     Ok(error_occurred)
 }
 
-fn plan_deploy(state: FileState) -> Vec<Action> {
-    let mut actions = Vec::new();
-
-    let FileState {
-        desired_symlinks,
-        desired_templates,
-        existing_symlinks,
-        existing_templates,
-    } = state;
-
-    for deleted_symlink in existing_symlinks.difference(&desired_symlinks).cloned() {
-        actions.push(Action::DeleteSymlink {
-            source: deleted_symlink.source,
-            target: deleted_symlink.target.target,
-        });
+/// Used to remove duplication
+fn execute_action<T, S: FnOnce() -> T, E: FnOnce() -> String>(
+    result: Result<bool>,
+    success: S,
+    context: E,
+    suggest_force: &mut bool,
+    error_occurred: &mut bool,
+) {
+    match result {
+        Ok(true) => {
+            success();
+        }
+        Ok(false) => {
+            *suggest_force = true;
+        }
+        Err(e) => {
+            display_error(e.context(context()));
+            *error_occurred = true;
+        }
     }
-
-    for deleted_template in existing_templates.difference(&desired_templates).cloned() {
-        actions.push(Action::DeleteTemplate {
-            source: deleted_template.source,
-            cache: deleted_template.cache,
-            target: deleted_template.target.target,
-        });
-    }
-
-    for created_symlink in desired_symlinks.difference(&existing_symlinks) {
-        actions.push(Action::CreateSymlink(created_symlink.clone()));
-    }
-
-    for created_template in desired_templates.difference(&existing_templates) {
-        actions.push(Action::CreateTemplate(created_template.clone()));
-    }
-
-    for updated_symlink in desired_symlinks.intersection(&existing_symlinks) {
-        actions.push(Action::UpdateSymlink(updated_symlink.clone()));
-    }
-
-    for updated_template in desired_templates.intersection(&existing_templates) {
-        actions.push(Action::UpdateTemplate(updated_template.clone()));
-    }
-
-    actions
-}
-
-fn plan_undeploy(cache: &Cache, cache_directory: &Path) -> Vec<Action> {
-    let mut actions = Vec::new();
-
-    for (source, target) in &cache.symlinks {
-        actions.push(Action::DeleteSymlink {
-            source: source.clone(),
-            target: target.clone(),
-        });
-    }
-
-    for (source, target) in &cache.templates {
-        let cache = cache_directory.join(&source);
-        actions.push(Action::DeleteTemplate {
-            source: source.clone(),
-            cache: cache.clone(),
-            target: target.clone(),
-        });
-    }
-
-    actions
 }
 
 #[cfg(test)]
@@ -252,7 +370,6 @@ mod test {
         filesystem::SymlinkComparison,
     };
     use crate::{
-        file_state::{SymlinkDescription, TemplateDescription},
         filesystem::TemplateComparison,
     };
 

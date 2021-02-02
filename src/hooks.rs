@@ -4,8 +4,6 @@ use handlebars::Handlebars;
 use std::path::Path;
 use std::process::Command;
 
-use crate::file_state::TemplateDescription;
-
 pub(crate) fn run_hook(
     location: &Path,
     cache_dir: &Path,
@@ -23,13 +21,10 @@ pub(crate) fn run_hook(
     }
     debug!("Rendering script {:?} -> {:?}", location, script_file);
 
-    let template = TemplateDescription {
-        source: location.into(),
-        target: std::env::temp_dir().join("dotter_temp").into(),
-        cache: script_file.clone(),
-    };
     crate::actions::perform_template_deploy(
-        &template,
+        location,
+        &script_file,
+        &std::env::temp_dir().join("dotter_temp").into(),
         &mut crate::filesystem::RealFilesystem::new(false),
         handlebars,
         variables,

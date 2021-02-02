@@ -49,6 +49,9 @@ pub trait Filesystem {
     /// Check state of expected symbolic link on disk
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison>;
 
+    /// Check source file for whether it should be a symlink or a template
+    fn is_template(&mut self, source: &Path) -> Result<bool>;
+
     /// Removes a file or folder, elevating privileges if needed
     fn remove_file(&mut self, path: &Path) -> Result<()>;
 
@@ -117,6 +120,10 @@ impl Filesystem for RealFilesystem {
         trace!("Cache state: {:#?}", cache_state);
 
         compare_template(target_state, cache_state)
+    }
+
+    fn is_template(&mut self, source: &Path) -> Result<bool> {
+        is_template(source)
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -270,6 +277,10 @@ impl Filesystem for RealFilesystem {
         let cache_state = get_file_state(cache).context("get state of cache")?;
 
         compare_template(target_state, cache_state)
+    }
+
+    fn is_template(&mut self, source: &Path) -> Result<bool> {
+        is_template(source)
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -586,6 +597,10 @@ impl Filesystem for DryRunFilesystem {
         compare_template(target_state, cache_state)
     }
 
+    fn is_template(&mut self, source: &Path) -> Result<bool> {
+        is_template(source)
+    }
+
     fn remove_file(&mut self, path: &Path) -> Result<()> {
         debug!("Removing file {:?}", path);
         self.file_states.insert(path.into(), FileState::Missing);
@@ -799,6 +814,18 @@ pub fn ask_boolean(prompt: &str) -> bool {
     // If empty defaults to no
     buf.to_lowercase().starts_with('y')
 }
+
+fn is_template(source: &Path) -> Result<bool> {
+    let mut file = File::open(source).context("open file")?;
+    let mut buf = String::new();
+    if file.read_to_string(&mut buf).is_err() {
+        warn!("File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.", source);
+        Ok(false)
+    } else {
+        Ok(buf.contains("{{"))
+    }
+}
+
 
 #[cfg(windows)]
 pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {

@@ -2,50 +2,51 @@ use anyhow::{Context, Result};
 use crossterm::style::Colorize;
 use handlebars::Handlebars;
 
-use std::cmp::{max, min};
+use std::{cmp::{max, min}, path::Path};
 use std::fs;
 
-use crate::config::Variables;
-use crate::file_state;
+use crate::config::{TemplateTarget, Variables};
 
 pub type Diff = Vec<diff::Result<String>>;
 pub type HunkDiff = Vec<(usize, usize, Diff)>;
 
 pub fn print_template_diff(
-    template: &file_state::TemplateDescription,
+    source: &Path,
+    target: &TemplateTarget,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
     diff_context_lines: usize,
 ) {
     if log_enabled!(log::Level::Info) {
-        match generate_diff(&template, handlebars, &variables) {
+        match generate_diff(source, target, handlebars, &variables) {
             Ok(diff) => {
                 if diff_nonempty(&diff) {
-                    info!("{} {}", "[~]".yellow(), template);
+                    info!("{} template {:?} -> {:?}", "[~]".yellow(), source, target.target);
                     print_diff(diff, diff_context_lines);
                 }
             }
             Err(e) => {
-                warn!("Failed to generate diff for {} on step: {}", template, e);
+                warn!("Failed to generate diff for template {:?} -> {:?} on step: {}", source, target.target, e);
             }
         }
     }
 }
 
 pub fn generate_diff(
-    template: &file_state::TemplateDescription,
+    source: &Path,
+    target: &TemplateTarget,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<Diff> {
     let file_contents =
-        fs::read_to_string(&template.source).context("read template source file")?;
-    let file_contents = template.apply_actions(file_contents);
+        fs::read_to_string(&source).context("read template source file")?;
+    let file_contents = target.apply_actions(file_contents);
     let rendered = handlebars
         .render_template(&file_contents, variables)
         .context("render template")?;
 
     let target_contents =
-        fs::read_to_string(&template.target.target).context("read template target file")?;
+        fs::read_to_string(&target.target).context("read template target file")?;
 
     let diff_result = diff::lines(&target_contents, &rendered);
 
