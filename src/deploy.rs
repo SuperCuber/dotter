@@ -21,6 +21,7 @@ use crate::hooks;
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
+    // === Load configuration ===
     let mut patch = None;
     if opt.patch {
         debug!("Reading manual patch from stdin...");
@@ -41,6 +42,8 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         warn!("Cache file not found. Assuming cache is empty.");
         config::Cache::default()
     };
+
+    // === Pre-deploy ===
 
     let handlebars = create_new_handlebars(&mut config);
 
@@ -66,6 +69,8 @@ pub fn deploy(opt: &Options) -> Result<bool> {
         dry_run_fs = crate::filesystem::DryRunFilesystem::new();
         &mut dry_run_fs
     };
+
+    // === Re-structure configuration ===
 
     // On Windows, you need developer mode to create symlinks.
     let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
@@ -116,6 +121,8 @@ Proceeding by copying instead of symlinking."
             }
         }
     }
+
+    // === Perform deployment ===
 
     fn difference<T1, T2>(
         map1: &BTreeMap<PathBuf, T1>,
@@ -252,6 +259,8 @@ Proceeding by copying instead of symlinking."
         );
     }
 
+    // === Post-deploy ===
+
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
         error_occurred = true;
@@ -276,6 +285,7 @@ Proceeding by copying instead of symlinking."
 }
 
 pub fn undeploy(opt: Options) -> Result<bool> {
+    // === Load configuration ===
     let mut config = config::load_configuration(&opt.local_config, &opt.global_config, None)
         .context("get a configuration")?;
 
@@ -283,6 +293,8 @@ pub fn undeploy(opt: Options) -> Result<bool> {
         .context("load cache: Cannot undeploy without a cache.")?;
 
     let handlebars = create_new_handlebars(&mut config);
+
+    // === Pre-undeploy ===
 
     debug!("Running pre-undeploy hook");
     if opt.act {
@@ -306,6 +318,8 @@ pub fn undeploy(opt: Options) -> Result<bool> {
         dry_run_fs = crate::filesystem::DryRunFilesystem::new();
         &mut dry_run_fs
     };
+
+    // === Perform undeployment ===
 
     for (deleted_symlink, target) in cache.symlinks.clone() {
         execute_action(
@@ -332,6 +346,8 @@ pub fn undeploy(opt: Options) -> Result<bool> {
             &mut error_occurred,
         );
     }
+
+    // === Post-undeploy ===
 
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
