@@ -179,28 +179,6 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     Ok(error_occurred)
 }
 
-fn plan_undeploy(cache: &Cache, cache_directory: &Path) -> Vec<Action> {
-    let mut actions = Vec::new();
-
-    for (source, target) in &cache.symlinks {
-        actions.push(Action::DeleteSymlink {
-            source: source.clone(),
-            target: target.clone(),
-        });
-    }
-
-    for (source, target) in &cache.templates {
-        let cache = cache_directory.join(&source);
-        actions.push(Action::DeleteTemplate {
-            source: source.clone(),
-            cache: cache.clone(),
-            target: target.clone(),
-        });
-    }
-
-    actions
-}
-
 fn plan_deploy(state: FileState) -> Vec<Action> {
     let mut actions = Vec::new();
 
@@ -240,6 +218,28 @@ fn plan_deploy(state: FileState) -> Vec<Action> {
 
     for updated_template in desired_templates.intersection(&existing_templates) {
         actions.push(Action::UpdateTemplate(updated_template.clone()));
+    }
+
+    actions
+}
+
+fn plan_undeploy(cache: &Cache, cache_directory: &Path) -> Vec<Action> {
+    let mut actions = Vec::new();
+
+    for (source, target) in &cache.symlinks {
+        actions.push(Action::DeleteSymlink {
+            source: source.clone(),
+            target: target.clone(),
+        });
+    }
+
+    for (source, target) in &cache.templates {
+        let cache = cache_directory.join(&source);
+        actions.push(Action::DeleteTemplate {
+            source: source.clone(),
+            cache: cache.clone(),
+            target: target.clone(),
+        });
     }
 
     actions
