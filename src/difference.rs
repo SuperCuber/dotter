@@ -2,8 +2,11 @@ use anyhow::{Context, Result};
 use crossterm::style::Colorize;
 use handlebars::Handlebars;
 
-use std::{cmp::{max, min}, path::Path};
 use std::fs;
+use std::{
+    cmp::{max, min},
+    path::Path,
+};
 
 use crate::config::{TemplateTarget, Variables};
 
@@ -21,12 +24,20 @@ pub fn print_template_diff(
         match generate_diff(source, target, handlebars, &variables) {
             Ok(diff) => {
                 if diff_nonempty(&diff) {
-                    info!("{} template {:?} -> {:?}", "[~]".yellow(), source, target.target);
+                    info!(
+                        "{} template {:?} -> {:?}",
+                        "[~]".yellow(),
+                        source,
+                        target.target
+                    );
                     print_diff(diff, diff_context_lines);
                 }
             }
             Err(e) => {
-                warn!("Failed to generate diff for template {:?} -> {:?} on step: {}", source, target.target, e);
+                warn!(
+                    "Failed to generate diff for template {:?} -> {:?} on step: {}",
+                    source, target.target, e
+                );
             }
         }
     }
@@ -38,8 +49,7 @@ pub fn generate_diff(
     handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<Diff> {
-    let file_contents =
-        fs::read_to_string(&source).context("read template source file")?;
+    let file_contents = fs::read_to_string(&source).context("read template source file")?;
     let file_contents = target.apply_actions(file_contents);
     let rendered = handlebars
         .render_template(&file_contents, variables)

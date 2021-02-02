@@ -826,7 +826,6 @@ fn is_template(source: &Path) -> Result<bool> {
     }
 }
 
-
 #[cfg(windows)]
 pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
     use std::os::windows::fs;

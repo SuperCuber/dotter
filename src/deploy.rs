@@ -4,12 +4,12 @@ use config::{FileTarget, SymbolicTarget, TemplateTarget};
 use filesystem::load_file;
 use handlebars_helpers::create_new_handlebars;
 
+use std::collections::BTreeSet;
 use std::{
     collections::BTreeMap,
     io::{self, Read},
     path::PathBuf,
 };
-use std::collections::BTreeSet;
 
 use crate::actions;
 use crate::args::Options;
@@ -157,14 +157,18 @@ Proceeding by copying instead of symlinking."
     for created_symlink in difference(&desired_symlinks, &cache.symlinks) {
         let target = desired_symlinks.get(&created_symlink).unwrap().clone();
         execute_action(
-            actions::create_symlink(
-                &created_symlink,
-                &target,
-                fs,
-                opt.force
-            ),
-            || cache.symlinks.insert(created_symlink.clone(), target.target.clone()),
-            || format!("create symlink {:?} -> {:?}", created_symlink, target.target),
+            actions::create_symlink(&created_symlink, &target, fs, opt.force),
+            || {
+                cache
+                    .symlinks
+                    .insert(created_symlink.clone(), target.target.clone())
+            },
+            || {
+                format!(
+                    "create symlink {:?} -> {:?}",
+                    created_symlink, target.target
+                )
+            },
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -180,10 +184,19 @@ Proceeding by copying instead of symlinking."
                 fs,
                 &handlebars,
                 &config.variables,
-                opt.force
+                opt.force,
             ),
-            || cache.templates.insert(created_template.clone(), target.target.clone()),
-            || format!("create template {:?} -> {:?}", created_template, target.target),
+            || {
+                cache
+                    .templates
+                    .insert(created_template.clone(), target.target.clone())
+            },
+            || {
+                format!(
+                    "create template {:?} -> {:?}",
+                    created_template, target.target
+                )
+            },
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -201,14 +214,14 @@ Proceeding by copying instead of symlinking."
     for updated_symlink in intersection(&desired_symlinks, &cache.symlinks) {
         let target = desired_symlinks.get(&updated_symlink).unwrap().clone();
         execute_action(
-            actions::update_symlink(
-                &updated_symlink,
-                &target,
-                fs,
-                opt.force,
-            ),
+            actions::update_symlink(&updated_symlink, &target, fs, opt.force),
             || (),
-            || format!("update symlink {:?} -> {:?}", updated_symlink, target.target),
+            || {
+                format!(
+                    "update symlink {:?} -> {:?}",
+                    updated_symlink, target.target
+                )
+            },
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -228,7 +241,12 @@ Proceeding by copying instead of symlinking."
                 opt.diff_context_lines,
             ),
             || (),
-            || format!("update template {:?} -> {:?}", updated_template, target.target),
+            || {
+                format!(
+                    "update template {:?} -> {:?}",
+                    updated_template, target.target
+                )
+            },
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -315,7 +333,6 @@ pub fn undeploy(opt: Options) -> Result<bool> {
         );
     }
 
-
     if suggest_force {
         error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
         error_occurred = true;
@@ -365,12 +382,10 @@ fn execute_action<T, S: FnOnce() -> T, E: FnOnce() -> String>(
 
 #[cfg(test)]
 mod test {
+    use crate::filesystem::TemplateComparison;
     use crate::{
         config::{SymbolicTarget, TemplateTarget},
         filesystem::SymlinkComparison,
-    };
-    use crate::{
-        filesystem::TemplateComparison,
     };
 
     use std::{

@@ -238,7 +238,12 @@ pub fn create_template(
     variables: &Variables,
     force: bool,
 ) -> Result<bool> {
-    info!("{} template {:?} -> {:?}", "[+]".green(), source, target.target);
+    info!(
+        "{} template {:?} -> {:?}",
+        "[+]".green(),
+        source,
+        target.target
+    );
 
     let comparison = fs
         .compare_template(&target.target, &cache_dir.join(source))
@@ -256,8 +261,15 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache_dir.join(source), target, fs, handlebars, variables)
-                .context("perform template cache")?;
+            perform_template_deploy(
+                source,
+                &cache_dir.join(source),
+                target,
+                fs,
+                handlebars,
+                variables,
+            )
+            .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists | TemplateComparison::Identical => {
@@ -273,8 +285,15 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache_dir.join(source), target, fs, handlebars, variables)
-                .context("perform template cache")?;
+            perform_template_deploy(
+                source,
+                &cache_dir.join(source),
+                target,
+                fs,
+                handlebars,
+                variables,
+            )
+            .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::TargetNotRegularFile
@@ -296,8 +315,15 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache_dir.join(source), target, fs, handlebars, variables)
-                .context("perform template cache")?;
+            perform_template_deploy(
+                source,
+                &cache_dir.join(source),
+                target,
+                fs,
+                handlebars,
+                variables,
+            )
+            .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::TargetNotRegularFile
@@ -336,23 +362,28 @@ pub fn update_symlink(
             Ok(true)
         }
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
-            error!("Updating template {:?} -> {:?} but source is missing. Skipping.", source, target.target);
+            error!(
+                "Updating template {:?} -> {:?} but source is missing. Skipping.",
+                source, target.target
+            );
             Ok(false)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
-            warn!("Updating template {:?} -> {:?} but {}. Forcing.", source, target.target, comparison);
+            warn!(
+                "Updating template {:?} -> {:?} but {}. Forcing.",
+                source, target.target, comparison
+            );
             fs.remove_file(&target.target)
                 .context("remove symlink target while forcing")?;
-            fs.make_symlink(
-                &target.target,
-                &source,
-                &target.owner,
-            )
-            .context("create target symlink")?;
+            fs.make_symlink(&target.target, &source, &target.owner)
+                .context("create target symlink")?;
             Ok(true)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
-            error!("Updating template {:?} -> {:?} but {}. Skipping.", source, target.target, comparison);
+            error!(
+                "Updating template {:?} -> {:?} but {}. Skipping.",
+                source, target.target, comparison
+            );
             Ok(false)
         }
         SymlinkComparison::OnlySourceExists => {
@@ -368,12 +399,8 @@ pub fn update_symlink(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            fs.make_symlink(
-                &target.target,
-                &source,
-                &target.owner,
-            )
-            .context("create target symlink")?;
+            fs.make_symlink(&target.target, &source, &target.owner)
+                .context("create target symlink")?;
             Ok(true)
         }
     }
@@ -400,11 +427,24 @@ pub fn update_template(
     match comparison {
         TemplateComparison::Identical => {
             debug!("Performing update");
-            difference::print_template_diff(source, target, handlebars, variables, diff_context_lines);
+            difference::print_template_diff(
+                source,
+                target,
+                handlebars,
+                variables,
+                diff_context_lines,
+            );
             fs.set_owner(&target.target, &target.owner)
                 .context("set target file owner")?;
-            perform_template_deploy(source, &cache_dir.join(source), target, fs, handlebars, variables)
-                .context("perform template cache")?;
+            perform_template_deploy(
+                source,
+                &cache_dir.join(source),
+                target,
+                fs,
+                handlebars,
+                variables,
+            )
+            .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists => {
@@ -420,8 +460,15 @@ pub fn update_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache_dir.join(source), target, fs, handlebars, variables)
-                .context("perform template cache")?;
+            perform_template_deploy(
+                source,
+                &cache_dir.join(source),
+                target,
+                fs,
+                handlebars,
+                variables,
+            )
+            .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
@@ -433,16 +480,35 @@ pub fn update_template(
             Ok(true)
         }
         TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
-            warn!("Updating template {:?} -> {:?} but {}. Forcing.", source, target.target, comparison);
-            difference::print_template_diff(source, target, handlebars, variables, diff_context_lines);
+            warn!(
+                "Updating template {:?} -> {:?} but {}. Forcing.",
+                source, target.target, comparison
+            );
+            difference::print_template_diff(
+                source,
+                target,
+                handlebars,
+                variables,
+                diff_context_lines,
+            );
             fs.remove_file(&target.target)
                 .context("remove target while forcing")?;
-            perform_template_deploy(source, &cache_dir.join(source), target, fs, handlebars, variables)
-                .context("perform template cache")?;
+            perform_template_deploy(
+                source,
+                &cache_dir.join(source),
+                target,
+                fs,
+                handlebars,
+                variables,
+            )
+            .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {
-            error!("Updating template {:?} -> {:?} but {}. Skipping.", source, target.target, comparison);
+            error!(
+                "Updating template {:?} -> {:?} but {}. Skipping.",
+                source, target.target, comparison
+            );
             Ok(false)
         }
     }
@@ -465,29 +531,16 @@ pub(crate) fn perform_template_deploy(
         .context("render template")?;
 
     // Cache
-    fs.create_dir_all(
-        &cache
-            .parent()
-            .context("get parent of cache file")?,
-        &None,
-    )
-    .context("create parent for cache file")?;
+    fs.create_dir_all(&cache.parent().context("get parent of cache file")?, &None)
+        .context("create parent for cache file")?;
     fs.write(&cache, rendered)
         .context("write rendered template to cache")?;
 
     // Target
-    fs.copy_file(
-        &cache,
-        &target.target,
-        &target.owner,
-    )
-    .context("copy template from cache to target")?;
-    fs.copy_permissions(
-        &source,
-        &target.target,
-        &target.owner,
-    )
-    .context("copy permissions from source to target")?;
+    fs.copy_file(&cache, &target.target, &target.owner)
+        .context("copy template from cache to target")?;
+    fs.copy_permissions(&source, &target.target, &target.owner)
+        .context("copy permissions from source to target")?;
 
     Ok(())
 }
