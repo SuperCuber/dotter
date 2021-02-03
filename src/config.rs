@@ -126,7 +126,7 @@ pub fn load_configuration(
     Ok(merged_config)
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Cache {
     pub symlinks: BTreeMap<PathBuf, PathBuf>,

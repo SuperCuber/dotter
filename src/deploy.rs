@@ -273,11 +273,13 @@ fn run_deploy<A: ActionRunner>(
         keys1.difference(&keys2).cloned().cloned().collect()
     }
 
+    let mut resulting_cache = cache.clone();
+
     for deleted_symlink in difference(&cache.symlinks, &desired_symlinks) {
         let target = cache.symlinks.get(&deleted_symlink).unwrap().clone();
         execute_action(
             runner.delete_symlink(&deleted_symlink, &target),
-            || cache.symlinks.remove(&deleted_symlink),
+            || resulting_cache.symlinks.remove(&deleted_symlink),
             || format!("delete symlink {:?} -> {:?}", deleted_symlink, target),
             &mut suggest_force,
             &mut error_occurred,
@@ -292,7 +294,7 @@ fn run_deploy<A: ActionRunner>(
                 &opt.cache_directory.join(&deleted_template),
                 &target,
             ),
-            || cache.templates.remove(&deleted_template),
+            || resulting_cache.templates.remove(&deleted_template),
             || format!("delete template {:?} -> {:?}", deleted_template, target),
             &mut suggest_force,
             &mut error_occurred,
@@ -304,7 +306,7 @@ fn run_deploy<A: ActionRunner>(
         execute_action(
             runner.create_symlink(&created_symlink, &target),
             || {
-                cache
+                resulting_cache
                     .symlinks
                     .insert(created_symlink.clone(), target.target.clone())
             },
@@ -328,7 +330,7 @@ fn run_deploy<A: ActionRunner>(
                 &target,
             ),
             || {
-                cache
+                resulting_cache
                     .templates
                     .insert(created_template.clone(), target.target.clone())
             },
@@ -388,6 +390,8 @@ fn run_deploy<A: ActionRunner>(
         );
     }
 
+    *cache = resulting_cache;
+
     Ok((suggest_force, error_occurred))
 }
 
@@ -415,72 +419,89 @@ fn execute_action<T, S: FnOnce() -> T, E: FnOnce() -> String>(
 
 #[cfg(test)]
 mod test {
-    use crate::filesystem::TemplateComparison;
-    use crate::{
-        config::{SymbolicTarget, TemplateTarget},
-        filesystem::SymlinkComparison,
-    };
+    use crate::filesystem::{SymlinkComparison, TemplateComparison};
 
-    use std::{
-        collections::BTreeSet,
-        path::{Path, PathBuf},
-    };
+    use std::path::{Path, PathBuf};
 
     use super::*;
 
     use mockall::predicate::*;
 
+    fn path_eq(expected: &str) -> impl Fn(&Path) -> bool {
+        let expected = PathBuf::from(expected);
+        move |actual| actual == expected
+    }
+
     #[test]
-    fn initial_deploy() {
-        // File state
-        let a = SymlinkDescription {
-            source: "a_in".into(),
-            target: SymbolicTarget {
-                target: "a_out".into(),
-                owner: None,
-            },
+    fn high_level_simple() {
+        // State
+        let a_out = SymbolicTarget {
+            target: "a_out".into(),
+            owner: None,
         };
-        let b = TemplateDescription {
-            source: "b_in".into(),
-            target: TemplateTarget {
-                target: "b_out".into(),
-                owner: None,
-                append: None,
-                prepend: None,
-            },
-            cache: "cache/b_cache".into(),
-        };
-        let file_state = FileState {
-            desired_symlinks: maplit::btreeset! {
-                a.clone()
-            },
-            desired_templates: maplit::btreeset! {
-                b.clone()
-            },
-            existing_symlinks: BTreeSet::new(),
-            existing_templates: BTreeSet::new(),
+        let b_out = TemplateTarget {
+            target: "b_out".into(),
+            owner: None,
+            append: None,
+            prepend: None,
         };
 
-        // Plan
-        let actions = plan_deploy(file_state);
-        assert_eq!(
-            actions,
-            [Action::CreateSymlink(a), Action::CreateTemplate(b)]
-        );
+        let desired_symlinks = maplit::btreemap! {
+            PathBuf::from("a_in") => a_out.clone()
+        };
+        let desired_templates = maplit::btreemap! {
+            PathBuf::from("b_in") => b_out.clone()
+        };
 
+        // Test high level
+        let mut runner = actions::MockActionRunner::new();
+        let mut seq = mockall::Sequence::new();
+        let mut cache = Cache::default();
+
+        runner
+            .expect_create_symlink()
+            .times(1)
+            .with(function(path_eq("a_in")), eq(a_out))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(true));
+        runner
+            .expect_create_template()
+            .times(1)
+            .with(function(path_eq("b_in")), function(path_eq("cache/b_in")), eq(b_out))
+            .in_sequence(&mut seq)
+            .returning(|_,_, _| Ok(true));
+
+        let (suggest_force, error_occurred) = run_deploy(
+            &mut runner,
+            &desired_symlinks,
+            &desired_templates,
+            &mut cache,
+            &Options {
+                cache_directory: "cache".into(),
+                force: false,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(suggest_force, false);
+        assert_eq!(error_occurred, false);
+
+        assert!(cache.symlinks.contains_key(&PathBuf::from("a_in")));
+        assert_eq!(cache.symlinks.len(), 1);
+    }
+
+    #[test]
+    fn low_level_simple() {
         // Setup
         let mut fs = crate::filesystem::MockFilesystem::new();
         let mut seq = mockall::Sequence::new();
 
-        let options = Options::default();
+        let opt = Options::default();
         let handlebars = handlebars::Handlebars::new();
         let variables = Default::default();
 
-        fn path_eq(expected: &str) -> impl Fn(&Path) -> bool {
-            let expected = PathBuf::from(expected);
-            move |actual| actual == expected
-        }
-
+        // Run
         // Action 1
         fs.expect_compare_symlink()
             .times(1)
@@ -501,12 +522,6 @@ mod test {
             )
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(()));
-
-        actions[0]
-            .run(&mut fs, &options, &handlebars, &variables)
-            .unwrap();
-
-        fs.checkpoint();
 
         // Action 2
         fs.expect_compare_template()
@@ -556,8 +571,22 @@ mod test {
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(()));
 
-        actions[1]
-            .run(&mut fs, &options, &handlebars, &variables)
+        let mut runner = actions::RealActionRunner::new(
+            &mut fs,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        );
+        runner
+            .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
+            .unwrap();
+        runner
+            .create_template(
+                &PathBuf::from("b_in"),
+                &PathBuf::from("cache/b_cache"),
+                &PathBuf::from("b_out").into(),
+            )
             .unwrap();
     }
 }
