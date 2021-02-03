@@ -60,7 +60,7 @@ pub trait Filesystem {
     fn write(&mut self, path: &Path, content: String) -> Result<()>;
 
     /// Delete parents of target file if they're empty
-    fn delete_parents(&mut self, path: &Path) -> Result<()>;
+    fn delete_parents(&mut self, path: &Path, no_ask: bool) -> Result<()>;
 
     /// Makes a symlink owned by the selected user, elevating privileges as needed
     fn make_symlink(&mut self, link: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()>;
@@ -137,7 +137,7 @@ impl Filesystem for RealFilesystem {
         fs::write(path, content).context("write to file")
     }
 
-    fn delete_parents(&mut self, path: &Path) -> Result<()> {
+    fn delete_parents(&mut self, path: &Path, no_ask: bool) -> Result<()> {
         let mut path = path.parent().context("get parent")?;
         while path.is_dir()
             && path
@@ -146,7 +146,7 @@ impl Filesystem for RealFilesystem {
                 .next()
                 .is_none()
         {
-            if !self.interactive
+            if (!self.interactive || no_ask)
                 || ask_boolean(&format!(
                     "Directory at {:?} is now empty. Delete [y/N]? ",
                     path
@@ -620,7 +620,7 @@ impl Filesystem for DryRunFilesystem {
         Ok(())
     }
 
-    fn delete_parents(&mut self, path: &Path) -> Result<()> {
+    fn delete_parents(&mut self, path: &Path, no_ask: bool) -> Result<()> {
         debug!(
             "Recursively deleting parents of {:?} if they're empty",
             path

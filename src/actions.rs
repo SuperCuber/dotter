@@ -153,7 +153,7 @@ pub fn delete_symlink(
 
 fn perform_symlink_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
     fs.remove_file(target).context("remove symlink")?;
-    fs.delete_parents(target)
+    fs.delete_parents(target, false)
         .context("delete parents of symlink")?;
     Ok(())
 }
@@ -219,14 +219,14 @@ pub fn delete_template(
 
 fn perform_cache_deletion(fs: &mut dyn Filesystem, cache: &Path) -> Result<()> {
     fs.remove_file(cache).context("delete template cache")?;
-    fs.delete_parents(cache)
+    fs.delete_parents(cache, true)
         .context("delete parent directory in cache")?;
     Ok(())
 }
 
 fn perform_template_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
     fs.remove_file(target).context("delete target file")?;
-    fs.delete_parents(target)
+    fs.delete_parents(target, false)
         .context("delete parent directory in target location")?;
     Ok(())
 }

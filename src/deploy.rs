@@ -89,6 +89,8 @@ Proceeding by copying instead of symlinking."
                         .context(format!("check whether {:?} is a template", source))?
                     {
                         desired_templates.insert(source, target.into());
+                    } else {
+                        desired_symlinks.insert(source, target.into());
                     }
                 }
                 FileTarget::Symbolic(target) => {
