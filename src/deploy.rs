@@ -590,6 +590,59 @@ mod test {
     }
 
     #[test]
+    fn high_level_change_type() {
+        // Setup
+        let a_out_new: SymbolicTarget = "a_out_new".into();
+
+        let desired_symlinks = maplit::btreemap! {
+            PathBuf::from("a_in") => a_out_new.clone()
+        };
+
+        let mut runner = actions::MockActionRunner::new();
+        let mut seq = mockall::Sequence::new();
+        let mut cache = Cache {
+            symlinks: BTreeMap::new(),
+            templates: maplit::btreemap! {
+                PathBuf::from("a_in") => "a_out_old".into()
+            },
+        };
+
+        // Expectation
+        runner
+            .expect_delete_template()
+            .times(1)
+            .with(function(path_eq("a_in")), function(path_eq("cache/a_in")), function(path_eq("a_out_old")))
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(true));
+        runner
+            .expect_create_symlink()
+            .times(1)
+            .with(function(path_eq("a_in")), eq(a_out_new))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(true));
+
+        // Reality
+        let (suggest_force, error_occurred) = run_deploy(
+            &mut runner,
+            &desired_symlinks,
+            &BTreeMap::new(),
+            &mut cache,
+            &Options {
+                cache_directory: "cache".into(),
+                force: false,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(suggest_force, false);
+        assert_eq!(error_occurred, false);
+
+        assert_eq!(cache.symlinks.len(), 1);
+        assert_eq!(cache.templates.len(), 0);
+    }
+
+    #[test]
     fn low_level_simple() {
         // Setup
         let mut fs = crate::filesystem::MockFilesystem::new();
