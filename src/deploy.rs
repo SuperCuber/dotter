@@ -428,16 +428,8 @@ mod test {
     #[test]
     fn high_level_simple() {
         // State
-        let a_out = SymbolicTarget {
-            target: "a_out".into(),
-            owner: None,
-        };
-        let b_out = TemplateTarget {
-            target: "b_out".into(),
-            owner: None,
-            append: None,
-            prepend: None,
-        };
+        let a_out: SymbolicTarget = "a_out".into();
+        let b_out: TemplateTarget = "b_out".into();
 
         let desired_symlinks = maplit::btreemap! {
             PathBuf::from("a_in") => a_out.clone()
@@ -485,7 +477,65 @@ mod test {
         assert_eq!(error_occurred, false);
 
         assert!(cache.symlinks.contains_key(&PathBuf::from("a_in")));
+        assert!(cache.templates.contains_key(&PathBuf::from("b_in")));
         assert_eq!(cache.symlinks.len(), 1);
+        assert_eq!(cache.templates.len(), 1);
+    }
+
+    #[test]
+    fn high_level_skip() {
+        // Setup
+        let a_out: SymbolicTarget = "a_out".into();
+        let b_out: TemplateTarget = "b_out".into();
+
+        let desired_symlinks = maplit::btreemap! {
+            PathBuf::from("a_in") => a_out.clone()
+        };
+        let desired_templates = maplit::btreemap! {
+            PathBuf::from("b_in") => b_out.clone()
+        };
+
+        let mut runner = actions::MockActionRunner::new();
+        let mut seq = mockall::Sequence::new();
+        let mut cache = Cache::default();
+
+        // Expectation
+        runner
+            .expect_create_symlink()
+            .times(1)
+            .with(function(path_eq("a_in")), eq(a_out))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Err(anyhow::anyhow!("oh no")));
+        runner
+            .expect_create_template()
+            .times(1)
+            .with(
+                function(path_eq("b_in")),
+                function(path_eq("cache/b_in")),
+                eq(b_out),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(false));
+
+        // Reality
+        let (suggest_force, error_occurred) = run_deploy(
+            &mut runner,
+            &desired_symlinks,
+            &desired_templates,
+            &mut cache,
+            &Options {
+                cache_directory: "cache".into(),
+                force: false,
+                ..Options::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(suggest_force, true);
+        assert_eq!(error_occurred, true);
+
+        assert_eq!(cache.symlinks.len(), 0);
+        assert_eq!(cache.templates.len(), 0);
     }
 
     #[test]
@@ -498,8 +548,8 @@ mod test {
         let handlebars = handlebars::Handlebars::new();
         let variables = Default::default();
 
-        // Run
-        // Action 1
+        // Expectation:
+        // create_symlink
         fs.expect_compare_symlink()
             .times(1)
             .with(function(path_eq("a_in")), function(path_eq("a_out")))
@@ -520,7 +570,7 @@ mod test {
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(()));
 
-        // Action 2
+        // create_template
         fs.expect_compare_template()
             .times(1)
             .with(
@@ -568,6 +618,7 @@ mod test {
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(()));
 
+        // Reality
         let mut runner = actions::RealActionRunner::new(
             &mut fs,
             &handlebars,
