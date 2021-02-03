@@ -8,28 +8,99 @@ use crate::config::{SymbolicTarget, TemplateTarget, Variables};
 use crate::difference;
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
-// pub fn affect_cache(&self, cache: &mut crate::config::Cache) {
-//     match self {
-//         Action::DeleteSymlink { source, .. } => {
-//             cache.symlinks.remove(source);
-//         }
-//         Action::DeleteTemplate { source, .. } => {
-//             cache.templates.remove(source);
-//         }
-//         Action::CreateSymlink(s) => {
-//             cache
-//                 .symlinks
-//                 .insert(s.source.clone(), s.target.target.clone());
-//         }
-//         Action::CreateTemplate(s) => {
-//             cache
-//                 .templates
-//                 .insert(s.source.clone(), s.target.target.clone());
-//         }
-//         Action::UpdateSymlink(_) => {}
-//         Action::UpdateTemplate(_) => {}
-//     }
-// }
+#[cfg_attr(test, mockall::automock)]
+pub trait ActionRunner {
+    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool>;
+    fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool>;
+    fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
+    fn create_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &TemplateTarget,
+    ) -> Result<bool>;
+    fn update_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
+    fn update_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &TemplateTarget,
+    ) -> Result<bool>;
+}
+
+pub struct RealActionRunner<'a> {
+    fs: &'a mut dyn Filesystem,
+    handlebars: &'a Handlebars<'a>,
+    variables: &'a Variables,
+    force: bool,
+    diff_context_lines: usize,
+}
+
+impl<'a> RealActionRunner<'a> {
+    pub fn new(
+        fs: &'a mut dyn Filesystem,
+        handlebars: &'a Handlebars,
+        variables: &'a Variables,
+        force: bool,
+        diff_context_lines: usize,
+    ) -> RealActionRunner<'a> {
+        RealActionRunner {
+            fs,
+            handlebars,
+            variables,
+            force,
+            diff_context_lines,
+        }
+    }
+}
+
+impl<'a> ActionRunner for RealActionRunner<'a> {
+    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool> {
+        delete_symlink(source, target, self.fs, self.force)
+    }
+    fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool> {
+        delete_template(source, cache, target, self.fs, self.force)
+    }
+    fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool> {
+        create_symlink(source, target, self.fs, self.force)
+    }
+    fn create_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &TemplateTarget,
+    ) -> Result<bool> {
+        create_template(
+            source,
+            cache,
+            target,
+            self.fs,
+            self.handlebars,
+            self.variables,
+            self.force,
+        )
+    }
+    fn update_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool> {
+        update_symlink(source, target, self.fs, self.force)
+    }
+    fn update_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &TemplateTarget,
+    ) -> Result<bool> {
+        update_template(
+            source,
+            cache,
+            target,
+            self.fs,
+            self.handlebars,
+            self.variables,
+            self.force,
+            self.diff_context_lines,
+        )
+    }
+}
 
 // == DELETE ==
 
