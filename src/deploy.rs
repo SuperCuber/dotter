@@ -259,127 +259,123 @@ fn run_deploy<A: ActionRunner>(
     let mut suggest_force = false;
     let mut error_occurred = false;
 
-    fn difference<T1, T2>(
-        map1: &BTreeMap<PathBuf, T1>,
-        map2: &BTreeMap<PathBuf, T2>,
-    ) -> BTreeSet<PathBuf> {
-        let keys1 = map1.keys().collect::<BTreeSet<_>>();
-        let keys2 = map2.keys().collect::<BTreeSet<_>>();
-        keys1.difference(&keys2).cloned().cloned().collect()
-    }
+    // Index by both source and target location
+    let existing_symlinks: BTreeSet<(PathBuf, PathBuf)> = cache
+        .symlinks
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let existing_templates: BTreeSet<(PathBuf, PathBuf)> = cache
+        .templates
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
 
+    let desired_symlinks: BTreeMap<(PathBuf, PathBuf), _> = desired_symlinks
+        .iter()
+        .map(|(k, v)| ((k.clone(), v.target.clone()), v))
+        .collect();
+    let desired_templates: BTreeMap<(PathBuf, PathBuf), _> = desired_templates
+        .iter()
+        .map(|(k, v)| ((k.clone(), v.target.clone()), v))
+        .collect();
+
+    // Avoid modifying cache while iterating over it
     let mut resulting_cache = cache.clone();
 
-    for deleted_symlink in difference(&cache.symlinks, &desired_symlinks) {
-        let target = cache.symlinks.get(&deleted_symlink).unwrap().clone();
+    for (source, target) in
+        existing_symlinks.difference(&desired_symlinks.keys().cloned().collect())
+    {
         execute_action(
-            runner.delete_symlink(&deleted_symlink, &target),
-            || resulting_cache.symlinks.remove(&deleted_symlink),
-            || format!("delete symlink {:?} -> {:?}", deleted_symlink, target),
+            runner.delete_symlink(&source, &target),
+            || resulting_cache.symlinks.remove(source),
+            || format!("delete symlink {:?} -> {:?}", source, target),
             &mut suggest_force,
             &mut error_occurred,
         );
     }
 
-    for deleted_template in difference(&cache.templates, &desired_templates) {
-        let target = cache.templates.get(&deleted_template).unwrap().clone();
+    for (source, target) in
+        existing_templates.difference(&desired_templates.keys().cloned().collect())
+    {
         execute_action(
-            runner.delete_template(
-                &deleted_template,
-                &opt.cache_directory.join(&deleted_template),
-                &target,
-            ),
-            || resulting_cache.templates.remove(&deleted_template),
-            || format!("delete template {:?} -> {:?}", deleted_template, target),
+            runner.delete_template(&source, &opt.cache_directory.join(&source), &target),
+            || resulting_cache.templates.remove(source),
+            || format!("delete template {:?} -> {:?}", source, target),
             &mut suggest_force,
             &mut error_occurred,
         );
     }
 
-    for created_symlink in difference(&desired_symlinks, &cache.symlinks) {
-        let target = desired_symlinks.get(&created_symlink).unwrap().clone();
+    for (source, target_path) in desired_symlinks
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .difference(&existing_symlinks)
+    {
+        let target = desired_symlinks
+            .get(&(source.into(), target_path.into()))
+            .unwrap();
         execute_action(
-            runner.create_symlink(&created_symlink, &target),
+            runner.create_symlink(&source, &target),
             || {
                 resulting_cache
                     .symlinks
-                    .insert(created_symlink.clone(), target.target.clone())
+                    .insert(source.clone(), target_path.clone())
             },
-            || {
-                format!(
-                    "create symlink {:?} -> {:?}",
-                    created_symlink, target.target
-                )
-            },
+            || format!("create symlink {:?} -> {:?}", source, target_path),
             &mut suggest_force,
             &mut error_occurred,
         );
     }
 
-    for created_template in difference(&desired_templates, &cache.templates) {
-        let target = desired_templates.get(&created_template).unwrap().clone();
+    for (source, target_path) in desired_templates
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .difference(&existing_templates)
+    {
+        let target = desired_templates
+            .get(&(source.into(), target_path.into()))
+            .unwrap();
         execute_action(
-            runner.create_template(
-                &created_template,
-                &opt.cache_directory.join(&created_template),
-                &target,
-            ),
+            runner.create_template(&source, &opt.cache_directory.join(&source), &target),
             || {
                 resulting_cache
                     .templates
-                    .insert(created_template.clone(), target.target.clone())
+                    .insert(source.clone(), target_path.clone())
             },
-            || {
-                format!(
-                    "create template {:?} -> {:?}",
-                    created_template, target.target
-                )
-            },
+            || format!("create template {:?} -> {:?}", source, target_path),
             &mut suggest_force,
             &mut error_occurred,
         );
     }
 
-    fn intersection<T1, T2>(
-        map1: &BTreeMap<PathBuf, T1>,
-        map2: &BTreeMap<PathBuf, T2>,
-    ) -> BTreeSet<PathBuf> {
-        let keys1 = map1.keys().collect::<BTreeSet<_>>();
-        let keys2 = map2.keys().collect::<BTreeSet<_>>();
-        keys1.intersection(&keys2).cloned().cloned().collect()
-    }
-
-    for updated_symlink in intersection(&desired_symlinks, &cache.symlinks) {
-        let target = desired_symlinks.get(&updated_symlink).unwrap().clone();
+    for (source, target_path) in
+        existing_symlinks.intersection(&desired_symlinks.keys().cloned().collect())
+    {
+        let target = desired_symlinks
+            .get(&(source.into(), target_path.into()))
+            .unwrap();
         execute_action(
-            runner.update_symlink(&updated_symlink, &target),
+            runner.update_symlink(&source, &target),
             || (),
-            || {
-                format!(
-                    "update symlink {:?} -> {:?}",
-                    updated_symlink, target.target
-                )
-            },
+            || format!("update symlink {:?} -> {:?}", source, target_path),
             &mut suggest_force,
             &mut error_occurred,
         );
     }
 
-    for updated_template in intersection(&desired_templates, &cache.templates) {
-        let target = desired_templates.get(&updated_template).unwrap().clone();
+    for (source, target_path) in
+        existing_templates.intersection(&desired_templates.keys().cloned().collect())
+    {
+        let target = desired_templates
+            .get(&(source.into(), target_path.into()))
+            .unwrap();
         execute_action(
-            runner.update_template(
-                &updated_template,
-                &opt.cache_directory.join(&updated_template),
-                &target,
-            ),
+            runner.update_template(&source, &opt.cache_directory.join(&source), &target),
             || (),
-            || {
-                format!(
-                    "update template {:?} -> {:?}",
-                    updated_template, target.target
-                )
-            },
+            || format!("update template {:?} -> {:?}", source, target_path),
             &mut suggest_force,
             &mut error_occurred,
         );
