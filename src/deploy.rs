@@ -588,7 +588,7 @@ mod test {
             .times(1)
             .with(function(path_eq("b_in")))
             .in_sequence(&mut seq)
-            .returning(|_| Ok("".into()));
+            .returning(|_| Ok("Hello!".into()));
         fs.expect_create_dir_all()
             .times(1)
             .with(function(path_eq("cache")), eq(None))
@@ -596,7 +596,7 @@ mod test {
             .returning(|_, _| Ok(()));
         fs.expect_write()
             .times(1)
-            .with(function(path_eq("cache/b_cache")), eq(String::from("")))
+            .with(function(path_eq("cache/b_cache")), eq(String::from("Hello!")))
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(()));
         fs.expect_copy_file()
@@ -626,15 +626,15 @@ mod test {
             opt.force,
             opt.diff_context_lines,
         );
-        runner
+        assert!(runner
             .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
-            .unwrap();
-        runner
+            .unwrap());
+        assert!(runner
             .create_template(
                 &PathBuf::from("b_in"),
                 &PathBuf::from("cache/b_cache"),
                 &PathBuf::from("b_out").into(),
             )
-            .unwrap();
+            .unwrap());
     }
 }
