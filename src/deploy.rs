@@ -611,7 +611,11 @@ mod test {
         runner
             .expect_delete_template()
             .times(1)
-            .with(function(path_eq("a_in")), function(path_eq("cache/a_in")), function(path_eq("a_out_old")))
+            .with(
+                function(path_eq("a_in")),
+                function(path_eq("cache/a_in")),
+                function(path_eq("a_out_old")),
+            )
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(true));
         runner
