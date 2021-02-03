@@ -2,11 +2,9 @@ use anyhow::{Context, Result};
 use crossterm::style::Colorize;
 use handlebars::Handlebars;
 
+use std::cmp::{max, min};
 use std::fs;
-use std::{
-    cmp::{max, min},
-    path::Path,
-};
+use std::path::Path;
 
 use crate::config::{TemplateTarget, Variables};
 

@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 
 use std::collections::BTreeMap;
 
+use crate::args::Options;
 use crate::config;
-use crate::{args::Options, filesystem::save_file};
+use crate::filesystem::save_file;
 
 pub fn init(opt: Options) -> Result<()> {
     info!("Looking for existing configuration...");

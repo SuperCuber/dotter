@@ -1,10 +1,9 @@
+use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
+use toml::value::{Table, Value};
+
 use std::process::{Command, Stdio};
 
 use crate::config::{Configuration, Files, Helpers, Variables};
-
-use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
-
-use toml::value::{Table, Value};
 
 pub fn create_new_handlebars<'a, 'b>(config: &'a mut Configuration) -> Handlebars<'b> {
     debug!("Creating Handlebars instance...");

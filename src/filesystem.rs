@@ -3,12 +3,10 @@ use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
+use std::collections::BTreeMap;
+use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
-use std::{
-    collections::BTreeMap,
-    fs::{self, File},
-};
 
 use crate::config::UnixUser;
 

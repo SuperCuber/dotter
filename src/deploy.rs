@@ -1,23 +1,16 @@
-use actions::{ActionRunner, RealActionRunner};
 use anyhow::{Context, Result};
 
-use config::{Cache, FileTarget, SymbolicTarget, TemplateTarget};
-use filesystem::load_file;
-use handlebars_helpers::create_new_handlebars;
-
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::{
-    collections::BTreeMap,
-    io::{self, Read},
-    path::PathBuf,
-};
+use std::io::{self, Read};
+use std::path::PathBuf;
 
-use crate::actions;
+use crate::actions::{self, ActionRunner, RealActionRunner};
 use crate::args::Options;
-use crate::config;
+use crate::config::{self, Cache, FileTarget, SymbolicTarget, TemplateTarget};
 use crate::display_error;
-use crate::filesystem::{self, Filesystem};
-use crate::handlebars_helpers;
+use crate::filesystem::{self, load_file, Filesystem};
+use crate::handlebars_helpers::create_new_handlebars;
 use crate::hooks;
 
 /// Returns true if an error was printed
