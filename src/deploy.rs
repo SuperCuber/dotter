@@ -467,9 +467,13 @@ mod test {
         runner
             .expect_create_template()
             .times(1)
-            .with(function(path_eq("b_in")), function(path_eq("cache/b_in")), eq(b_out))
+            .with(
+                function(path_eq("b_in")),
+                function(path_eq("cache/b_in")),
+                eq(b_out),
+            )
             .in_sequence(&mut seq)
-            .returning(|_,_, _| Ok(true));
+            .returning(|_, _, _| Ok(true));
 
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
