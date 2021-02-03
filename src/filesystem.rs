@@ -720,7 +720,7 @@ impl std::fmt::Display for SymlinkComparison {
             OnlySourceExists => "target missing",
             OnlyTargetExists => "source is missing",
             TargetNotSymlink => "target isn't a symlink",
-            Changed => "target doesn't point at source",
+            Changed => "target exists and doesn't point at source",
             BothMissing => "source and target are missing",
         }
         .fmt(f)
@@ -734,17 +734,17 @@ fn compare_symlink(
 ) -> Result<SymlinkComparison> {
     let source_path = real_path(source_path).context("get real path of source")?;
     Ok(match (source_state, link_state) {
-        (FileState::File(_), FileState::SymbolicLink(t)) => {
+        (FileState::Missing, FileState::SymbolicLink(_)) => SymlinkComparison::OnlyTargetExists,
+        (_, FileState::SymbolicLink(t)) => {
             if t == source_path {
                 SymlinkComparison::Identical
             } else {
                 SymlinkComparison::Changed
             }
         }
-        (FileState::Missing, FileState::SymbolicLink(_)) => SymlinkComparison::OnlyTargetExists,
-        (FileState::File(_), FileState::Missing) => SymlinkComparison::OnlySourceExists,
         (FileState::Missing, FileState::Missing) => SymlinkComparison::BothMissing,
-        _ => SymlinkComparison::Changed,
+        (_, FileState::Missing) => SymlinkComparison::OnlySourceExists,
+        _ => SymlinkComparison::TargetNotSymlink,
     })
 }
 
