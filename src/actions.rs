@@ -231,8 +231,8 @@ pub fn create_symlink(
 /// Returns true if the template should be added to cache
 pub fn create_template(
     source: &Path,
+    cache: &Path,
     target: &TemplateTarget,
-    cache_dir: &Path,
     fs: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
@@ -246,7 +246,7 @@ pub fn create_template(
     );
 
     let comparison = fs
-        .compare_template(&target.target, &cache_dir.join(source))
+        .compare_template(&target.target, &cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -261,15 +261,8 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(
-                source,
-                &cache_dir.join(source),
-                target,
-                fs,
-                handlebars,
-                variables,
-            )
-            .context("perform template cache")?;
+            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists | TemplateComparison::Identical => {
@@ -285,15 +278,8 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(
-                source,
-                &cache_dir.join(source),
-                target,
-                fs,
-                handlebars,
-                variables,
-            )
-            .context("perform template cache")?;
+            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::TargetNotRegularFile
@@ -315,15 +301,8 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(
-                source,
-                &cache_dir.join(source),
-                target,
-                fs,
-                handlebars,
-                variables,
-            )
-            .context("perform template cache")?;
+            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::TargetNotRegularFile
@@ -410,8 +389,8 @@ pub fn update_symlink(
 #[allow(clippy::too_many_arguments)]
 pub fn update_template(
     source: &Path,
+    cache: &Path,
     target: &TemplateTarget,
-    cache_dir: &Path,
     fs: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
@@ -420,7 +399,7 @@ pub fn update_template(
 ) -> Result<bool> {
     debug!("Updating template {:?} -> {:?}...", source, target.target);
     let comparison = fs
-        .compare_template(&target.target, &cache_dir.join(source))
+        .compare_template(&target.target, &cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -436,15 +415,8 @@ pub fn update_template(
             );
             fs.set_owner(&target.target, &target.owner)
                 .context("set target file owner")?;
-            perform_template_deploy(
-                source,
-                &cache_dir.join(source),
-                target,
-                fs,
-                handlebars,
-                variables,
-            )
-            .context("perform template cache")?;
+            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyCacheExists => {
@@ -460,15 +432,8 @@ pub fn update_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(
-                source,
-                &cache_dir.join(source),
-                target,
-                fs,
-                handlebars,
-                variables,
-            )
-            .context("perform template cache")?;
+            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
@@ -493,15 +458,8 @@ pub fn update_template(
             );
             fs.remove_file(&target.target)
                 .context("remove target while forcing")?;
-            perform_template_deploy(
-                source,
-                &cache_dir.join(source),
-                target,
-                fs,
-                handlebars,
-                variables,
-            )
-            .context("perform template cache")?;
+            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+                .context("perform template cache")?;
             Ok(true)
         }
         TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {

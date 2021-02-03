@@ -186,8 +186,8 @@ Proceeding by copying instead of symlinking."
         execute_action(
             actions::create_template(
                 &created_template,
+                &opt.cache_directory.join(&created_template),
                 &target,
-                &opt.cache_directory,
                 fs,
                 &handlebars,
                 &config.variables,
@@ -239,8 +239,8 @@ Proceeding by copying instead of symlinking."
         execute_action(
             actions::update_template(
                 &updated_template,
+                &opt.cache_directory.join(&updated_template),
                 &target,
-                &opt.cache_directory,
                 fs,
                 &handlebars,
                 &config.variables,
