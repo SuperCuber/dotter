@@ -318,7 +318,7 @@ impl Filesystem for RealFilesystem {
         fs::write(path, content).context("write to file")
     }
 
-    fn delete_parents(&mut self, path: &Path) -> Result<()> {
+    fn delete_parents(&mut self, path: &Path, no_ask: bool) -> Result<()> {
         let mut path = path.parent().context("get parent")?;
         while path.is_dir()
             && path
@@ -327,7 +327,7 @@ impl Filesystem for RealFilesystem {
                 .next()
                 .is_none()
         {
-            if !self.interactive
+            if (!self.interactive || no_ask)
                 || ask_boolean(&format!(
                     "Directory at {:?} is now empty. Delete [y/N]? ",
                     path
