@@ -596,7 +596,10 @@ mod test {
             .returning(|_, _| Ok(()));
         fs.expect_write()
             .times(1)
-            .with(function(path_eq("cache/b_cache")), eq(String::from("Hello!")))
+            .with(
+                function(path_eq("cache/b_cache")),
+                eq(String::from("Hello!")),
+            )
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(()));
         fs.expect_copy_file()
@@ -630,6 +633,56 @@ mod test {
             .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
             .unwrap());
         assert!(runner
+            .create_template(
+                &PathBuf::from("b_in"),
+                &PathBuf::from("cache/b_cache"),
+                &PathBuf::from("b_out").into(),
+            )
+            .unwrap());
+    }
+
+    #[test]
+    fn low_level_skip() {
+        // Setup
+        let mut fs = crate::filesystem::MockFilesystem::new();
+        let mut seq = mockall::Sequence::new();
+
+        let opt = Options::default();
+        let handlebars = handlebars::Handlebars::new();
+        let variables = Default::default();
+
+        // Expectation:
+        // create_symlink
+        fs.expect_compare_symlink()
+            .times(1)
+            .with(function(path_eq("a_in")), function(path_eq("a_out")))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(SymlinkComparison::Changed));
+
+        // create_template
+        fs.expect_compare_template()
+            .times(1)
+            .with(
+                function(path_eq("b_out")),
+                function(path_eq("cache/b_cache")),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(TemplateComparison::Changed));
+
+        // Reality
+        let mut runner = actions::RealActionRunner::new(
+            &mut fs,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        );
+
+        // Both should skip
+        assert!(!runner
+            .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
+            .unwrap());
+        assert!(!runner
             .create_template(
                 &PathBuf::from("b_in"),
                 &PathBuf::from("cache/b_cache"),
