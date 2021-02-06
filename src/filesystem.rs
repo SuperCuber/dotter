@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::config::UnixUser;
 
@@ -243,11 +244,17 @@ impl RealFilesystem {
         }
     }
 
-    fn warn_sudo(&mut self, reason: &str) {
+    fn sudo(&mut self, goal: impl AsRef<str>) -> Command {
         if !self.sudo_occurred {
-            warn!("Elevating permissions to {}...", reason);
+            warn!("Elevating permissions ({})", goal.as_ref());
+            if !log_enabled!(log::Level::Debug) {
+                warn!("To see more than the first time elevated permissions are used, use verbosity 2 or more (-vv)");
+            }
             self.sudo_occurred = true;
+        } else {
+            debug!("Elevating permissions ({})", goal.as_ref());
         }
+        Command::new("sudo")
     }
 
     fn is_owned_by_user(&self, path: &Path) -> Result<bool> {
@@ -291,9 +298,8 @@ impl Filesystem for RealFilesystem {
         match result {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                debug!("Removing file {:?} as root", path);
-                self.warn_sudo("remove a file (no permission as current user)");
-                let success = std::process::Command::new("sudo")
+                let success = self
+                    .sudo(format!("removing file {:?} as root", path))
                     .arg("rm")
                     .arg("-r")
                     .arg(path)
@@ -336,7 +342,8 @@ impl Filesystem for RealFilesystem {
                 match std::fs::remove_dir(path) {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                        let success = std::process::Command::new("sudo")
+                        let success = self
+                            .sudo(format!("removing directory {:?}", path))
                             .arg("rmdir")
                             .arg(path)
                             .spawn()
@@ -361,11 +368,11 @@ impl Filesystem for RealFilesystem {
         use std::os::unix::fs;
 
         if let Some(owner) = owner {
-            debug!(
-                "Creating symlink {:?} -> {:?} from user {:?}",
-                link, target, owner
-            );
-            let success = std::process::Command::new("sudo")
+            let success = self
+                .sudo(format!(
+                    "creating symlink {:?} -> {:?} from user {:?}",
+                    link, target, owner
+                ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
                 .arg("ln")
@@ -395,8 +402,11 @@ impl Filesystem for RealFilesystem {
 
     fn create_dir_all(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<()> {
         if let Some(owner) = owner {
-            debug!("Creating directory {:?} from user {:?}...", path, owner);
-            let success = std::process::Command::new("sudo")
+            let success = self
+                .sudo(format!(
+                    "Creating directory {:?} from user {:?}...",
+                    path, owner
+                ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
                 .arg("mkdir")
@@ -420,9 +430,13 @@ impl Filesystem for RealFilesystem {
         use std::io::Write;
 
         if let Some(owner) = owner {
-            debug!("Copying {:?} -> {:?} as user {:?}", source, target, owner);
-            let contents = std::fs::read_to_string(source).context("read file contents")?;
-            let mut child = std::process::Command::new("sudo")
+            let contents = std::fs::read_to_string(source)
+                .context("read source file contents as current user")?;
+            let mut child = self
+                .sudo(format!(
+                    "Copying {:?} -> {:?} as user {:?}",
+                    source, target, owner
+                ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
                 .arg("tee")
@@ -465,9 +479,9 @@ impl Filesystem for RealFilesystem {
         let owner = owner.clone().unwrap_or(UnixUser::Name(
             std::env::var("USER").context("get USER env var")?,
         ));
-        debug!("Setting owner of {:?} to {:?}...", file, owner);
 
-        let success = std::process::Command::new("sudo")
+        let success = self
+            .sudo(format!("Setting owner of {:?} to {:?}...", file, owner))
             .arg("chown")
             .arg(owner.as_chown_arg())
             .arg("-h") // no-dereference
@@ -489,11 +503,11 @@ impl Filesystem for RealFilesystem {
         owner: &Option<UnixUser>,
     ) -> Result<()> {
         if let Some(owner) = owner {
-            debug!(
-                "Copying permissions {:?} -> {:?} as user {:?}",
-                source, target, owner
-            );
-            let success = std::process::Command::new("sudo")
+            let success = self
+                .sudo(format!(
+                    "Copying permissions {:?} -> {:?} as user {:?}",
+                    source, target, owner
+                ))
                 .arg("chmod")
                 .arg("--reference")
                 .arg(source)
