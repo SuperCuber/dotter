@@ -547,7 +547,7 @@ pub struct DryRunFilesystem {
     file_states: BTreeMap<PathBuf, FileState>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum FileState {
     File(String),
     SymbolicLink(PathBuf),
@@ -881,4 +881,19 @@ pub fn platform_dunce(path: &Path) -> PathBuf {
 #[cfg(unix)]
 pub fn platform_dunce(path: &Path) -> PathBuf {
     path.into()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn simple_dry_run() {
+        let mut fs = DryRunFilesystem::new();
+        fs.remove_file(&PathBuf::from("test")).unwrap();
+        assert_eq!(
+            fs.file_states.get(&PathBuf::from("test")),
+            Some(&FileState::Missing)
+        );
+    }
 }
