@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read};
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Command;
 
 use crate::config::UnixUser;
@@ -799,7 +800,7 @@ fn compare_template(target_state: FileState, cache_state: FileState) -> Result<T
         (FileState::File(_), FileState::Missing) => TemplateComparison::OnlyTargetExists,
         (FileState::Missing, FileState::File(_)) => TemplateComparison::OnlyCacheExists,
         (FileState::Missing, FileState::Missing) => TemplateComparison::BothMissing,
-        _ => TemplateComparison::Changed,
+        _ => TemplateComparison::TargetNotRegularFile,
     })
 }
 
