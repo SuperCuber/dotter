@@ -127,8 +127,12 @@ impl Filesystem for RealFilesystem {
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
-        // TODO: test if this removes a folder too
-        std::fs::remove_file(path).context("remove file")
+        let metadata = path.metadata().context("get metadata")?;
+        if metadata.is_dir() {
+            std::fs::remove_dir_all(path).context("remove directory")
+        } else {
+            std::fs::remove_file(path).context("remove file")
+        }
     }
 
     fn read_to_string(&mut self, path: &Path) -> Result<String> {
