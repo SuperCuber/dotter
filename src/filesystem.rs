@@ -1020,12 +1020,9 @@ mod test {
         .unwrap_err();
 
         // Source isn't a file
-        fs.make_symlink(&PathBuf::from("link"), &PathBuf::from("target"), &None).unwrap();
-        fs.copy_file(
-            &PathBuf::from("link"),
-            &PathBuf::from("link2"),
-            &None,
-        )
-        .unwrap_err();
+        fs.make_symlink(&PathBuf::from("link"), &PathBuf::from("target"), &None)
+            .unwrap();
+        fs.copy_file(&PathBuf::from("link"), &PathBuf::from("link2"), &None)
+            .unwrap_err();
     }
 }
