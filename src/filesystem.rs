@@ -674,8 +674,16 @@ impl Filesystem for DryRunFilesystem {
         );
         match self.get_state(source).context("get state of source file")? {
             FileState::File(content) => {
-                self.file_states
-                    .insert(target.into(), FileState::File("".into()));
+                if self
+                    .get_state(target.parent().context("get parent of target")?)
+                    .context("get state of target's parent")?
+                    == FileState::Directory
+                {
+                    self.file_states
+                        .insert(target.into(), FileState::File(content));
+                } else {
+                    anyhow::bail!("target's parent is not a directory");
+                }
                 Ok(())
             }
             s @ FileState::SymbolicLink(_) | s @ FileState::Directory | s @ FileState::Missing => {
@@ -888,12 +896,136 @@ mod test {
     use super::*;
 
     #[test]
-    fn simple_dry_run() {
+    fn simple_remove() {
         let mut fs = DryRunFilesystem::new();
         fs.remove_file(&PathBuf::from("test")).unwrap();
         assert_eq!(
             fs.file_states.get(&PathBuf::from("test")),
             Some(&FileState::Missing)
         );
+    }
+
+    #[test]
+    fn simple_write_read() {
+        let mut fs = DryRunFilesystem::new();
+        fs.write(&PathBuf::from("test"), "hello world!".into())
+            .unwrap();
+        assert_eq!(
+            fs.read_to_string(&PathBuf::from("test")).unwrap(),
+            "hello world!"
+        );
+    }
+
+    #[test]
+    fn simple_create_dir_all() {
+        let mut fs = DryRunFilesystem::new();
+        fs.create_dir_all(&PathBuf::from("/home/user/.config"), &None)
+            .unwrap();
+        assert_eq!(
+            fs.get_state(&PathBuf::from("/home")).unwrap(),
+            FileState::Directory
+        );
+        assert_eq!(
+            fs.get_state(&PathBuf::from("/home/user")).unwrap(),
+            FileState::Directory
+        );
+        assert_eq!(
+            fs.get_state(&PathBuf::from("/home/user/.config")).unwrap(),
+            FileState::Directory
+        );
+    }
+
+    #[test]
+    fn full_dry_run() {
+        // Emulate creating new template
+        let mut fs = DryRunFilesystem::new();
+        fs.write(&PathBuf::from("source"), "{{name}}".into())
+            .unwrap();
+        fs.remove_file(&PathBuf::from("target_dir/target")).unwrap();
+
+        assert_eq!(
+            fs.compare_template(
+                &PathBuf::from("target_dir/target"),
+                &PathBuf::from("cache_dir/cache")
+            )
+            .unwrap(),
+            TemplateComparison::BothMissing
+        );
+
+        fs.create_dir_all(&PathBuf::from("target_dir"), &None)
+            .unwrap();
+
+        // perform_template_deploy
+        assert_eq!(
+            fs.read_to_string(&PathBuf::from("source")).unwrap(),
+            "{{name}}"
+        );
+        let rendered = String::from("John");
+
+        // cache
+        fs.create_dir_all(&PathBuf::from("cache_dir"), &None)
+            .unwrap();
+        fs.write(&PathBuf::from("cache_dir/cache"), rendered)
+            .unwrap();
+
+        // target
+        fs.copy_file(
+            &PathBuf::from("cache_dir/cache"),
+            &PathBuf::from("target_dir/target"),
+            &None,
+        )
+        .unwrap();
+        fs.copy_permissions(
+            &PathBuf::from("source"),
+            &PathBuf::from("target_dir/target"),
+            &None,
+        )
+        .unwrap();
+
+        // Verify all actions
+        assert_eq!(
+            fs.file_states.get(&PathBuf::from("source")),
+            Some(&FileState::File("{{name}}".into()))
+        );
+        assert_eq!(
+            fs.file_states.get(&PathBuf::from("cache_dir")),
+            Some(&FileState::Directory)
+        );
+        assert_eq!(
+            fs.file_states.get(&PathBuf::from("cache_dir/cache")),
+            Some(&FileState::File("John".into()))
+        );
+        assert_eq!(
+            fs.file_states.get(&PathBuf::from("target_dir")),
+            Some(&FileState::Directory)
+        );
+        assert_eq!(
+            fs.file_states.get(&PathBuf::from("target_dir/target")),
+            Some(&FileState::File("John".into()))
+        );
+    }
+
+    #[test]
+    fn dry_run_error_cases() {
+        let mut fs = DryRunFilesystem::new();
+        fs.write(&PathBuf::from("source"), "hello".into()).unwrap();
+
+        // No parent
+        fs.remove_file(&PathBuf::from("some_dir")).unwrap();
+        fs.copy_file(
+            &PathBuf::from("source"),
+            &PathBuf::from("some_dir/target"),
+            &None,
+        )
+        .unwrap_err();
+
+        // Source isn't a file
+        fs.make_symlink(&PathBuf::from("link"), &PathBuf::from("target"), &None).unwrap();
+        fs.copy_file(
+            &PathBuf::from("link"),
+            &PathBuf::from("link2"),
+            &None,
+        )
+        .unwrap_err();
     }
 }
