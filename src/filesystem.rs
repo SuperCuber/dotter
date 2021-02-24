@@ -110,7 +110,8 @@ impl Filesystem for RealFilesystem {
         let link_state = get_file_state(link).context("get link state")?;
         trace!("Link state: {:#?}", link_state);
 
-        compare_symlink(source, source_state, link_state)
+        let source = real_path(source).context("get real path of source")?;
+        Ok(compare_symlink(&source, source_state, link_state))
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
@@ -119,7 +120,7 @@ impl Filesystem for RealFilesystem {
         let cache_state = get_file_state(cache).context("get state of cache")?;
         trace!("Cache state: {:#?}", cache_state);
 
-        compare_template(target_state, cache_state)
+        Ok(compare_template(target_state, cache_state))
     }
 
     fn is_template(&mut self, source: &Path) -> Result<bool> {
@@ -279,14 +280,15 @@ impl Filesystem for RealFilesystem {
         let source_state = get_file_state(source).context("get source state")?;
         let link_state = get_file_state(link).context("get link state")?;
 
-        compare_symlink(source, source_state, link_state)
+        let source = real_path(source).context("get real path of source")?;
+        Ok(compare_symlink(&source, source_state, link_state))
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
         let target_state = get_file_state(target).context("get state of target")?;
         let cache_state = get_file_state(cache).context("get state of cache")?;
 
-        compare_template(target_state, cache_state)
+        Ok(compare_template(target_state, cache_state))
     }
 
     fn is_template(&mut self, source: &Path) -> Result<bool> {
@@ -570,7 +572,6 @@ impl DryRunFilesystem {
     }
 }
 
-#[allow(unused_variables)]
 impl Filesystem for DryRunFilesystem {
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
         let source_state = if let Some(state) = self.file_states.get(source) {
@@ -590,7 +591,8 @@ impl Filesystem for DryRunFilesystem {
             state
         };
 
-        compare_symlink(source, source_state, link_state)
+        let source = real_path(source).context("get real path of source")?;
+        Ok(compare_symlink(&source, source_state, link_state))
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
@@ -611,7 +613,7 @@ impl Filesystem for DryRunFilesystem {
             state
         };
 
-        compare_template(target_state, cache_state)
+        Ok(compare_template(target_state, cache_state))
     }
 
     fn is_template(&mut self, source: &Path) -> Result<bool> {
@@ -628,7 +630,7 @@ impl Filesystem for DryRunFilesystem {
         debug!("Reading contents of file {:?}", path);
         match self.get_state(path).context("get file state")? {
             FileState::File(s) => Ok(s),
-            other => anyhow::bail!("writing to non-file"),
+            _ => anyhow::bail!("writing to non-file"),
         }
     }
 
@@ -639,7 +641,7 @@ impl Filesystem for DryRunFilesystem {
         Ok(())
     }
 
-    fn delete_parents(&mut self, path: &Path, no_ask: bool) -> Result<()> {
+    fn delete_parents(&mut self, path: &Path, _no_ask: bool) -> Result<()> {
         debug!(
             "Recursively deleting parents of {:?} if they're empty",
             path
@@ -758,9 +760,8 @@ fn compare_symlink(
     source_path: &Path,
     source_state: FileState,
     link_state: FileState,
-) -> Result<SymlinkComparison> {
-    let source_path = real_path(source_path).context("get real path of source")?;
-    Ok(match (source_state, link_state) {
+) -> SymlinkComparison {
+    match (source_state, link_state) {
         (FileState::Missing, FileState::SymbolicLink(_)) => SymlinkComparison::OnlyTargetExists,
         (_, FileState::SymbolicLink(t)) => {
             if t == source_path {
@@ -772,7 +773,7 @@ fn compare_symlink(
         (FileState::Missing, FileState::Missing) => SymlinkComparison::BothMissing,
         (_, FileState::Missing) => SymlinkComparison::OnlySourceExists,
         _ => SymlinkComparison::TargetNotSymlink,
-    })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -800,8 +801,8 @@ impl std::fmt::Display for TemplateComparison {
     }
 }
 
-fn compare_template(target_state: FileState, cache_state: FileState) -> Result<TemplateComparison> {
-    Ok(match (target_state, cache_state) {
+fn compare_template(target_state: FileState, cache_state: FileState) -> TemplateComparison {
+    match (target_state, cache_state) {
         (FileState::File(t), FileState::File(c)) => {
             if t == c {
                 TemplateComparison::Identical
@@ -813,7 +814,7 @@ fn compare_template(target_state: FileState, cache_state: FileState) -> Result<T
         (FileState::Missing, FileState::File(_)) => TemplateComparison::OnlyCacheExists,
         (FileState::Missing, FileState::Missing) => TemplateComparison::BothMissing,
         _ => TemplateComparison::TargetNotRegularFile,
-    })
+    }
 }
 
 /// === Utility functions ===

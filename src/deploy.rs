@@ -131,8 +131,7 @@ Proceeding by copying instead of symlinking."
         &desired_templates,
         &mut cache,
         &opt,
-    )
-    .context("run deploy")?;
+    );
 
     // === Post-deploy ===
 
@@ -255,7 +254,7 @@ fn run_deploy<A: ActionRunner>(
     desired_templates: &BTreeMap<PathBuf, TemplateTarget>,
     cache: &mut Cache,
     opt: &Options,
-) -> Result<(bool, bool)> {
+) -> (bool, bool) {
     let mut suggest_force = false;
     let mut error_occurred = false;
 
@@ -383,7 +382,7 @@ fn run_deploy<A: ActionRunner>(
 
     *cache = resulting_cache;
 
-    Ok((suggest_force, error_occurred))
+    (suggest_force, error_occurred)
 }
 
 /// Used to remove duplication
@@ -468,8 +467,7 @@ mod test {
                 force: false,
                 ..Options::default()
             },
-        )
-        .unwrap();
+        );
 
         assert_eq!(suggest_force, false);
         assert_eq!(error_occurred, false);
@@ -526,8 +524,7 @@ mod test {
                 force: false,
                 ..Options::default()
             },
-        )
-        .unwrap();
+        );
 
         assert_eq!(suggest_force, true);
         assert_eq!(error_occurred, true);
@@ -579,8 +576,7 @@ mod test {
                 force: false,
                 ..Options::default()
             },
-        )
-        .unwrap();
+        );
 
         assert_eq!(suggest_force, false);
         assert_eq!(error_occurred, false);
@@ -636,8 +632,7 @@ mod test {
                 force: false,
                 ..Options::default()
             },
-        )
-        .unwrap();
+        );
 
         assert_eq!(suggest_force, false);
         assert_eq!(error_occurred, false);
@@ -686,8 +681,7 @@ mod test {
                 force: false,
                 ..Options::default()
             },
-        )
-        .unwrap();
+        );
 
         assert_eq!(suggest_force, false);
         assert_eq!(error_occurred, false);
