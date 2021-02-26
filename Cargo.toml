@@ -28,7 +28,9 @@ toml = "0.4.*"
 watchexec = "=1.14.1"
 
 [dev-dependencies]
-mockall = "0.9.0"
+mockall = "0.9.*"
+# Enable this instead for better failure messages (on nightly only)
+# mockall = { version = "0.9.*", features = ["nightly"] }
 
 [target.'cfg(windows)'.dependencies]
 dunce = "1.*"
