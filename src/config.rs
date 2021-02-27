@@ -53,11 +53,11 @@ pub struct Configuration {
 #[serde(deny_unknown_fields)]
 pub struct Package {
     #[serde(default)]
+    depends: Vec<String>,
+    #[serde(default)]
     files: Files,
     #[serde(default)]
     variables: Variables,
-    #[serde(default)]
-    depends: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
