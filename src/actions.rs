@@ -397,7 +397,7 @@ pub fn update_symlink(
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    debug!("Updating template {:?} -> {:?}...", source, target.target);
+    debug!("Updating symlink {:?} -> {:?}...", source, target.target);
 
     let comparison = fs
         .compare_symlink(&source, &target.target)
@@ -413,14 +413,14 @@ pub fn update_symlink(
         }
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
             error!(
-                "Updating template {:?} -> {:?} but source is missing. Skipping.",
+                "Updating symlink {:?} -> {:?} but source is missing. Skipping.",
                 source, target.target
             );
             Ok(false)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!(
-                "Updating template {:?} -> {:?} but {}. Forcing.",
+                "Updating symlink {:?} -> {:?} but {}. Forcing.",
                 source, target.target, comparison
             );
             fs.remove_file(&target.target)
@@ -431,14 +431,14 @@ pub fn update_symlink(
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
             error!(
-                "Updating template {:?} -> {:?} but {}. Skipping.",
+                "Updating symlink {:?} -> {:?} but {}. Skipping.",
                 source, target.target, comparison
             );
             Ok(false)
         }
         SymlinkComparison::OnlySourceExists => {
             warn!(
-                "Updating template {:?} -> {:?} but {}. Creating it anyways.",
+                "Updating symlink {:?} -> {:?} but {}. Creating it anyways.",
                 source, target.target, comparison
             );
             fs.create_dir_all(
