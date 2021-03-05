@@ -417,7 +417,11 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
                                 "invalid use of `append` or `prepend` on a symbolic target",
                             ));
                         }
-                        FileTarget::Symbolic(SymbolicTarget { target, owner, condition })
+                        FileTarget::Symbolic(SymbolicTarget {
+                            target,
+                            owner,
+                            condition,
+                        })
                     }
                     "template" => FileTarget::ComplexTemplate(TemplateTarget {
                         target,
