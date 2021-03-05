@@ -39,7 +39,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     // === Pre-deploy ===
 
-    let handlebars = create_new_handlebars(&mut config);
+    let handlebars = create_new_handlebars(&mut config).context("initialize handlebars")?;
 
     debug!("Running pre-deploy hook");
     if opt.act {
@@ -166,7 +166,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
     let mut cache: config::Cache = filesystem::load_file(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
 
-    let handlebars = create_new_handlebars(&mut config);
+    let handlebars = create_new_handlebars(&mut config).context("initialize handlebars")?;
 
     // === Pre-undeploy ===
 

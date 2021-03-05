@@ -3,11 +3,13 @@ use anyhow::{Context as AnyhowContext, Result};
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
 use toml::value::{Table, Value};
 
+use std::collections::BTreeSet;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use crate::config::{Configuration, Files, Helpers, Variables};
 
-pub fn create_new_handlebars<'a, 'b>(config: &'a mut Configuration) -> Handlebars<'b> {
+pub fn create_new_handlebars<'a, 'b>(config: &'a mut Configuration) -> Result<Handlebars<'b>> {
     debug!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
     handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
@@ -15,21 +17,46 @@ pub fn create_new_handlebars<'a, 'b>(config: &'a mut Configuration) -> Handlebar
     register_rust_helpers(&mut handlebars);
     register_script_helpers(&mut handlebars, &config.helpers);
     add_dotter_variable(&mut config.variables, &config.files, &config.packages);
+    filter_files_condition(&handlebars, &config.variables, &mut config.files)
+        .context("filter files based on `if` field")?;
     trace!("Handlebars instance: {:#?}", handlebars);
-    handlebars
+    Ok(handlebars)
 }
 
-pub fn eval_condition(
+fn filter_files_condition(
     handlebars: &Handlebars,
     variables: &Variables,
-    condition: &str,
-) -> Result<bool> {
+    files: &mut Files,
+) -> Result<()> {
+    let filtered = std::mem::take(files)
+        .into_iter()
+        .map(|(source, target)| -> Result<Option<_>> {
+            let condition = target.condition();
+            Ok(if let Some(condition) = condition {
+                if eval_condition(handlebars, variables, condition).context("")? {
+                    Some((source, target))
+                } else {
+                    None
+                }
+            } else {
+                Some((source, target))
+            })
+        })
+        .collect::<Result<BTreeSet<Option<(PathBuf, _)>>>>()?
+        .into_iter()
+        .filter_map(|i| i)
+        .collect();
+    *files = filtered;
+    Ok(())
+}
+
+fn eval_condition(handlebars: &Handlebars, variables: &Variables, condition: &str) -> Result<bool> {
     // extra { for format!()
     let condition = format!("{{{{#if {} }}}}true{{{{/if}}}}", condition);
     let rendered = handlebars
         .render_template(&condition, variables)
         .context("")?;
-    Ok(dbg!(rendered) == "true")
+    Ok(rendered == "true")
 }
 
 fn math_helper(
@@ -297,7 +324,7 @@ mod test {
             helpers: Helpers::new(),
             packages: vec!["default".into()],
         };
-        let handlebars = create_new_handlebars(&mut config);
+        let handlebars = create_new_handlebars(&mut config).unwrap();
 
         assert_eq!(
             eval_condition(&handlebars, &config.variables, "foo").unwrap(),
@@ -325,9 +352,20 @@ mod test {
             helpers: Helpers::new(),
             packages: vec!["default".into()],
         };
-        let handlebars = create_new_handlebars(&mut config);
+        let handlebars = create_new_handlebars(&mut config).unwrap();
 
-        assert_eq!(eval_condition(&handlebars, &config.variables, "(is_executable \"no_such_executable_please\")").unwrap(), false);
-        assert_eq!(eval_condition(&handlebars, &config.variables, "(eq (math \"5+5\") \"10\")").unwrap(), true);
+        assert_eq!(
+            eval_condition(
+                &handlebars,
+                &config.variables,
+                "(is_executable \"no_such_executable_please\")"
+            )
+            .unwrap(),
+            false
+        );
+        assert_eq!(
+            eval_condition(&handlebars, &config.variables, "(eq (math \"5+5\") \"10\")").unwrap(),
+            true
+        );
     }
 }
