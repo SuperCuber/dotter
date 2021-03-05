@@ -18,6 +18,7 @@ pub enum UnixUser {
 pub struct SymbolicTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
+    pub condition: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -26,6 +27,7 @@ pub struct TemplateTarget {
     pub owner: Option<UnixUser>,
     pub append: Option<String>,
     pub prepend: Option<String>,
+    pub condition: Option<String>,
 }
 
 // Deserialize implemented manually
@@ -334,6 +336,7 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
             Append,
             Prepend,
             Type,
+            If,
         }
 
         struct FileTargetVisitor;
@@ -361,6 +364,7 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
                 let mut owner = None;
                 let mut append = None;
                 let mut prepend = None;
+                let mut condition = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -394,11 +398,18 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
                             }
                             prepend = Some(map.next_value()?);
                         }
+                        Field::If => {
+                            if condition.is_some() {
+                                return Err(serde::de::Error::duplicate_field("if"));
+                            }
+                            condition = Some(map.next_value()?);
+                        }
                     }
                 }
 
                 let file_type = file_type.ok_or_else(|| serde::de::Error::missing_field("type"))?;
                 let target = target.ok_or_else(|| serde::de::Error::missing_field("target"))?;
+
                 let ans = match file_type {
                     "symbolic" => {
                         if append.is_some() || prepend.is_some() {
@@ -406,13 +417,14 @@ impl<'de> serde::Deserialize<'de> for FileTarget {
                                 "invalid use of `append` or `prepend` on a symbolic target",
                             ));
                         }
-                        FileTarget::Symbolic(SymbolicTarget { target, owner })
+                        FileTarget::Symbolic(SymbolicTarget { target, owner, condition })
                     }
                     "template" => FileTarget::ComplexTemplate(TemplateTarget {
                         target,
                         owner,
                         append,
                         prepend,
+                        condition,
                     }),
                     other_type => {
                         return Err(serde::de::Error::invalid_value(
@@ -461,6 +473,7 @@ impl<T: Into<PathBuf>> From<T> for SymbolicTarget {
         SymbolicTarget {
             target: input.into(),
             owner: None,
+            condition: None,
         }
     }
 }
@@ -472,6 +485,7 @@ impl<T: Into<PathBuf>> From<T> for TemplateTarget {
             owner: None,
             append: None,
             prepend: None,
+            condition: None,
         }
     }
 }
@@ -481,6 +495,7 @@ impl SymbolicTarget {
         TemplateTarget {
             target: self.target,
             owner: self.owner,
+            condition: self.condition,
             prepend: None,
             append: None,
         }
