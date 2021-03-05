@@ -1,3 +1,5 @@
+use anyhow::{Context as AnyhowContext, Result};
+
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
 use toml::value::{Table, Value};
 
@@ -15,6 +17,19 @@ pub fn create_new_handlebars<'a, 'b>(config: &'a mut Configuration) -> Handlebar
     add_dotter_variable(&mut config.variables, &config.files, &config.packages);
     trace!("Handlebars instance: {:#?}", handlebars);
     handlebars
+}
+
+pub fn eval_condition(
+    handlebars: &Handlebars,
+    variables: &Variables,
+    condition: &str,
+) -> Result<bool> {
+    // extra { for format!()
+    let condition = format!("{{{{#if {} }}}}true{{{{/if}}}}", condition);
+    let rendered = handlebars
+        .render_template(&condition, variables)
+        .context("")?;
+    Ok(dbg!(rendered) == "true")
 }
 
 fn math_helper(
@@ -268,4 +283,51 @@ fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[Str
     );
 
     variables.insert("dotter".into(), dotter.into());
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn eval_condition_simple() {
+        let mut config = Configuration {
+            files: Files::new(),
+            variables: maplit::btreemap! { "foo".into() => 2.into() },
+            helpers: Helpers::new(),
+            packages: vec!["default".into()],
+        };
+        let handlebars = create_new_handlebars(&mut config);
+
+        assert_eq!(
+            eval_condition(&handlebars, &config.variables, "foo").unwrap(),
+            true
+        );
+        assert_eq!(
+            eval_condition(&handlebars, &config.variables, "bar").unwrap(),
+            false
+        );
+        assert_eq!(
+            eval_condition(&handlebars, &config.variables, "dotter.packages.default").unwrap(),
+            true
+        );
+        assert_eq!(
+            eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap(),
+            false
+        );
+    }
+
+    #[test]
+    fn eval_condition_helpers() {
+        let mut config = Configuration {
+            files: Files::new(),
+            variables: Variables::new(),
+            helpers: Helpers::new(),
+            packages: vec!["default".into()],
+        };
+        let handlebars = create_new_handlebars(&mut config);
+
+        assert_eq!(eval_condition(&handlebars, &config.variables, "(is_executable \"no_such_executable_please\")").unwrap(), false);
+        assert_eq!(eval_condition(&handlebars, &config.variables, "(eq (math \"5+5\") \"10\")").unwrap(), true);
+    }
 }
