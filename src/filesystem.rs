@@ -551,7 +551,8 @@ pub struct DryRunFilesystem {
 
 #[derive(Debug, Clone, PartialEq)]
 enum FileState {
-    File(String),
+    /// None if file is invalid UTF-8
+    File(Option<String>),
     SymbolicLink(PathBuf),
     Directory,
     Missing,
@@ -617,6 +618,7 @@ impl Filesystem for DryRunFilesystem {
     }
 
     fn is_template(&mut self, source: &Path) -> Result<bool> {
+        // This is fine because source files are never edited
         is_template(source)
     }
 
@@ -629,7 +631,7 @@ impl Filesystem for DryRunFilesystem {
     fn read_to_string(&mut self, path: &Path) -> Result<String> {
         debug!("Reading contents of file {:?}", path);
         match self.get_state(path).context("get file state")? {
-            FileState::File(s) => Ok(s),
+            FileState::File(s) => Ok(s.context("invalid utf-8 in template source")?),
             _ => anyhow::bail!("writing to non-file"),
         }
     }
@@ -637,7 +639,7 @@ impl Filesystem for DryRunFilesystem {
     fn write(&mut self, path: &Path, content: String) -> Result<()> {
         debug!("Writing contents {:?} to file {:?}", content, path);
         self.file_states
-            .insert(path.into(), FileState::File(content));
+            .insert(path.into(), FileState::File(Some(content)));
         Ok(())
     }
 
@@ -725,7 +727,8 @@ fn get_file_state(path: &Path) -> Result<FileState> {
     }
 
     match fs::read_to_string(path) {
-        Ok(f) => Ok(FileState::File(f)),
+        Ok(f) => Ok(FileState::File(Some(f))),
+        Err(e) if e.kind() == ErrorKind::InvalidData => Ok(FileState::File(None)),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(FileState::Missing),
         Err(e) => Err(e).context("read contents of file that isn't symbolic or directory")?,
     }
