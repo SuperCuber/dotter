@@ -989,7 +989,7 @@ mod test {
         // Verify all actions
         assert_eq!(
             fs.file_states.get(&PathBuf::from("source")),
-            Some(&FileState::File("{{name}}".into()))
+            Some(&FileState::File(Some("{{name}}".into())))
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("cache_dir")),
@@ -997,7 +997,7 @@ mod test {
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("cache_dir/cache")),
-            Some(&FileState::File("John".into()))
+            Some(&FileState::File(Some("John".into())))
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("target_dir")),
@@ -1005,7 +1005,7 @@ mod test {
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("target_dir/target")),
-            Some(&FileState::File("John".into()))
+            Some(&FileState::File(Some("John".into())))
         );
     }
 
