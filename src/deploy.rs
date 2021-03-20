@@ -27,8 +27,9 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     }
     trace!("Manual patch: {:#?}", patch);
 
-    let mut config = config::load_configuration(&opt.local_config, &opt.global_config, patch)
-        .context("get a configuration")?;
+    let mut unexpanded_config =
+        config::load_configuration(&opt.local_config, &opt.global_config, patch)
+            .context("get a configuration")?;
 
     let mut cache = if let Some(cache) = load_file(&opt.cache_file)? {
         cache
@@ -39,7 +40,8 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     // === Pre-deploy ===
 
-    let handlebars = create_new_handlebars(&mut config).context("initialize handlebars")?;
+    let handlebars =
+        create_new_handlebars(&mut unexpanded_config).context("initialize handlebars")?;
 
     debug!("Running pre-deploy hook");
     if opt.act {
@@ -47,7 +49,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
             &opt.pre_deploy,
             &opt.cache_directory,
             &handlebars,
-            &config.variables,
+            &unexpanded_config.variables,
         )
         .context("run pre-deploy hook")?;
     }
@@ -64,7 +66,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
     // === Re-structure configuration ===
 
     // Expand paths with environment variables
-    let config = config::expand_configuration(config)?;
+    let config = config::expand_configuration(unexpanded_config)?;
 
     // On Windows, you need developer mode to create symlinks.
     let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
@@ -163,13 +165,15 @@ Proceeding by copying instead of symlinking."
 
 pub fn undeploy(opt: Options) -> Result<bool> {
     // === Load configuration ===
-    let mut config = config::load_configuration(&opt.local_config, &opt.global_config, None)
-        .context("get a configuration")?;
+    let mut unexpanded_config =
+        config::load_configuration(&opt.local_config, &opt.global_config, None)
+            .context("get a configuration")?;
 
     let mut cache: config::Cache = filesystem::load_file(&opt.cache_file)?
         .context("load cache: Cannot undeploy without a cache.")?;
 
-    let handlebars = create_new_handlebars(&mut config).context("initialize handlebars")?;
+    let handlebars =
+        create_new_handlebars(&mut unexpanded_config).context("initialize handlebars")?;
 
     // === Pre-undeploy ===
 
@@ -179,7 +183,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
             &opt.pre_undeploy,
             &opt.cache_directory,
             &handlebars,
-            &config.variables,
+            &unexpanded_config.variables,
         )
         .context("run pre-undeploy hook")?;
     }
@@ -195,6 +199,11 @@ pub fn undeploy(opt: Options) -> Result<bool> {
         dry_run_fs = crate::filesystem::DryRunFilesystem::new();
         &mut dry_run_fs
     };
+
+    // === Re-structure configuration ===
+
+    // Expand paths with environment variables
+    let config = config::expand_configuration(unexpanded_config)?;
 
     // === Perform undeployment ===
 
