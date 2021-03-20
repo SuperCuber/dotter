@@ -63,6 +63,9 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     // === Re-structure configuration ===
 
+    // Expand paths with environment variables
+    let config = config::expand_configuration(config)?;
+
     // On Windows, you need developer mode to create symlinks.
     let symlinks_enabled = if filesystem::symlinks_enabled(&PathBuf::from("DOTTER_SYMLINK_TEST"))
         .context("check whether symlinks are enabled")?
