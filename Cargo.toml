@@ -17,6 +17,7 @@ crossterm = "0.18.*"
 diff = "0.1.*"
 handlebars = { version = "3.*", features = ["script_helper"] }
 handlebars_misc_helpers = "0.11.*"
+interprocess = "1.1.*"
 log = "0.4.*"
 maplit = "1.*"
 meval = "0.2.*"
