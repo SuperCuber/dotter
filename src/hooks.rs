@@ -89,15 +89,14 @@ fn run_and_get_env(script_file: &Path) -> Result<Vec<(OsString, OsString)>> {
     pipe_output.remove(pipe_output.len() - 1); // last char is a null character; make the split easier
 
     Ok(pipe_output
-        .split(|c| c == &('\0' as u8)) // separate each char
-        .map(|pair| pair.splitn(2, |c| c == &('=' as u8))) // posix compliance states that the seperator between env names and env values is the '=' character
+        .split(|c| c == &b'\0') // separate each char
+        .map(|pair| pair.splitn(2, |c| c == &b'=')) // posix compliance states that the seperator between env names and env values is the '=' character
         .flat_map(|mut i| {
             Some((
                 OsStr::from_bytes(i.next()?).to_owned(),
                 i.next()
-                    .map(|s| OsStr::from_bytes(s))
-                    .unwrap_or(OsStr::new(""))
-                    .to_owned(),
+                    .map(|s| OsStr::from_bytes(s).to_owned())
+                    .unwrap_or_default(),
             ))
         })
         .collect())
