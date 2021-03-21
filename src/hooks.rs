@@ -64,13 +64,15 @@ fn run_and_get_env(script_file: &Path) -> Result<Vec<(OsString, OsString)>> {
     let (pipe_writer, mut pipe_reader) = pipe()?;
 
     debug!("Running script file");
-
-    let mut command_string = OsString::from("source ");
-    command_string.push(script_file);
-    command_string.push(format!("\nprintenv -0 >&{}", pipe_writer.as_raw_fd()));
+    
     let mut child = Command::new("sh")
         .arg("-c")
-        .arg(&command_string)
+        .arg(format!(
+            "source \"$1\"\nprintenv -0 >&{}",
+            pipe_writer.as_raw_fd()
+        ))
+        .arg("sh")
+        .arg(script_file)
         .spawn()
         .context("spawn shell")?;
 
