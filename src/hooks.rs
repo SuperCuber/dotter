@@ -65,7 +65,7 @@ fn run_and_get_env(script_file: &Path) -> Result<Vec<(OsString, OsString)>> {
 
     debug!("Running script file");
 
-    let mut command_string = OsString::from(". ");
+    let mut command_string = OsString::from("source ");
     command_string.push(script_file);
     command_string.push(format!("\nprintenv -0 >&{}", pipe_writer.as_raw_fd()));
     let mut child = Command::new("sh")
