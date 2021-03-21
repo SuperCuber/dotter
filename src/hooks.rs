@@ -64,7 +64,7 @@ fn run_and_get_env(script_file: &Path) -> Result<Vec<(OsString, OsString)>> {
     let (pipe_writer, mut pipe_reader) = pipe()?;
 
     debug!("Running script file");
-    
+
     let mut child = Command::new("sh")
         .arg("-c")
         .arg(format!(
