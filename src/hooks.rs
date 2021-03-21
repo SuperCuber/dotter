@@ -34,9 +34,9 @@ pub(crate) fn run_hook(
     )
     .context("deploy script")?;
 
-    let env_vars = run_and_get_env(&script_file);
-
-    panic!("{:?}", env_vars);
+    for (name, value) in run_and_get_env(&script_file)? {
+        std::env::set_var(name, value);
+    }
 
     Ok(())
 }
