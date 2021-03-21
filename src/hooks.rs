@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use handlebars::Handlebars;
 use interprocess::unnamed_pipe::pipe;
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::Read;
 use std::path::Path;
 use std::process::Command;
@@ -34,6 +34,23 @@ pub(crate) fn run_hook(
     )
     .context("deploy script")?;
 
+    let env_vars = run_and_get_env(&script_file);
+
+    panic!("{:?}", env_vars);
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn run_and_get_env(script_file: &Path) -> Result<Vec<(OsString, OsString)>> {
+    todo!();
+}
+
+#[cfg(unix)]
+fn run_and_get_env(script_file: &Path) -> Result<Vec<(OsString, OsString)>> {
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::io::AsRawFd;
+
     debug!("Creating pipes ");
     let (pipe_writer, mut pipe_reader) = pipe()?;
 
@@ -43,8 +60,6 @@ pub(crate) fn run_hook(
             .spawn()
             .context("spawn batch file")?
     } else {
-        use std::os::unix::io::AsRawFd;
-
         let mut command_string = OsString::from(". ");
         command_string.push(script_file);
         command_string.push(format!("\nprintenv -0 >&{}", pipe_writer.as_raw_fd()));
@@ -65,38 +80,21 @@ pub(crate) fn run_hook(
     }
 
     // scoop up env vars
-    let env_vars: Vec<(OsString, OsString)> = if cfg!(windows) {
-        todo!();
-    } else {
-        let mut pipe_output = vec![];
-        pipe_reader.read_to_end(&mut pipe_output)?;
-        pipe_output.remove(pipe_output.len() - 1); // This is guarenteed to be a null character
+    let mut pipe_output = vec![];
+    pipe_reader.read_to_end(&mut pipe_output)?;
+    pipe_output.remove(pipe_output.len() - 1); // last char is a null character; make the split easier
 
-        pipe_output
-            .into_iter()
-            .fold(vec![vec![]], |mut acc, c| {
-                // Because we used printenv -0, everything is separated by null characters
-                // Just need to separate on those
-                if c == 0 {
-                    acc.push(vec![]);
-                } else {
-                    acc.last_mut().unwrap().push(c);
-                }
-                acc
-            })
-            .into_iter()
-            .map(|v| {
-                // Now to separate the names from the values
-                let envp = std::str::from_utf8(&v).unwrap();
-                // posix compliance states that the seperator between env names and env values is the '=' character
-                let i: Vec<_> = envp.splitn(2, "=").collect();
-                (
-                    i[0].to_string(),
-                    i.get(1).map(|s| s.to_string()).unwrap_or(String::new()),
-                )
-            })
-            .collect::<Vec<_>>()
-    };
-
-    Ok(())
+    Ok(pipe_output
+        .split(|c| c == &('\0' as u8)) // separate each char
+        .map(|pair| pair.splitn(2, |c| c == &('=' as u8))) // posix compliance states that the seperator between env names and env values is the '=' character
+        .flat_map(|mut i| {
+            Some((
+                OsStr::from_bytes(i.next()?).to_owned(),
+                i.next()
+                    .map(|s| OsStr::from_bytes(s))
+                    .unwrap_or(OsStr::new(""))
+                    .to_owned(),
+            ))
+        })
+        .collect())
 }
