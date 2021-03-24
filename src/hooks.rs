@@ -81,9 +81,7 @@ fn run_and_get_env(script_file: &Path) -> Result<Vec<(OsString, OsString)>> {
         "subshell returned error"
     );
 
-    {
-        let _drop = pipe_writer;
-    }
+    drop(pipe_writer);
 
     // scoop up env vars
     let mut pipe_output = vec![];
