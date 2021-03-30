@@ -44,7 +44,7 @@ fn filter_files_condition(
         })
         .collect::<Result<BTreeSet<Option<(PathBuf, _)>>>>()?
         .into_iter()
-        .filter_map(|i| i)
+        .flatten()
         .collect();
     *files = filtered;
     Ok(())

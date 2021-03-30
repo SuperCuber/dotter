@@ -84,6 +84,31 @@ struct LocalConfig {
     variables: Variables,
 }
 
+pub fn expand_configuration(mut config: Configuration) -> Result<Configuration> {
+    debug!("Expanding files which are directories...");
+    config.files = expand_directories(config.files).context("expand files that are directories")?;
+
+    debug!("Expanding tildes to home directory...");
+    config.files = config
+        .files
+        .into_iter()
+        .map(|(k, mut v)| -> Result<_, anyhow::Error> {
+            let path = v.path();
+            let path = shellexpand::full(&path.to_string_lossy())
+                .context("failed to expand file path")?
+                .to_string();
+            v.set_path(path);
+            Ok((k, v))
+        })
+        .collect::<Result<_, _>>()?;
+
+    trace!("Final files: {:#?}", config.files);
+    trace!("Final variables: {:#?}", config.variables);
+    trace!("Final helpers: {:?}", config.helpers);
+
+    Ok(config)
+}
+
 pub fn load_configuration(
     local_config: &Path,
     global_config: &Path,
@@ -99,31 +124,12 @@ pub fn load_configuration(
         .with_context(|| format!("load local config {:?}", local_config))?;
     trace!("Local config: {:#?}", local);
 
-    let mut merged_config =
+    let merged_config =
         merge_configuration_files(global, local, patch).context("merge configuration files")?;
     trace!("Merged config: {:#?}", merged_config);
 
-    debug!("Expanding files which are directories...");
-    merged_config.files =
-        expand_directories(merged_config.files).context("expand files that are directories")?;
-
-    debug!("Expanding tildes to home directory...");
-    merged_config.files = merged_config
-        .files
-        .into_iter()
-        .map(|(k, mut v)| -> Result<_, anyhow::Error> {
-            let path = v.path();
-            let path = shellexpand::full(&path.to_string_lossy())
-                .context("failed to expand file path")?
-                .to_string();
-            v.set_path(path);
-            Ok((k, v))
-        })
-        .collect::<Result<_, _>>()?;
-
-    trace!("Final files: {:#?}", merged_config.files);
-    trace!("Final variables: {:#?}", merged_config.variables);
-    trace!("Final helpers: {:?}", merged_config.helpers);
+    // At this point, all the config variables are loaded
+    // Expansion will be done later, once pre_deploy.sh populates additional env vars
 
     Ok(merged_config)
 }
