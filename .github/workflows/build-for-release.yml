@@ -16,6 +16,10 @@ jobs:
             exe_suffix: ""
           - os: windows-latest
             exe_suffix: ".exe"
+          - handlebars_misc_helpers: ""
+            name_suffix: ""
+          - handlebars_misc_helpers: "--features handlebars_misc_helpers"
+            name_suffix: "-handlebars"
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -35,7 +39,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           asset_path: target/release/dotter${{ matrix.exe_suffix }}
-          asset_name: dotter${{ matrix.exe_suffix }}
+          asset_name: dotter${{ matrix.name_suffix }}${{ matrix.exe_suffix }}
           asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
   cargo-publish:
