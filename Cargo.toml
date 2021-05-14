@@ -1,7 +1,7 @@
 [package]
 name = "dotter"
-version = "0.12.2"
-authors = ["SuperCuber <amit.gold00@gmail.com>"]
+version = "0.12.3"
+authors = ["SuperCuber <amit.gold01@gmail.com>"]
 description = "A dotfile manager and templater written in rust"
 edition = "2018"
 repository = "https://www.github.com/SuperCuber/dotter"
