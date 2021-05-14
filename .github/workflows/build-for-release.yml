@@ -9,6 +9,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
+        handlebars_misc_helpers: ["--features handlebars_misc_helpers", ""]
         include:
           - os: ubuntu-latest
             exe_suffix: ""
@@ -26,7 +28,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --locked --verbose
+          args: --release --locked --verbose ${{ matrix.handlebars_misc_helpers }}
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
         env:
