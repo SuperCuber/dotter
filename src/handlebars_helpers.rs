@@ -257,9 +257,8 @@ fn os_shell() -> Command {
 }
 
 fn register_rust_helpers(handlebars: &mut Handlebars<'_>) {
-    #[cfg(handlebars_misc_helpers)]
+    #[cfg(feature = "handlebars_misc_helpers")]
     handlebars_misc_helpers::register(handlebars);
-
     handlebars.register_helper("math", Box::new(math_helper));
 
     handlebars.register_helper("include_template", Box::new(include_template_helper));
