@@ -30,7 +30,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --verbose --locked
+          args: --verbose --locked --target ${{ matrix.target }}
   check-readme:
     name: Check README
     runs-on: ubuntu-latest
