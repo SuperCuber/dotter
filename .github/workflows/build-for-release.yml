@@ -17,9 +17,9 @@ jobs:
           - os: windows-latest
             exe_suffix: ".exe"
           - handlebars_misc_helpers: ""
-            name_suffix: ""
+            name_suffix: "-simple"
           - handlebars_misc_helpers: "--features handlebars_misc_helpers"
-            name_suffix: "-handlebars"
+            name_suffix: ""
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
