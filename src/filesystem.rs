@@ -266,10 +266,7 @@ impl RealFilesystem {
     fn is_owned_by_user(&self, path: &Path) -> Result<bool> {
         use std::os::unix::fs::MetadataExt;
         let file_uid = path.metadata().context("get file metadata")?.uid();
-        let process_uid = std::path::PathBuf::from("/proc/self")
-            .metadata()
-            .context("get metadata of /proc/self")?
-            .uid();
+        let process_uid = unsafe { libc::geteuid() };
         Ok(file_uid == process_uid)
     }
 }
