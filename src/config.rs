@@ -241,6 +241,19 @@ fn recursive_extend_map(
     }
 }
 
+/// Merge two TOML tables
+fn merge_tables(a: &mut toml::Value, b: &toml::Value) {
+    if let (toml::Value::Table(a), toml::Value::Table(b)) = (a, b) {
+        for (k, v) in b {
+            merge_tables(
+                a.entry(k.clone())
+                    .or_insert_with(|| toml::Value::Table(Default::default())),
+                v,
+            );
+        }
+    }
+}
+
 #[allow(clippy::map_entry)]
 fn merge_configuration_files(
     mut global: GlobalConfig,
@@ -331,7 +344,17 @@ fn merge_configuration_files(
 
             for (variable_name, variable_value) in package.variables {
                 if first_package.variables.contains_key(&variable_name) {
-                    anyhow::bail!("variable {:?} already encountered", variable_name);
+                    // Panic safety: Already checked via `contains_key` above
+                    let mut first_value = first_package.variables.get_mut(&variable_name).unwrap();
+                    match (&mut first_value, &variable_value) {
+                        (toml::Value::Table(_a), toml::Value::Table(_b)) => {
+                            info!("Merging {:?} tables", variable_name);
+                            merge_tables(&mut first_value, &variable_value);
+                        }
+                        _ => {
+                            anyhow::bail!("variable {:?} already encountered", variable_name);
+                        }
+                    }
                 } else {
                     first_package
                         .variables
