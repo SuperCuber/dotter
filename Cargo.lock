@@ -467,12 +467,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 
 [[package]]
-name = "gcc"
-version = "0.3.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
-
-[[package]]
 name = "generic-array"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -535,7 +529,6 @@ dependencies = [
  "Inflector",
  "enquote",
  "handlebars",
- "jsonnet-rs",
  "lazy_static",
  "log",
  "serde",
@@ -639,26 +632,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5cfb73131c35423a367daf8cbd24100af0d077668c8c2943f0e7dd775fef0f65"
 dependencies = [
  "wasm-bindgen",
-]
-
-[[package]]
-name = "jsonnet-rs"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dea3859e42541d9ecee82613c105234d2af74e1794c255af2d155d1e7ad57558"
-dependencies = [
- "jsonnet-sys",
- "libc",
-]
-
-[[package]]
-name = "jsonnet-sys"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2948bf138e186428476eaea072b4b07ef3cd8e6bcaeab941a65ec783a927e6ef"
-dependencies = [
- "gcc",
- "libc",
 ]
 
 [[package]]
