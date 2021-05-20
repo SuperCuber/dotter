@@ -16,7 +16,6 @@ clap = "2.*"
 crossterm = "0.18.*"
 diff = "0.1.*"
 handlebars = { version = "3.*", features = ["script_helper"] }
-handlebars_misc_helpers = { version = "0.11.*", optional = true }
 log = "0.4.*"
 maplit = "1.*"
 meval = "0.2.*"
@@ -26,6 +25,12 @@ simplelog = "0.8.*"
 structopt = "0.3.*"
 toml = "0.4.*"
 watchexec = "=1.14.1"
+
+[dependencies.handlebars_misc_helpers]
+version = "0.11.*"
+optional = true
+default-features = false
+features = ["string", "json", "jsonnet"]
 
 [dev-dependencies]
 mockall = "0.9.*"
