@@ -20,15 +20,15 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v2
-      #- uses: actions-rs/toolchain@v1
-       # with:
-        #  profile: minimal
-         # toolchain: stable
-          #target: ${{ matrix.target }}
-          #override: true
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v1
-      - uses: zhxiaogg/cargo-static-build@v1.41.1-1
+      - uses: actions-rs/cargo@v1
         with:
           command: check
           args: --verbose --locked --target ${{ matrix.target }} ${{ matrix.handlebars_misc_helpers }} 
