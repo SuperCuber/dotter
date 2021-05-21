@@ -28,7 +28,6 @@ watchexec = "=1.14.1"
 
 [dependencies.handlebars_misc_helpers]
 version = "0.11.*"
-optional = true
 default-features = false
 features = ["string", "json"]
 
