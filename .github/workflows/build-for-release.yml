@@ -10,7 +10,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        handlebars_misc_helpers: ["--features handlebars_misc_helpers", ""]
         include:
           - os: ubuntu-latest
             exe_suffix: ""
@@ -18,10 +17,6 @@ jobs:
           - os: windows-latest
             exe_suffix: ".exe"
             target: x86_64-pc-windows-msvc
-          - handlebars_misc_helpers: ""
-            name_suffix: "-simple"
-          - handlebars_misc_helpers: "--features handlebars_misc_helpers"
-            name_suffix: ""
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -35,14 +30,14 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --locked --verbose ${{ matrix.handlebars_misc_helpers }} --target ${{ matrix.target }}
+          args: --release --locked --verbose --target ${{ matrix.target }}
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           asset_path: target/${{ matrix.target }}/release/dotter${{ matrix.exe_suffix }}
-          asset_name: dotter${{ matrix.name_suffix }}${{ matrix.exe_suffix }}
+          asset_name: dotter${{ matrix.exe_suffix }}
           asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
   cargo-publish:
