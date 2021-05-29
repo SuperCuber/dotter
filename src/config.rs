@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::filesystem;
 
@@ -14,25 +14,26 @@ pub enum UnixUser {
     Name(String),
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SymbolicTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
+    #[serde(rename = "if")]
     pub condition: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TemplateTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
     pub append: Option<String>,
     pub prepend: Option<String>,
+    #[serde(rename = "if")]
     pub condition: Option<String>,
 }
 
 // Deserialize implemented manually
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(untagged)]
 pub enum FileTarget {
     Automatic(PathBuf),
     Symbolic(SymbolicTarget),
@@ -323,126 +324,29 @@ fn merge_configuration_files(
     Ok(output)
 }
 
-impl<'de> serde::Deserialize<'de> for FileTarget {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
+impl<'de> Deserialize<'de> for FileTarget {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "snake_case")]
-        enum Field {
-            Target,
-            Owner,
-            Append,
-            Prepend,
-            Type,
-            If,
+        #[serde(remote = "FileTarget", tag = "type", rename_all = "snake_case")]
+        enum This {
+            Automatic(PathBuf),
+            Symbolic(SymbolicTarget),
+            #[serde(rename = "template")]
+            ComplexTemplate(TemplateTarget),
         }
 
-        struct FileTargetVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for FileTargetVisitor {
-            type Value = FileTarget;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("a string or a map")
-            }
-
-            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(FileTarget::Automatic(s.into()))
-            }
-
-            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-            where
-                V: serde::de::MapAccess<'de>,
-            {
-                let mut file_type = None;
-                let mut target = None;
-                let mut owner = None;
-                let mut append = None;
-                let mut prepend = None;
-                let mut condition = None;
-
-                while let Some(key) = map.next_key()? {
-                    match key {
-                        Field::Type => {
-                            if file_type.is_some() {
-                                return Err(serde::de::Error::duplicate_field("type"));
-                            }
-                            file_type = Some(map.next_value()?);
-                        }
-                        Field::Target => {
-                            if target.is_some() {
-                                return Err(serde::de::Error::duplicate_field("target"));
-                            }
-                            target = Some(map.next_value()?);
-                        }
-                        Field::Owner => {
-                            if owner.is_some() {
-                                return Err(serde::de::Error::duplicate_field("owner"));
-                            }
-                            owner = Some(map.next_value()?);
-                        }
-                        Field::Append => {
-                            if append.is_some() {
-                                return Err(serde::de::Error::duplicate_field("append"));
-                            }
-                            append = Some(map.next_value()?);
-                        }
-                        Field::Prepend => {
-                            if prepend.is_some() {
-                                return Err(serde::de::Error::duplicate_field("prepend"));
-                            }
-                            prepend = Some(map.next_value()?);
-                        }
-                        Field::If => {
-                            if condition.is_some() {
-                                return Err(serde::de::Error::duplicate_field("if"));
-                            }
-                            condition = Some(map.next_value()?);
-                        }
-                    }
-                }
-
-                let file_type = file_type.ok_or_else(|| serde::de::Error::missing_field("type"))?;
-                let target = target.ok_or_else(|| serde::de::Error::missing_field("target"))?;
-
-                let ans = match file_type {
-                    "symbolic" => {
-                        if append.is_some() || prepend.is_some() {
-                            return Err(serde::de::Error::custom(
-                                "invalid use of `append` or `prepend` on a symbolic target",
-                            ));
-                        }
-                        FileTarget::Symbolic(SymbolicTarget {
-                            target,
-                            owner,
-                            condition,
-                        })
-                    }
-                    "template" => FileTarget::ComplexTemplate(TemplateTarget {
-                        target,
-                        owner,
-                        append,
-                        prepend,
-                        condition,
-                    }),
-                    other_type => {
-                        return Err(serde::de::Error::invalid_value(
-                            serde::de::Unexpected::Str(other_type),
-                            &"`symbolic` or `template`",
-                        ))
-                    }
-                };
-
-                Ok(ans)
-            }
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Helper {
+            Simple(PathBuf),
+            #[serde(with = "This")]
+            Complex(FileTarget),
         }
 
-        deserializer.deserialize_any(FileTargetVisitor)
+        Ok(match Helper::deserialize(deserializer)? {
+            Helper::Simple(target) => Self::Automatic(target),
+            Helper::Complex(this) => this,
+        })
     }
 }
 
@@ -576,5 +480,60 @@ impl UnixUser {
             UnixUser::Name(n) => n.clone(),
             UnixUser::Uid(id) => format!("{}", id),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_file_target() {
+        #[derive(Deserialize)]
+        struct Helper {
+            file: FileTarget,
+        }
+
+        let parse = |s| toml::from_str::<Helper>(s).unwrap().file;
+
+        assert_eq!(
+            parse(
+                r#"
+                    file = '~/.QuarticCat'
+                "#,
+            ),
+            FileTarget::Automatic(PathBuf::from("~/.QuarticCat")),
+        );
+        assert_eq!(
+            parse(
+                r#"
+                    [file]
+                    target = '~/.QuarticCat'
+                    type = 'symbolic'
+                "#,
+            ),
+            FileTarget::Symbolic(PathBuf::from("~/.QuarticCat").into()),
+        );
+        assert_eq!(
+            parse(
+                r#"
+                    [file]
+                    target = '~/.QuarticCat'
+                    type = 'template'
+                "#,
+            ),
+            FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
+        );
+        assert_ne!(
+            parse(
+                r#"
+                    [file]
+                    target = '~/.QuarticCat'
+                    type = 'template'
+                    if = 'bash'
+                "#,
+            ),
+            FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
+        );
     }
 }
