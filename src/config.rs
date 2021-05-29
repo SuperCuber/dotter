@@ -15,6 +15,7 @@ pub enum UnixUser {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
 pub struct SymbolicTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
@@ -23,6 +24,7 @@ pub struct SymbolicTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
 pub struct TemplateTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
@@ -494,14 +496,16 @@ mod tests {
             file: FileTarget,
         }
 
-        let parse = |s| toml::from_str::<Helper>(s).unwrap().file;
+        let parse = |s| toml::from_str::<Helper>(s);
 
         assert_eq!(
             parse(
                 r#"
                     file = '~/.QuarticCat'
                 "#,
-            ),
+            )
+            .unwrap()
+            .file,
             FileTarget::Automatic(PathBuf::from("~/.QuarticCat")),
         );
         assert_eq!(
@@ -511,7 +515,9 @@ mod tests {
                     target = '~/.QuarticCat'
                     type = 'symbolic'
                 "#,
-            ),
+            )
+            .unwrap()
+            .file,
             FileTarget::Symbolic(PathBuf::from("~/.QuarticCat").into()),
         );
         assert_eq!(
@@ -521,7 +527,9 @@ mod tests {
                     target = '~/.QuarticCat'
                     type = 'template'
                 "#,
-            ),
+            )
+            .unwrap()
+            .file,
             FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
         );
         assert_ne!(
@@ -532,8 +540,22 @@ mod tests {
                     type = 'template'
                     if = 'bash'
                 "#,
-            ),
+            )
+            .unwrap()
+            .file,
             FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
+        );
+        assert_eq!(
+            parse(
+                r#"
+                    [file]
+                    target = '~/.QuarticCat'
+                    type = 'symbolic'
+                    append = 'whatever'
+                "#,
+            )
+            .is_err(),
+            true
         );
     }
 }
