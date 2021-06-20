@@ -97,7 +97,21 @@ pub fn load_configuration(
         .with_context(|| format!("load global config {:?}", global_config))?;
     trace!("Global config: {:#?}", global);
 
-    let local: LocalConfig = filesystem::load_file(local_config)
+    // If local.toml can't be found, look for a file named <hostname>.toml instead
+    let mut local_config_buf = local_config.to_path_buf();
+    if !local_config_buf.exists() {
+        let hostname = hostname::get()
+            .context("failed to get the computer hostname")?
+            .into_string()
+            .expect("hostname cannot be converted to string");
+        info!(
+            "{:?} not found, using {}.toml instead (based on hostname)",
+            local_config, hostname
+        );
+        local_config_buf.set_file_name(&format!("{}.toml", hostname));
+    }
+
+    let local: LocalConfig = filesystem::load_file(local_config_buf.as_path())
         .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
         .with_context(|| format!("load local config {:?}", local_config))?;
     trace!("Local config: {:#?}", local);
