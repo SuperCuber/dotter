@@ -16,6 +16,7 @@ clap = "2.*"
 crossterm = "0.18.*"
 diff = "0.1.*"
 handlebars = { version = "3.*", features = ["script_helper"] }
+hostname = "0.3.*"
 log = "0.4.*"
 maplit = "1.*"
 meval = "0.2.*"
