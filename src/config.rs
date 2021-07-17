@@ -437,10 +437,10 @@ impl SymbolicTarget {
 impl TemplateTarget {
     pub fn apply_actions(&self, mut file: String) -> String {
         if let Some(ref append) = self.append {
-            file = file + append;
+            file += append.as_str();
         }
         if let Some(ref prepend) = self.prepend {
-            file = prepend.to_string() + &file;
+            file = prepend.to_string() + file.as_str();
         }
 
         file

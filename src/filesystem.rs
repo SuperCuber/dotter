@@ -175,11 +175,11 @@ impl Filesystem for RealFilesystem {
                 owner, link, target
             );
         }
-        Ok(fs::symlink_file(
+        fs::symlink_file(
             real_path(target).context("get real path of source file")?,
             link,
         )
-        .context("create symlink")?)
+        .context("create symlink")
     }
 
     fn create_dir_all(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<()> {
