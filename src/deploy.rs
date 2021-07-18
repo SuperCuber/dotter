@@ -501,13 +501,17 @@ mod test {
     fn high_level_simple() {
         // State
         let a_out: SymbolicTarget = "a_out".into();
-        let b_out: TemplateTarget = "b_out".into();
+        let b_out: CopyTarget = "b_out".into();
+        let c_out: TemplateTarget = "c_out".into();
 
         let desired_symlinks = maplit::btreemap! {
             PathBuf::from("a_in") => a_out.clone()
         };
-        let desired_templates = maplit::btreemap! {
+        let desired_copies = maplit::btreemap! {
             PathBuf::from("b_in") => b_out.clone()
+        };
+        let desired_templates = maplit::btreemap! {
+            PathBuf::from("c_in") => c_out.clone()
         };
 
         // Test high level
@@ -522,12 +526,18 @@ mod test {
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(true));
         runner
+            .expect_create_copy()
+            .times(1)
+            .with(function(path_eq("b_in")), eq(b_out))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(true));
+        runner
             .expect_create_template()
             .times(1)
             .with(
-                function(path_eq("b_in")),
-                function(path_eq("cache/b_in")),
-                eq(b_out),
+                function(path_eq("c_in")),
+                function(path_eq("cache/c_in")),
+                eq(c_out),
             )
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(true));
@@ -535,6 +545,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
+            &desired_copies,
             &desired_templates,
             &mut cache,
             &Options {
@@ -548,22 +559,28 @@ mod test {
         assert_eq!(error_occurred, false);
 
         assert!(cache.symlinks.contains_key(&PathBuf::from("a_in")));
-        assert!(cache.templates.contains_key(&PathBuf::from("b_in")));
+        assert!(cache.copies.contains_key(&PathBuf::from("b_in")));
+        assert!(cache.templates.contains_key(&PathBuf::from("c_in")));
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 1);
+        assert_eq!(cache.copies.len(), 1);
     }
 
     #[test]
     fn high_level_skip() {
         // Setup
         let a_out: SymbolicTarget = "a_out".into();
-        let b_out: TemplateTarget = "b_out".into();
+        let b_out: CopyTarget = "b_out".into();
+        let c_out: TemplateTarget = "c_out".into();
 
         let desired_symlinks = maplit::btreemap! {
             PathBuf::from("a_in") => a_out.clone()
         };
-        let desired_templates = maplit::btreemap! {
+        let desired_copies = maplit::btreemap! {
             PathBuf::from("b_in") => b_out.clone()
+        };
+        let desired_templates = maplit::btreemap! {
+            PathBuf::from("c_in") => c_out.clone()
         };
 
         let mut runner = actions::MockActionRunner::new();
@@ -578,12 +595,18 @@ mod test {
             .in_sequence(&mut seq)
             .returning(|_, _| Err(anyhow::anyhow!("oh no")));
         runner
+            .expect_create_copy()
+            .times(1)
+            .with(function(path_eq("b_in")), eq(b_out))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(false));
+        runner
             .expect_create_template()
             .times(1)
             .with(
-                function(path_eq("b_in")),
-                function(path_eq("cache/b_in")),
-                eq(b_out),
+                function(path_eq("c_in")),
+                function(path_eq("cache/c_in")),
+                eq(c_out),
             )
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(false));
@@ -592,6 +615,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
+            &desired_copies,
             &desired_templates,
             &mut cache,
             &Options {
@@ -606,6 +630,7 @@ mod test {
 
         assert_eq!(cache.symlinks.len(), 0);
         assert_eq!(cache.templates.len(), 0);
+        assert_eq!(cache.copies.len(), 0);
     }
 
     #[test]
@@ -623,6 +648,7 @@ mod test {
             symlinks: maplit::btreemap! {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
+            copies: BTreeMap::new(),
             templates: BTreeMap::new(),
         };
 
@@ -644,6 +670,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
+            &BTreeMap::new(),
             &BTreeMap::new(),
             &mut cache,
             &Options {
@@ -673,6 +700,7 @@ mod test {
         let mut seq = mockall::Sequence::new();
         let mut cache = Cache {
             symlinks: BTreeMap::new(),
+            copies: BTreeMap::new(),
             templates: maplit::btreemap! {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
@@ -701,6 +729,7 @@ mod test {
             &mut runner,
             &desired_symlinks,
             &BTreeMap::new(),
+            &BTreeMap::new(),
             &mut cache,
             &Options {
                 cache_directory: "cache".into(),
@@ -728,6 +757,7 @@ mod test {
         let mut seq = mockall::Sequence::new();
         let mut cache = Cache {
             symlinks: BTreeMap::new(),
+            copies: BTreeMap::new(),
             templates: maplit::btreemap! {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
@@ -749,6 +779,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
+            &BTreeMap::new(),
             &BTreeMap::new(),
             &mut cache,
             &Options {
