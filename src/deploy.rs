@@ -96,6 +96,9 @@ Proceeding by copying instead of symlinking."
                 FileTarget::Symbolic(target) => {
                     desired_symlinks.insert(source, target);
                 }
+                FileTarget::Copy(target) => {
+                    warn!("Copy target not yet implemented");
+                }
                 FileTarget::ComplexTemplate(target) => {
                     desired_templates.insert(source, target);
                 }
@@ -107,6 +110,9 @@ Proceeding by copying instead of symlinking."
                 }
                 FileTarget::Symbolic(target) => {
                     desired_templates.insert(source, target.into_template());
+                }
+                FileTarget::Copy(target) => {
+                    warn!("Copy target not yet implemented");
                 }
                 FileTarget::ComplexTemplate(target) => {
                     desired_templates.insert(source, target);

@@ -25,6 +25,15 @@ pub struct SymbolicTarget {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(deny_unknown_fields)]
+pub struct CopyTarget {
+    pub target: PathBuf,
+    pub owner: Option<UnixUser>,
+    #[serde(rename = "if")]
+    pub condition: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
 pub struct TemplateTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
@@ -39,6 +48,7 @@ pub struct TemplateTarget {
 pub enum FileTarget {
     Automatic(PathBuf),
     Symbolic(SymbolicTarget),
+    Copy(CopyTarget),
     ComplexTemplate(TemplateTarget),
 }
 
@@ -347,6 +357,7 @@ impl<'de> Deserialize<'de> for FileTarget {
         enum This {
             Automatic(PathBuf),
             Symbolic(SymbolicTarget),
+            Copy(CopyTarget),
             #[serde(rename = "template")]
             ComplexTemplate(TemplateTarget),
         }
@@ -371,6 +382,7 @@ impl FileTarget {
         match self {
             FileTarget::Automatic(path) => &path,
             FileTarget::Symbolic(SymbolicTarget { target, .. })
+            | FileTarget::Copy(CopyTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
         }
     }
@@ -379,6 +391,7 @@ impl FileTarget {
         match self {
             FileTarget::Automatic(ref mut path) => *path = new_path.into(),
             FileTarget::Symbolic(SymbolicTarget { target, .. })
+            | FileTarget::Copy(CopyTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => {
                 *target = new_path.into()
             }
@@ -388,8 +401,9 @@ impl FileTarget {
     pub fn condition(&self) -> Option<&String> {
         match self {
             FileTarget::Automatic(_) => None,
-            FileTarget::Symbolic(SymbolicTarget { condition, .. }) => condition.as_ref(),
-            FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
+            FileTarget::Symbolic(SymbolicTarget { condition, .. })
+            | FileTarget::Copy(CopyTarget { condition, .. })
+            | FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
         }
     }
 }
@@ -403,6 +417,16 @@ impl<T: Into<PathBuf>> From<T> for FileTarget {
 impl<T: Into<PathBuf>> From<T> for SymbolicTarget {
     fn from(input: T) -> Self {
         SymbolicTarget {
+            target: input.into(),
+            owner: None,
+            condition: None,
+        }
+    }
+}
+
+impl<T: Into<PathBuf>> From<T> for CopyTarget {
+    fn from(input: T) -> Self {
+        CopyTarget {
             target: input.into(),
             owner: None,
             condition: None,
