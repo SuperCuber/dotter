@@ -742,13 +742,16 @@ pub(crate) fn perform_template_deploy(
     handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<()> {
-    let file_contents = fs
+    let original_file_contents = fs
         .read_to_string(&source)
         .context("read template source file")?;
-    let file_contents = target.apply_actions(file_contents);
+    let file_contents = target.apply_actions(original_file_contents.clone());
     let rendered = handlebars
         .render_template(&file_contents, variables)
         .context("render template")?;
+    if original_file_contents == rendered {
+        warn!("File {:?} is specified as 'template' but is not a templated file. Consider using 'copy' instead.", source);
+    }
 
     // Cache
     fs.create_dir_all(&cache.parent().context("get parent of cache file")?, &None)
