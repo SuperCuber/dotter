@@ -4,15 +4,17 @@ use anyhow::{Context, Result};
 use crossterm::style::Colorize;
 use handlebars::Handlebars;
 
-use crate::config::{SymbolicTarget, TemplateTarget, Variables};
+use crate::config::{CopyTarget, SymbolicTarget, TemplateTarget, Variables};
 use crate::difference;
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
     fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool>;
+    fn delete_copy(&mut self, source: &Path, target: &Path) -> Result<bool>;
     fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool>;
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
+    fn create_copy(&mut self, source: &Path, target: &CopyTarget) -> Result<bool>;
     fn create_template(
         &mut self,
         source: &Path,
@@ -20,6 +22,7 @@ pub trait ActionRunner {
         target: &TemplateTarget,
     ) -> Result<bool>;
     fn update_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
+    fn update_copy(&mut self, source: &Path, target: &CopyTarget) -> Result<bool>;
     fn update_template(
         &mut self,
         source: &Path,
@@ -58,11 +61,17 @@ impl<'a> ActionRunner for RealActionRunner<'a> {
     fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool> {
         delete_symlink(source, target, self.fs, self.force)
     }
+    fn delete_copy(&mut self, source: &Path, target: &Path) -> Result<bool> {
+        delete_copy(source, target, self.fs, self.force)
+    }
     fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool> {
         delete_template(source, cache, target, self.fs, self.force)
     }
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool> {
         create_symlink(source, target, self.fs, self.force)
+    }
+    fn create_copy(&mut self, source: &Path, target: &CopyTarget) -> Result<bool> {
+        create_copy(source, target, self.fs, self.force)
     }
     fn create_template(
         &mut self,
@@ -82,6 +91,9 @@ impl<'a> ActionRunner for RealActionRunner<'a> {
     }
     fn update_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool> {
         update_symlink(source, target, self.fs, self.force)
+    }
+    fn update_copy(&mut self, source: &Path, target: &CopyTarget) -> Result<bool> {
+        update_copy(source, target, self.fs, self.force)
     }
     fn update_template(
         &mut self,
@@ -156,6 +168,17 @@ fn perform_symlink_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Re
     fs.delete_parents(target, false)
         .context("delete parents of symlink")?;
     Ok(())
+}
+
+/// Returns true if copy should be deleted from cache
+pub fn delete_copy(
+    source: &Path,
+    target: &Path,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<bool> {
+    warn!("Delete copy not yet implemented");
+    Ok(false)
 }
 
 /// Returns true if template should be deleted from cache
@@ -297,6 +320,17 @@ pub fn create_symlink(
             Ok(false)
         }
     }
+}
+
+/// Returns true if copy should be added to cache
+pub fn create_copy(
+    source: &Path,
+    target: &CopyTarget,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<bool> {
+    warn!("Create copy not yet implemented");
+    Ok(false)
 }
 
 /// Returns true if the template should be added to cache
@@ -454,6 +488,17 @@ pub fn update_symlink(
             Ok(true)
         }
     }
+}
+
+/// Returns true if the symlink wasn't skipped
+pub fn update_copy(
+    source: &Path,
+    target: &CopyTarget,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<bool> {
+    warn!("Update copy not yet implemented");
+    Ok(false)
 }
 
 /// Returns true if the template was not skipped

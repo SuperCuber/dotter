@@ -159,6 +159,7 @@ pub fn load_configuration(
 #[serde(deny_unknown_fields)]
 pub struct Cache {
     pub symlinks: BTreeMap<PathBuf, PathBuf>,
+    pub copies: BTreeMap<PathBuf, PathBuf>,
     pub templates: BTreeMap<PathBuf, PathBuf>,
 }
 
