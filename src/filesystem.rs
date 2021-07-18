@@ -46,6 +46,9 @@ pub trait Filesystem {
     /// Check state of expected symlink on disk
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison>;
 
+    /// Check state of expected copy on disk
+    fn compare_copy(&mut self, source: &Path, link: &Path) -> Result<CopyComparison>;
+
     /// Check state of expected symbolic link on disk
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison>;
 
@@ -112,6 +115,15 @@ impl Filesystem for RealFilesystem {
 
         let source = real_path(source).context("get real path of source")?;
         Ok(compare_symlink(&source, source_state, link_state))
+    }
+
+    fn compare_copy(&mut self, source: &Path, target: &Path) -> Result<CopyComparison> {
+        let source_state = get_file_state(source).context("get source state")?;
+        trace!("Source state: {:#?}", source_state);
+        let target_state = get_file_state(target).context("get target state")?;
+        trace!("Target state: {:#?}", target_state);
+
+        Ok(compare_copy(source_state, target_state))
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
@@ -279,6 +291,15 @@ impl Filesystem for RealFilesystem {
 
         let source = real_path(source).context("get real path of source")?;
         Ok(compare_symlink(&source, source_state, link_state))
+    }
+
+    fn compare_copy(&mut self, source: &Path, target: &Path) -> Result<CopyComparison> {
+        let source_state = get_file_state(source).context("get source state")?;
+        trace!("Source state: {:#?}", source_state);
+        let target_state = get_file_state(target).context("get target state")?;
+        trace!("Target state: {:#?}", target_state);
+
+        Ok(compare_copy(source_state, target_state))
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
@@ -593,6 +614,27 @@ impl Filesystem for DryRunFilesystem {
         Ok(compare_symlink(&source, source_state, link_state))
     }
 
+    fn compare_copy(&mut self, source: &Path, target: &Path) -> Result<CopyComparison> {
+        let source_state = if let Some(state) = self.file_states.get(source) {
+            debug!("Cached (probably not actual) source state: {:?}", state);
+            state.clone()
+        } else {
+            let state = get_file_state(source).context("get source state")?;
+            debug!("Source state: {:?}", state);
+            state
+        };
+        let target_state = if let Some(state) = self.file_states.get(target) {
+            debug!("Cached (probably not actual) target state: {:?}", state);
+            state.clone()
+        } else {
+            let state = get_file_state(target).context("get target state")?;
+            debug!("Target state: {:?}", state);
+            state
+        };
+
+        Ok(compare_copy(source_state, target_state))
+    }
+
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
         let target_state = if let Some(state) = self.file_states.get(target) {
             debug!("Cached (probably not actual) target state: {:?}", state);
@@ -773,6 +815,51 @@ fn compare_symlink(
         (FileState::Missing, FileState::Missing) => SymlinkComparison::BothMissing,
         (_, FileState::Missing) => SymlinkComparison::OnlySourceExists,
         _ => SymlinkComparison::TargetNotSymlink,
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CopyComparison {
+    Identical,
+    OnlySourceExists,
+    OnlyTargetExists,
+    Changed,
+    TargetNotRegularFileOrDirectory,
+    BothMissing,
+}
+
+impl std::fmt::Display for CopyComparison {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        use self::CopyComparison::*;
+        match self {
+            Identical => "target and source's contents are equal",
+            OnlySourceExists => "target doesn't exist",
+            OnlyTargetExists => "source doesn't exist",
+            Changed => "target contents were changed",
+            TargetNotRegularFileOrDirectory => "target is not a regular file or directory",
+            BothMissing => "source and target are missing",
+        }
+        .fmt(f)
+    }
+}
+
+fn compare_copy(source_state: FileState, target_state: FileState) -> CopyComparison {
+    info!(
+        "source state: {:?} target_state: {:?}",
+        source_state, target_state
+    );
+    match (source_state, target_state) {
+        (FileState::File(t), FileState::File(c)) => {
+            if t == c {
+                CopyComparison::Identical
+            } else {
+                CopyComparison::Changed
+            }
+        }
+        (FileState::File(_), FileState::Missing) => CopyComparison::OnlySourceExists,
+        (FileState::Missing, FileState::File(_)) => CopyComparison::OnlyTargetExists,
+        (FileState::Missing, FileState::Missing) => CopyComparison::BothMissing,
+        _ => CopyComparison::TargetNotRegularFileOrDirectory,
     }
 }
 

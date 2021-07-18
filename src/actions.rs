@@ -6,7 +6,7 @@ use handlebars::Handlebars;
 
 use crate::config::{CopyTarget, SymbolicTarget, TemplateTarget, Variables};
 use crate::difference;
-use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
+use crate::filesystem::{CopyComparison, Filesystem, SymlinkComparison, TemplateComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
@@ -177,8 +177,49 @@ pub fn delete_copy(
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    warn!("Delete copy not yet implemented");
-    Ok(false)
+    info!("{} copy {:?} -> {:?}", "[-]".red(), source, target);
+
+    let comparison = fs
+        .compare_copy(source, target)
+        .context("detect copy's current state")?;
+    debug!("Current state: {}", comparison);
+
+    match comparison {
+        CopyComparison::Identical | CopyComparison::OnlyTargetExists => {
+            debug!("Performing deletion");
+            perform_copy_target_deletion(fs, target).context("perform copy target deletion")?;
+            Ok(true)
+        }
+        CopyComparison::OnlySourceExists | CopyComparison::BothMissing => {
+            warn!(
+                "Deleting copy {:?} -> {:?} but target doesn't exist. Removing from cache anyways.",
+                source, target
+            );
+            Ok(true)
+        }
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory if force => {
+            warn!(
+                "Deleting copy {:?} -> {:?} but {}. Forcing.",
+                source, target, comparison
+            );
+            perform_copy_target_deletion(fs, target).context("perform copy target deletion")?;
+            Ok(true)
+        }
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory => {
+            error!(
+                "Deleting {:?} -> {:?} but {}. Skipping.",
+                source, target, comparison
+            );
+            Ok(false)
+        }
+    }
+}
+
+fn perform_copy_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
+    fs.remove_file(target).context("remove copy")?;
+    fs.delete_parents(target, false)
+        .context("delete parents of copy")?;
+    Ok(())
 }
 
 /// Returns true if template should be deleted from cache
@@ -329,8 +370,58 @@ pub fn create_copy(
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    warn!("Create copy not yet implemented");
-    Ok(false)
+    info!("{} copy {:?} -> {:?}", "[+]".green(), source, target.target);
+
+    let comparison = fs
+        .compare_copy(source, &target.target)
+        .context("detect copy's current state")?;
+    debug!("Current state: {}", comparison);
+
+    match comparison {
+        CopyComparison::OnlySourceExists => {
+            debug!("Performing creation");
+            fs.create_dir_all(
+                target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &target.owner,
+            )
+            .context("create parent for target file")?;
+            fs.copy_file(source, &target.target, &target.owner)
+                .context("create target copy")?;
+            Ok(true)
+        }
+        CopyComparison::Identical => {
+            warn!("Creating copy {:?} -> {:?} but target already exists and points at source. Adding to cache anyways", source, target.target);
+            Ok(true)
+        }
+        CopyComparison::OnlyTargetExists | CopyComparison::BothMissing => {
+            error!(
+                "Creating copy {:?} -> {:?} but {}. Skipping.",
+                source, target.target, comparison
+            );
+            Ok(false)
+        }
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory if force => {
+            warn!(
+                "Creating copy {:?} -> {:?} but {}. Forcing.",
+                source, target.target, comparison
+            );
+            fs.remove_file(&target.target)
+                .context("remove copy target while forcing")?;
+            fs.copy_file(source, &target.target, &target.owner)
+                .context("create target copy")?;
+            Ok(true)
+        }
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory => {
+            error!(
+                "Creating copy {:?} -> {:?} but {}. Skipping.",
+                source, target.target, comparison
+            );
+            Ok(false)
+        }
+    }
 }
 
 /// Returns true if the template should be added to cache
@@ -497,8 +588,63 @@ pub fn update_copy(
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    warn!("Update copy not yet implemented");
-    Ok(false)
+    debug!("Updating copy {:?} -> {:?}...", source, target.target);
+
+    let comparison = fs
+        .compare_copy(&source, &target.target)
+        .context("detect copy's current state")?;
+    debug!("Current state: {}", comparison);
+
+    match comparison {
+        CopyComparison::Identical => {
+            debug!("Performing update");
+            fs.set_owner(&target.target, &target.owner)
+                .context("set target copy owner")?;
+            Ok(true)
+        }
+        CopyComparison::OnlyTargetExists | CopyComparison::BothMissing => {
+            error!(
+                "Updating copy {:?} -> {:?} but source is missing. Skipping.",
+                source, target.target
+            );
+            Ok(false)
+        }
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory if force => {
+            warn!(
+                "Updating copy {:?} -> {:?} but {}. Forcing.",
+                source, target.target, comparison
+            );
+            fs.remove_file(&target.target)
+                .context("remove copy target while forcing")?;
+            fs.copy_file(source, &target.target, &target.owner)
+                .context("create target copy")?;
+            Ok(true)
+        }
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory => {
+            error!(
+                "Updating copy {:?} -> {:?} but {}. Skipping.",
+                source, target.target, comparison
+            );
+            Ok(false)
+        }
+        CopyComparison::OnlySourceExists => {
+            warn!(
+                "Updating copy {:?} -> {:?} but {}. Creating it anyways.",
+                source, target.target, comparison
+            );
+            fs.create_dir_all(
+                target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &target.owner,
+            )
+            .context("create parent for target file")?;
+            fs.copy_file(source, &target.target, &target.owner)
+                .context("create target copy")?;
+            Ok(true)
+        }
+    }
 }
 
 /// Returns true if the template was not skipped
