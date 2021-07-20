@@ -17,7 +17,7 @@ pub(crate) fn run_hook(
         return Ok(());
     }
 
-    let fs: &mut dyn Filesystem = &mut RealFilesystem::new(false);
+    let fs = &mut RealFilesystem::new(false);
 
     // Default to current location
     let mut script_file = location.into();
