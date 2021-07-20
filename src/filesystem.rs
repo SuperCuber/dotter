@@ -824,7 +824,7 @@ pub enum CopyComparison {
     OnlySourceExists,
     OnlyTargetExists,
     Changed,
-    TargetNotRegularFileOrDirectory,
+    TargetNotRegularFile,
     BothMissing,
 }
 
@@ -836,7 +836,7 @@ impl std::fmt::Display for CopyComparison {
             OnlySourceExists => "target doesn't exist",
             OnlyTargetExists => "source doesn't exist",
             Changed => "target contents were changed",
-            TargetNotRegularFileOrDirectory => "target is not a regular file or directory",
+            TargetNotRegularFile => "target is not a regular file",
             BothMissing => "source and target are missing",
         }
         .fmt(f)
@@ -859,7 +859,7 @@ fn compare_copy(source_state: FileState, target_state: FileState) -> CopyCompari
         (FileState::File(_), FileState::Missing) => CopyComparison::OnlySourceExists,
         (FileState::Missing, FileState::File(_)) => CopyComparison::OnlyTargetExists,
         (FileState::Missing, FileState::Missing) => CopyComparison::BothMissing,
-        _ => CopyComparison::TargetNotRegularFileOrDirectory,
+        _ => CopyComparison::TargetNotRegularFile,
     }
 }
 

@@ -197,7 +197,7 @@ pub fn delete_copy(
             );
             Ok(true)
         }
-        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory if force => {
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFile if force => {
             warn!(
                 "Deleting copy {:?} -> {:?} but {}. Forcing.",
                 source, target, comparison
@@ -205,7 +205,7 @@ pub fn delete_copy(
             perform_copy_target_deletion(fs, target).context("perform copy target deletion")?;
             Ok(true)
         }
-        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory => {
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFile => {
             error!(
                 "Deleting {:?} -> {:?} but {}. Skipping.",
                 source, target, comparison
@@ -403,7 +403,7 @@ pub fn create_copy(
             );
             Ok(false)
         }
-        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory if force => {
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFile if force => {
             warn!(
                 "Creating copy {:?} -> {:?} but {}. Forcing.",
                 source, target.target, comparison
@@ -414,7 +414,7 @@ pub fn create_copy(
                 .context("create target copy")?;
             Ok(true)
         }
-        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory => {
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFile => {
             error!(
                 "Creating copy {:?} -> {:?} but {}. Skipping.",
                 source, target.target, comparison
@@ -609,7 +609,7 @@ pub fn update_copy(
             );
             Ok(false)
         }
-        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory if force => {
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFile if force => {
             warn!(
                 "Updating copy {:?} -> {:?} but {}. Forcing.",
                 source, target.target, comparison
@@ -620,7 +620,7 @@ pub fn update_copy(
                 .context("create target copy")?;
             Ok(true)
         }
-        CopyComparison::Changed | CopyComparison::TargetNotRegularFileOrDirectory => {
+        CopyComparison::Changed | CopyComparison::TargetNotRegularFile => {
             error!(
                 "Updating copy {:?} -> {:?} but {}. Skipping.",
                 source, target.target, comparison
