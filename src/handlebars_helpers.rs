@@ -326,21 +326,11 @@ mod test {
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "foo").unwrap(),
-            true
-        );
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "bar").unwrap(),
-            false
-        );
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "dotter.packages.default").unwrap(),
-            true
-        );
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap(),
-            false
+        assert!(eval_condition(&handlebars, &config.variables, "foo").unwrap(),);
+        assert!(!eval_condition(&handlebars, &config.variables, "bar").unwrap(),);
+        assert!(eval_condition(&handlebars, &config.variables, "dotter.packages.default").unwrap(),);
+        assert!(
+            !eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap(),
         );
     }
 
@@ -354,18 +344,14 @@ mod test {
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
-        assert_eq!(
-            eval_condition(
-                &handlebars,
-                &config.variables,
-                "(is_executable \"no_such_executable_please\")"
-            )
-            .unwrap(),
-            false
-        );
-        assert_eq!(
+        assert!(!eval_condition(
+            &handlebars,
+            &config.variables,
+            "(is_executable \"no_such_executable_please\")"
+        )
+        .unwrap(),);
+        assert!(
             eval_condition(&handlebars, &config.variables, "(eq (math \"5+5\") \"10\")").unwrap(),
-            true
         );
     }
 }

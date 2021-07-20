@@ -138,7 +138,7 @@ Proceeding by copying instead of symlinking."
         &desired_copies,
         &desired_templates,
         &mut cache,
-        &opt,
+        opt,
     );
 
     // === Post-deploy ===
@@ -314,7 +314,7 @@ fn run_deploy<A: ActionRunner>(
         existing_symlinks.difference(&desired_symlinks.keys().cloned().collect())
     {
         execute_action(
-            runner.delete_symlink(&source, &target),
+            runner.delete_symlink(source, target),
             || resulting_cache.symlinks.remove(source),
             || format!("delete symlink {:?} -> {:?}", source, target),
             &mut suggest_force,
@@ -324,7 +324,7 @@ fn run_deploy<A: ActionRunner>(
 
     for (source, target) in existing_copies.difference(&desired_copies.keys().cloned().collect()) {
         execute_action(
-            runner.delete_copy(source, &target),
+            runner.delete_copy(source, target),
             || resulting_cache.copies.remove(source),
             || format!("delete copy {:?} -> {:?}", source, target),
             &mut suggest_force,
@@ -336,7 +336,7 @@ fn run_deploy<A: ActionRunner>(
         existing_templates.difference(&desired_templates.keys().cloned().collect())
     {
         execute_action(
-            runner.delete_template(&source, &opt.cache_directory.join(&source), &target),
+            runner.delete_template(source, &opt.cache_directory.join(&source), target),
             || resulting_cache.templates.remove(source),
             || format!("delete template {:?} -> {:?}", source, target),
             &mut suggest_force,
@@ -354,7 +354,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.create_symlink(&source, &target),
+            runner.create_symlink(source, target),
             || {
                 resulting_cache
                     .symlinks
@@ -376,7 +376,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.create_copy(&source, &target),
+            runner.create_copy(source, target),
             || {
                 resulting_cache
                     .copies
@@ -398,7 +398,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.create_template(&source, &opt.cache_directory.join(&source), &target),
+            runner.create_template(source, &opt.cache_directory.join(&source), target),
             || {
                 resulting_cache
                     .templates
@@ -417,7 +417,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.update_symlink(&source, &target),
+            runner.update_symlink(source, target),
             || (),
             || format!("update symlink {:?} -> {:?}", source, target_path),
             &mut suggest_force,
@@ -432,7 +432,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.update_copy(&source, &target),
+            runner.update_copy(source, target),
             || (),
             || format!("update copy {:?} -> {:?}", source, target_path),
             &mut suggest_force,
@@ -447,7 +447,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.update_template(&source, &opt.cache_directory.join(&source), &target),
+            runner.update_template(source, &opt.cache_directory.join(&source), target),
             || (),
             || format!("update template {:?} -> {:?}", source, target_path),
             &mut suggest_force,
@@ -555,8 +555,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert!(cache.symlinks.contains_key(&PathBuf::from("a_in")));
         assert!(cache.copies.contains_key(&PathBuf::from("b_in")));
@@ -625,8 +625,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, true);
-        assert_eq!(error_occurred, true);
+        assert!(suggest_force);
+        assert!(error_occurred);
 
         assert_eq!(cache.symlinks.len(), 0);
         assert_eq!(cache.templates.len(), 0);
@@ -680,8 +680,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);
@@ -738,8 +738,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);
@@ -789,8 +789,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);

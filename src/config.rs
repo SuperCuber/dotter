@@ -236,7 +236,7 @@ fn merge_configuration_files(
     // Patch each package with included.toml's
     for included_path in &local.includes {
         || -> Result<()> {
-            let mut included: IncludedConfig = filesystem::load_file(&included_path)
+            let mut included: IncludedConfig = filesystem::load_file(included_path)
                 .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
                 .context("load file")?;
 
@@ -381,7 +381,7 @@ impl<'de> Deserialize<'de> for FileTarget {
 impl FileTarget {
     pub fn path(&self) -> &Path {
         match self {
-            FileTarget::Automatic(path) => &path,
+            FileTarget::Automatic(path) => path,
             FileTarget::Symbolic(SymbolicTarget { target, .. })
             | FileTarget::Copy(CopyTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => &target,
@@ -584,17 +584,14 @@ mod tests {
             .file,
             FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
         );
-        assert_eq!(
-            parse(
-                r#"
+        assert!(parse(
+            r#"
                     [file]
                     target = '~/.QuarticCat'
                     type = 'symbolic'
                     append = 'whatever'
                 "#,
-            )
-            .is_err(),
-            true
-        );
+        )
+        .is_err());
     }
 }
