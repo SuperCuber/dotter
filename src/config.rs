@@ -447,14 +447,12 @@ impl<T: Into<PathBuf>> From<T> for TemplateTarget {
     }
 }
 
-impl SymbolicTarget {
-    pub fn into_template(self) -> TemplateTarget {
-        TemplateTarget {
-            target: self.target,
-            owner: self.owner,
-            condition: self.condition,
-            prepend: None,
-            append: None,
+impl From<SymbolicTarget> for CopyTarget {
+    fn from(st: SymbolicTarget) -> Self {
+        CopyTarget {
+            target: st.target,
+            owner: st.owner,
+            condition: st.condition,
         }
     }
 }

@@ -82,42 +82,31 @@ Proceeding by copying instead of symlinking."
     let mut desired_templates = BTreeMap::<PathBuf, TemplateTarget>::new();
 
     for (source, target) in config.files {
-        if symlinks_enabled {
-            match target {
-                FileTarget::Automatic(target) => {
-                    if fs
-                        .is_template(&source)
-                        .context(format!("check whether {:?} is a template", source))?
-                    {
-                        desired_templates.insert(source, target.into());
-                    } else {
-                        desired_symlinks.insert(source, target.into());
-                    }
-                }
-                FileTarget::Symbolic(target) => {
-                    desired_symlinks.insert(source, target);
-                }
-                FileTarget::Copy(target) => {
-                    desired_copies.insert(source, target);
-                }
-                FileTarget::ComplexTemplate(target) => {
-                    desired_templates.insert(source, target);
+        match target {
+            FileTarget::Automatic(target) => {
+                if fs
+                    .is_template(&source)
+                    .context(format!("check whether {:?} is a template", source))?
+                {
+                    desired_templates.insert(source, target.into());
+                } else if symlinks_enabled {
+                    desired_symlinks.insert(source, target.into());
+                } else {
+                    desired_copies.insert(source, target.into());
                 }
             }
-        } else {
-            match target {
-                FileTarget::Automatic(target) => {
-                    desired_templates.insert(source, target.into());
+            FileTarget::Symbolic(target) => {
+                if symlinks_enabled {
+                    desired_symlinks.insert(source, target);
+                } else {
+                    desired_copies.insert(source, target.into());
                 }
-                FileTarget::Symbolic(target) => {
-                    desired_templates.insert(source, target.into_template());
-                }
-                FileTarget::Copy(target) => {
-                    desired_copies.insert(source, target);
-                }
-                FileTarget::ComplexTemplate(target) => {
-                    desired_templates.insert(source, target);
-                }
+            }
+            FileTarget::Copy(target) => {
+                desired_copies.insert(source, target);
+            }
+            FileTarget::ComplexTemplate(target) => {
+                desired_templates.insert(source, target);
             }
         }
     }
