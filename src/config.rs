@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::filesystem;
 
@@ -34,11 +34,29 @@ pub struct TemplateTarget {
     pub condition: Option<String>,
 }
 
-// Deserialize implemented manually
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(from = "FileTargetOuterRepr", into = "FileTargetOuterRepr")]
 pub enum FileTarget {
     Automatic(PathBuf),
     Symbolic(SymbolicTarget),
+    #[serde(rename = "template")]
+    ComplexTemplate(TemplateTarget),
+}
+
+// Shims to allow Serde to represent FileTarget::Automatic as untagged while the
+// remaining variants are differentiated by an internal tag as defined below
+#[derive(Deserialize, Serialize)]
+#[serde(untagged)]
+enum FileTargetOuterRepr {
+    Simple(PathBuf),
+    Complex(FileTargetInnerRepr),
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum FileTargetInnerRepr {
+    Symbolic(SymbolicTarget),
+    #[serde(rename = "template")]
     ComplexTemplate(TemplateTarget),
 }
 
@@ -340,32 +358,6 @@ fn merge_configuration_files(
     Ok(output)
 }
 
-impl<'de> Deserialize<'de> for FileTarget {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(remote = "FileTarget", tag = "type", rename_all = "snake_case")]
-        enum This {
-            Automatic(PathBuf),
-            Symbolic(SymbolicTarget),
-            #[serde(rename = "template")]
-            ComplexTemplate(TemplateTarget),
-        }
-
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Helper {
-            Simple(PathBuf),
-            #[serde(with = "This")]
-            Complex(FileTarget),
-        }
-
-        Ok(match Helper::deserialize(deserializer)? {
-            Helper::Simple(target) => Self::Automatic(target),
-            Helper::Complex(this) => this,
-        })
-    }
-}
-
 impl FileTarget {
     pub fn path(&self) -> &Path {
         match self {
@@ -397,6 +389,29 @@ impl FileTarget {
 impl<T: Into<PathBuf>> From<T> for FileTarget {
     fn from(input: T) -> Self {
         FileTarget::Automatic(input.into())
+    }
+}
+
+impl From<FileTargetOuterRepr> for FileTarget {
+    fn from(input: FileTargetOuterRepr) -> Self {
+        use FileTargetInnerRepr as IR;
+        use FileTargetOuterRepr as OR;
+        match input {
+            OR::Simple(x) => Self::Automatic(x),
+            OR::Complex(IR::Symbolic(x)) => Self::Symbolic(x),
+            OR::Complex(IR::ComplexTemplate(x)) => Self::ComplexTemplate(x),
+        }
+    }
+}
+
+impl From<FileTarget> for FileTargetOuterRepr {
+    fn from(input: FileTarget) -> Self {
+        use FileTargetInnerRepr as IR;
+        match input {
+            FileTarget::Automatic(x) => Self::Simple(x),
+            FileTarget::Symbolic(x) => Self::Complex(IR::Symbolic(x)),
+            FileTarget::ComplexTemplate(x) => Self::Complex(IR::ComplexTemplate(x)),
+        }
     }
 }
 
