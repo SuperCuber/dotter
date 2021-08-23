@@ -256,14 +256,14 @@ pub fn create_symlink(
         SymlinkComparison::OnlySourceExists => {
             debug!("Performing creation");
             fs.create_dir_all(
-                &target
+                target
                     .target
                     .parent()
                     .context("get parent of target file")?,
                 &target.owner,
             )
             .context("create parent for target file")?;
-            fs.make_symlink(&target.target, &source, &target.owner)
+            fs.make_symlink(&target.target, source, &target.owner)
                 .context("create target symlink")?;
             Ok(true)
         }
@@ -285,7 +285,7 @@ pub fn create_symlink(
             );
             fs.remove_file(&target.target)
                 .context("remove symlink target while forcing")?;
-            fs.make_symlink(&target.target, &source, &target.owner)
+            fs.make_symlink(&target.target, source, &target.owner)
                 .context("create target symlink")?;
             Ok(true)
         }
@@ -317,7 +317,7 @@ pub fn create_template(
     );
 
     let comparison = fs
-        .compare_template(&target.target, &cache)
+        .compare_template(&target.target, cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -325,14 +325,14 @@ pub fn create_template(
         TemplateComparison::BothMissing => {
             debug!("Performing creation");
             fs.create_dir_all(
-                &target
+                target
                     .target
                     .parent()
                     .context("get parent of target file")?,
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, target, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -342,14 +342,14 @@ pub fn create_template(
                 source, target.target
             );
             fs.create_dir_all(
-                &target
+                target
                     .target
                     .parent()
                     .context("get parent of target file")?,
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, target, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -365,14 +365,14 @@ pub fn create_template(
             fs.remove_file(&target.target)
                 .context("remove existing file while forcing")?;
             fs.create_dir_all(
-                &target
+                target
                     .target
                     .parent()
                     .context("get parent of target file")?,
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, target, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -400,7 +400,7 @@ pub fn update_symlink(
     debug!("Updating symlink {:?} -> {:?}...", source, target.target);
 
     let comparison = fs
-        .compare_symlink(&source, &target.target)
+        .compare_symlink(source, &target.target)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -425,7 +425,7 @@ pub fn update_symlink(
             );
             fs.remove_file(&target.target)
                 .context("remove symlink target while forcing")?;
-            fs.make_symlink(&target.target, &source, &target.owner)
+            fs.make_symlink(&target.target, source, &target.owner)
                 .context("create target symlink")?;
             Ok(true)
         }
@@ -442,14 +442,14 @@ pub fn update_symlink(
                 source, target.target, comparison
             );
             fs.create_dir_all(
-                &target
+                target
                     .target
                     .parent()
                     .context("get parent of target file")?,
                 &target.owner,
             )
             .context("create parent for target file")?;
-            fs.make_symlink(&target.target, &source, &target.owner)
+            fs.make_symlink(&target.target, source, &target.owner)
                 .context("create target symlink")?;
             Ok(true)
         }
@@ -470,7 +470,7 @@ pub fn update_template(
 ) -> Result<bool> {
     debug!("Updating template {:?} -> {:?}...", source, target.target);
     let comparison = fs
-        .compare_template(&target.target, &cache)
+        .compare_template(&target.target, cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -486,7 +486,7 @@ pub fn update_template(
             );
             fs.set_owner(&target.target, &target.owner)
                 .context("set target file owner")?;
-            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, target, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -496,14 +496,14 @@ pub fn update_template(
                 source, target.target
             );
             fs.create_dir_all(
-                &target
+                target
                     .target
                     .parent()
                     .context("get parent of target file")?,
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, target, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -529,7 +529,7 @@ pub fn update_template(
             );
             fs.remove_file(&target.target)
                 .context("remove target while forcing")?;
-            perform_template_deploy(source, &cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, target, fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -552,7 +552,7 @@ pub(crate) fn perform_template_deploy(
     variables: &Variables,
 ) -> Result<()> {
     let file_contents = fs
-        .read_to_string(&source)
+        .read_to_string(source)
         .context("read template source file")?;
     let file_contents = target.apply_actions(file_contents);
     let rendered = handlebars
@@ -560,15 +560,15 @@ pub(crate) fn perform_template_deploy(
         .context("render template")?;
 
     // Cache
-    fs.create_dir_all(&cache.parent().context("get parent of cache file")?, &None)
+    fs.create_dir_all(cache.parent().context("get parent of cache file")?, &None)
         .context("create parent for cache file")?;
-    fs.write(&cache, rendered)
+    fs.write(cache, rendered)
         .context("write rendered template to cache")?;
 
     // Target
-    fs.copy_file(&cache, &target.target, &target.owner)
+    fs.copy_file(cache, &target.target, &target.owner)
         .context("copy template from cache to target")?;
-    fs.copy_permissions(&source, &target.target, &target.owner)
+    fs.copy_permissions(source, &target.target, &target.owner)
         .context("copy permissions from source to target")?;
 
     Ok(())

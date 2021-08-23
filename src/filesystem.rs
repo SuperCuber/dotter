@@ -884,7 +884,7 @@ pub fn symlinks_enabled(_test_file_path: &Path) -> Result<bool> {
 
 #[cfg(windows)]
 pub fn platform_dunce(path: &Path) -> PathBuf {
-    dunce::simplified(&path).into()
+    dunce::simplified(path).into()
 }
 
 #[cfg(unix)]

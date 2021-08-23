@@ -19,7 +19,7 @@ pub fn print_template_diff(
     diff_context_lines: usize,
 ) {
     if log_enabled!(log::Level::Info) {
-        match generate_diff(source, target, handlebars, &variables) {
+        match generate_diff(source, target, handlebars, variables) {
             Ok(diff) => {
                 if diff_nonempty(&diff) {
                     info!(
