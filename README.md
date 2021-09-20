@@ -24,6 +24,9 @@ The following AUR packages are available:
 
 All of those are maintained by [orhun](https://github.com/orhun/) - huge thanks to him!
 
+## Windows
+Dotter is available on [Scoop](https://scoop.sh). Run `scoop install dotter` to install the latest release.
+
 ## Others
 
 Download the binary for your platform from the latest release and then put it in your `$PATH` or in your dotfile repository (then you'd run it with `./dotter`).
