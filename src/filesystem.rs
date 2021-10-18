@@ -291,7 +291,7 @@ impl Filesystem for RealFilesystem {
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
-        let metadata = path.metadata().context("get metadata")?;
+        let metadata = path.symlink_metadata().context("get metadata")?;
         let result = if metadata.is_dir() {
             std::fs::remove_dir_all(path)
         } else {
