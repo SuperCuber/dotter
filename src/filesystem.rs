@@ -110,8 +110,7 @@ impl Filesystem for RealFilesystem {
         let link_state = get_file_state(link).context("get link state")?;
         trace!("Link state: {:#?}", link_state);
 
-        let source = real_path(source).context("get real path of source")?;
-        Ok(compare_symlink(&source, source_state, link_state))
+        compare_symlink(source, source_state, link_state)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
@@ -277,8 +276,7 @@ impl Filesystem for RealFilesystem {
         let source_state = get_file_state(source).context("get source state")?;
         let link_state = get_file_state(link).context("get link state")?;
 
-        let source = real_path(source).context("get real path of source")?;
-        Ok(compare_symlink(&source, source_state, link_state))
+        compare_symlink(source, source_state, link_state)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
@@ -293,7 +291,7 @@ impl Filesystem for RealFilesystem {
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
-        let metadata = path.metadata().context("get metadata")?;
+        let metadata = path.symlink_metadata().context("get metadata")?;
         let result = if metadata.is_dir() {
             std::fs::remove_dir_all(path)
         } else {
@@ -589,8 +587,7 @@ impl Filesystem for DryRunFilesystem {
             state
         };
 
-        let source = real_path(source).context("get real path of source")?;
-        Ok(compare_symlink(&source, source_state, link_state))
+        compare_symlink(source, source_state, link_state)
     }
 
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
@@ -760,11 +757,11 @@ fn compare_symlink(
     source_path: &Path,
     source_state: FileState,
     link_state: FileState,
-) -> SymlinkComparison {
-    match (source_state, link_state) {
+) -> Result<SymlinkComparison> {
+    Ok(match (source_state, link_state) {
         (FileState::Missing, FileState::SymbolicLink(_)) => SymlinkComparison::OnlyTargetExists,
         (_, FileState::SymbolicLink(t)) => {
-            if t == source_path {
+            if t == real_path(source_path).context("get real path of source")? {
                 SymlinkComparison::Identical
             } else {
                 SymlinkComparison::Changed
@@ -773,7 +770,7 @@ fn compare_symlink(
         (FileState::Missing, FileState::Missing) => SymlinkComparison::BothMissing,
         (_, FileState::Missing) => SymlinkComparison::OnlySourceExists,
         _ => SymlinkComparison::TargetNotSymlink,
-    }
+    })
 }
 
 #[derive(Debug, PartialEq)]
