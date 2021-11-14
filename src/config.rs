@@ -21,6 +21,7 @@ pub struct SymbolicTarget {
     pub owner: Option<UnixUser>,
     #[serde(rename = "if")]
     pub condition: Option<String>,
+    pub recursive: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -421,6 +422,7 @@ impl<T: Into<PathBuf>> From<T> for SymbolicTarget {
             target: input.into(),
             owner: None,
             condition: None,
+            recursive: None,
         }
     }
 }
@@ -478,6 +480,10 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
         .context("read file's metadata")?
         .is_file()
     {
+        let mut map = Files::new();
+        map.insert(source.into(), target);
+        Ok(map)
+    } else if let FileTarget::Symbolic(SymbolicTarget{target:_, owner:_, condition: _, recursive: Some(false)}) = target {
         let mut map = Files::new();
         map.insert(source.into(), target);
         Ok(map)
