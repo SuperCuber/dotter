@@ -1,6 +1,6 @@
 [package]
 name = "dotter"
-version = "0.12.8"
+version = "0.12.9"
 authors = ["SuperCuber <amit.gold01@gmail.com>"]
 description = "A dotfile manager and templater written in rust"
 edition = "2018"
@@ -25,7 +25,7 @@ shellexpand = "2.*"
 simplelog = "0.8.*"
 structopt = "0.3.*"
 toml = "0.4.*"
-watchexec = "=1.14.1"
+watchexec = "1.*"
 
 [dependencies.handlebars_misc_helpers]
 version = "0.12.*"

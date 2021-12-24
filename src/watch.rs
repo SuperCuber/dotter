@@ -19,14 +19,12 @@ impl watchexec::Handler for WatchDeployHandler {
         self.on_manual()
     }
 
-    fn args(&self) -> watchexec::Args {
-        watchexec::cli::ArgsBuilder::default()
+    fn args(&self) -> watchexec::config::Config {
+        watchexec::config::ConfigBuilder::default()
             .cmd(vec!["".into()])
             .filters(vec!["*".into(), ".*".into()])
             .ignores(vec![
                 ".git".into(),
-                self.0.global_config.to_string_lossy().into(),
-                self.0.local_config.to_string_lossy().into(),
                 self.0.cache_file.to_string_lossy().into(),
                 self.0.cache_directory.to_string_lossy().into(),
                 "DOTTER_SYMLINK_TEST".into(),
