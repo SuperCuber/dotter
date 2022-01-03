@@ -4,6 +4,8 @@ use handlebars::Handlebars;
 use std::path::Path;
 use std::process::Command;
 
+use std::os::unix::fs::PermissionsExt;
+
 pub(crate) fn run_hook(
     location: &Path,
     cache_dir: &Path,
@@ -31,16 +33,23 @@ pub(crate) fn run_hook(
     )
     .context("deploy script")?;
 
-    debug!("Running script file ");
+    debug!("Running script file");
     let mut child = if cfg!(windows) {
         Command::new(script_file)
             .spawn()
             .context("spawn batch file")?
     } else {
-        Command::new("sh")
-            .arg(script_file)
-            .spawn()
-            .context("spawn shell")?
+        let permissions = script_file.metadata()?.permissions();
+        if !script_file.is_dir() && permissions.mode() & 0o111 != 0 {
+            Command::new(script_file)
+                .spawn()
+                .context("spawn script file")?
+        } else {
+            Command::new("sh")
+                .arg(script_file)
+                .spawn()
+                .context("spawn shell")?
+        }
     };
 
     anyhow::ensure!(
