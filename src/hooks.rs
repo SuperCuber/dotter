@@ -4,7 +4,7 @@ use handlebars::Handlebars;
 use std::path::Path;
 use std::process::Command;
 
-use std::os::unix::fs::PermissionsExt;
+use crate::config::TemplateTarget;
 
 pub(crate) fn run_hook(
     location: &Path,
@@ -23,10 +23,11 @@ pub(crate) fn run_hook(
     }
     debug!("Rendering script {:?} -> {:?}", location, script_file);
 
+    let target: TemplateTarget = std::env::temp_dir().join("dotter_temp").into();
     crate::actions::perform_template_deploy(
         location,
         &script_file,
-        &std::env::temp_dir().join("dotter_temp").into(),
+        &target,
         &mut crate::filesystem::RealFilesystem::new(false),
         handlebars,
         variables,
@@ -35,18 +36,20 @@ pub(crate) fn run_hook(
 
     debug!("Running script file");
     let mut child = if cfg!(windows) {
-        Command::new(script_file)
+        Command::new(target.target)
             .spawn()
             .context("spawn batch file")?
     } else {
-        let permissions = script_file.metadata()?.permissions();
-        if !script_file.is_dir() && permissions.mode() & 0o111 != 0 {
-            Command::new(script_file)
+        use std::os::unix::fs::PermissionsExt;
+        
+        let permissions = target.target.metadata()?.permissions();
+        if !target.target.is_dir() && permissions.mode() & 0o111 != 0 {
+            Command::new(target.target)
                 .spawn()
                 .context("spawn script file")?
         } else {
             Command::new("sh")
-                .arg(script_file)
+                .arg(target.target)
                 .spawn()
                 .context("spawn shell")?
         }
