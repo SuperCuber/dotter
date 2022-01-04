@@ -5,8 +5,6 @@ use std::path::Path;
 use std::process::Command;
 use std::process::Child;
 
-use crate::config::TemplateTarget;
-
 pub(crate) fn run_hook(
     location: &Path,
     cache_dir: &Path,
@@ -19,16 +17,17 @@ pub(crate) fn run_hook(
     }
 
     let mut script_file = cache_dir.join(location);
+    let mut target = std::env::temp_dir().join("dotter_temp");
     if cfg!(windows) {
         script_file.set_extension("bat");
+        target.set_extension("bat");
     }
     debug!("Rendering script {:?} -> {:?}", location, script_file);
-
-    let target: TemplateTarget = std::env::temp_dir().join("dotter_temp").into();
+    
     crate::actions::perform_template_deploy(
         location,
         &script_file,
-        &target,
+        &target.clone().into(),
         &mut crate::filesystem::RealFilesystem::new(false),
         handlebars,
         variables,
@@ -36,13 +35,7 @@ pub(crate) fn run_hook(
     .context("deploy script")?;
 
     debug!("Running script file");
-    let mut child = if cfg!(windows) {
-        Command::new(target.target)
-            .spawn()
-            .context("spawn batch file")?
-    } else {
-        execute_unix(&target.target)?
-    };
+    let mut child = run_script_file(&target)?;
 
     anyhow::ensure!(
         child.wait().context("wait for child shell")?.success(),
@@ -53,7 +46,7 @@ pub(crate) fn run_hook(
 }
 
 #[cfg(unix)]
-fn execute_unix(script: &Path) -> Result<Child> {
+fn run_script_file(script: &Path) -> Result<Child> {
     use std::os::unix::fs::PermissionsExt;
 
     let permissions = script.metadata()?.permissions();
@@ -67,4 +60,11 @@ fn execute_unix(script: &Path) -> Result<Child> {
             .spawn()
             .context("spawn shell")
     }
+}
+
+#[cfg(windows)]
+fn run_script_file(script: &Path) -> Result<Child> {
+    Command::new(script)
+            .spawn()
+            .context("spawn batch file")
 }
