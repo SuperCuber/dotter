@@ -3,6 +3,7 @@ use handlebars::Handlebars;
 
 use std::path::Path;
 use std::process::Command;
+use std::process::Child;
 
 use crate::config::TemplateTarget;
 
@@ -40,19 +41,7 @@ pub(crate) fn run_hook(
             .spawn()
             .context("spawn batch file")?
     } else {
-        use std::os::unix::fs::PermissionsExt;
-        
-        let permissions = target.target.metadata()?.permissions();
-        if !target.target.is_dir() && permissions.mode() & 0o111 != 0 {
-            Command::new(target.target)
-                .spawn()
-                .context("spawn script file")?
-        } else {
-            Command::new("sh")
-                .arg(target.target)
-                .spawn()
-                .context("spawn shell")?
-        }
+        execute_unix(&target.target)?
     };
 
     anyhow::ensure!(
@@ -61,4 +50,21 @@ pub(crate) fn run_hook(
     );
 
     Ok(())
+}
+
+#[cfg(unix)]
+fn execute_unix(script: &Path) -> Result<Child> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let permissions = script.metadata()?.permissions();
+    if !script.is_dir() && permissions.mode() & 0o111 != 0 {
+        Command::new(script)
+            .spawn()
+            .context("spawn script file")
+    } else {
+        Command::new("sh")
+            .arg(script)
+            .spawn()
+            .context("spawn shell")
+    }
 }
