@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use handlebars::Handlebars;
 
 use std::path::Path;
-use std::process::Command;
 use std::process::Child;
+use std::process::Command;
 
 pub(crate) fn run_hook(
     location: &Path,
@@ -23,7 +23,7 @@ pub(crate) fn run_hook(
         target.set_extension("bat");
     }
     debug!("Rendering script {:?} -> {:?}", location, script_file);
-    
+
     crate::actions::perform_template_deploy(
         location,
         &script_file,
@@ -51,9 +51,7 @@ fn run_script_file(script: &Path) -> Result<Child> {
 
     let permissions = script.metadata()?.permissions();
     if !script.is_dir() && permissions.mode() & 0o111 != 0 {
-        Command::new(script)
-            .spawn()
-            .context("spawn script file")
+        Command::new(script).spawn().context("spawn script file")
     } else {
         Command::new("sh")
             .arg(script)
@@ -64,7 +62,5 @@ fn run_script_file(script: &Path) -> Result<Child> {
 
 #[cfg(windows)]
 fn run_script_file(script: &Path) -> Result<Child> {
-    Command::new(script)
-            .spawn()
-            .context("spawn batch file")
+    Command::new(script).spawn().context("spawn batch file")
 }
