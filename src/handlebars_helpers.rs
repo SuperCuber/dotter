@@ -323,6 +323,7 @@ mod test {
             variables: maplit::btreemap! { "foo".into() => 2.into() },
             helpers: Helpers::new(),
             packages: vec!["default".into()],
+            recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
@@ -351,6 +352,7 @@ mod test {
             variables: Variables::new(),
             helpers: Helpers::new(),
             packages: vec!["default".into()],
+            recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 

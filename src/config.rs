@@ -19,6 +19,7 @@ pub enum UnixUser {
 pub struct SymbolicTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
+    pub recurse: Option<bool>,
     #[serde(rename = "if")]
     pub condition: Option<String>,
 }
@@ -70,6 +71,12 @@ pub struct Configuration {
     pub variables: Variables,
     pub helpers: Helpers,
     pub packages: Vec<String>,
+
+    /// If the source is a directory, or a symlink to a directory,
+    /// and this option is true, the source will be recursed and
+    /// turned into a list of all the files inside the structure that
+    /// are readable.
+    pub recurse: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -140,7 +147,7 @@ pub fn load_configuration(
 
     debug!("Expanding files which are directories...");
     merged_config.files =
-        expand_directories(merged_config.files).context("expand files that are directories")?;
+        expand_directories(&merged_config).context("expand files that are directories")?;
 
     debug!("Expanding tildes to home directory...");
     merged_config.files = merged_config
@@ -303,6 +310,7 @@ fn merge_configuration_files(
         files: Files::default(),
         variables: Variables::default(),
         packages: enabled_packages.into_iter().collect(),
+        recurse: true,
     };
 
     // Merge all the packages
@@ -421,6 +429,7 @@ impl<T: Into<PathBuf>> From<T> for SymbolicTarget {
             target: input.into(),
             owner: None,
             condition: None,
+            recurse: None,
         }
     }
 }
@@ -462,24 +471,48 @@ impl TemplateTarget {
     }
 }
 
-fn expand_directories(files: Files) -> Result<Files> {
-    let expanded = files
-        .into_iter()
-        .map(|(from, to)| expand_directory(&from, to).context(format!("expand file {:?}", from)))
+fn expand_directories(config: &Configuration) -> Result<Files> {
+    let expanded = config
+        .files
+        .iter()
+        .map(|(source, target)| {
+            expand_directory(source, target, config).context(format!("expand file {:?}", source))
+        })
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
 }
 
 /// If a file is given, it will return a map of one element
 /// Otherwise, returns recursively all the children and their targets
-///  in relation to parent target
-fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
-    if fs::metadata(source)
-        .context("read file's metadata")?
-        .is_file()
-    {
+/// in relation to parent target
+fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) -> Result<Files> {
+    let metadata = fs::metadata(source).with_context(|| {
+        let path_str = source.to_string_lossy();
+        format!("read metadata for '{path_str}'")
+    })?;
+
+    // Per the File docs, the most reliable way to determine if something
+    // is a file is to simply try to open it. This allows linking to
+    // other symlinks and other readable special files.
+    let is_readable_file = !metadata.is_dir() && fs::File::open(source).is_ok();
+
+    // if a target explicitly specifies a recurse option, this takes
+    // precedence over the global default
+    let recurse = match target {
+        FileTarget::Symbolic(SymbolicTarget {
+            target: _,
+            owner: _,
+            condition: _,
+            recurse: Some(rec),
+        }) => *rec,
+        _ => config.recurse,
+    };
+
+    trace!("expanding '{source:?}', recurse: {recurse}, readable: {is_readable_file}");
+
+    if !recurse || is_readable_file {
         let mut map = Files::new();
-        map.insert(source.into(), target);
+        map.insert(source.into(), target.clone());
         Ok(map)
     } else {
         let expanded = fs::read_dir(source)
@@ -489,7 +522,7 @@ fn expand_directory(source: &Path, target: FileTarget) -> Result<Files> {
                 let child_source = PathBuf::from(source).join(&child);
                 let mut child_target = target.clone();
                 child_target.set_path(child_target.path().join(&child));
-                expand_directory(&child_source, child_target)
+                expand_directory(&child_source, &child_target, config)
                     .context(format!("expand file {:?}", child_source))
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
