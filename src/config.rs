@@ -486,10 +486,7 @@ fn expand_directories(config: &Configuration) -> Result<Files> {
 /// Otherwise, returns recursively all the children and their targets
 /// in relation to parent target
 fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) -> Result<Files> {
-    let metadata = fs::metadata(source).with_context(|| {
-        let path_str = source.to_string_lossy();
-        format!("read metadata for '{path_str}'")
-    })?;
+    let metadata = fs::metadata(source).context("read file metadata")?;
 
     // Per the File docs, the most reliable way to determine if something
     // is a file is to simply try to open it. This allows linking to
