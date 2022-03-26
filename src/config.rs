@@ -488,11 +488,6 @@ fn expand_directories(config: &Configuration) -> Result<Files> {
 fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) -> Result<Files> {
     let metadata = fs::metadata(source).context("read file metadata")?;
 
-    // Per the File docs, the most reliable way to determine if something
-    // is a file is to simply try to open it. This allows linking to
-    // other symlinks and other readable special files.
-    let is_readable_file = !metadata.is_dir() && fs::File::open(source).is_ok();
-
     // if a target explicitly specifies a recurse option, this takes
     // precedence over the global default
     let recurse = match target {
@@ -505,9 +500,9 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
         _ => config.recurse,
     };
 
-    trace!("expanding '{source:?}', recurse: {recurse}, readable: {is_readable_file}");
+    trace!("expanding '{source:?}', recurse: {recurse}");
 
-    if !recurse || is_readable_file {
+    if !recurse || !metadata.is_dir() {
         let mut map = Files::new();
         map.insert(source.into(), target.clone());
         Ok(map)
