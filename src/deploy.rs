@@ -84,8 +84,7 @@ Proceeding by copying instead of symlinking."
         if symlinks_enabled {
             match target {
                 FileTarget::Automatic(target) => {
-                    if fs
-                        .is_template(&source)
+                    if filesystem::is_template(&source)
                         .context(format!("check whether {:?} is a template", source))?
                     {
                         desired_templates.insert(source, target.into());
