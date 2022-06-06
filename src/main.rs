@@ -66,6 +66,7 @@ fn run() -> Result<bool> {
             .add_filter_allow("dotter".into())
             .build(),
         simplelog::TerminalMode::Mixed,
+        simplelog::ColorChoice::Auto,
     )
     .unwrap();
 
