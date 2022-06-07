@@ -24,7 +24,7 @@ serde = "1.*"
 shellexpand = "2.*"
 simplelog = "0.12.*"
 structopt = "0.3.*"
-tokio = "*"
+tokio = "1.*"
 toml = "0.4.*"
 watchexec = "=2.0.0-pre.14"
 
