@@ -308,6 +308,15 @@ fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[Str
         "os".into(),
         (if cfg!(windows) { "windows" } else { "unix" }).into(),
     );
+    dotter.insert(
+        "current_dir".into(),
+        Value::String(
+            std::env::current_dir()
+                .expect("get current dir")
+                .to_string_lossy()
+                .into(),
+        ),
+    );
 
     variables.insert("dotter".into(), dotter.into());
 }
