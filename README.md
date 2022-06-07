@@ -11,10 +11,6 @@ However, there are several issues with that barebones approach:
 
 Dotter aims to solve all those problems by providing a flexible configuration and automatic templating or symlinking to the target locations.
 
-⚠️ **THIS PROJECT IS UNDER HEAVY DEVELOPMENT**. I use it regularly myself so it's reasonably tested, but expect bugs to happen.
-If you find a bug, please open an issue describing how to reproduce it, and it will get fixed.\
-I create Releases often so make sure you check whether the bug was fixed in the latest one!
-
 # Installation
 ## Arch Linux
 The following AUR packages are available:
@@ -43,7 +39,7 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-Dotter 0.12.10
+Dotter 0.12.11
 A small dotfile manager
 
 USAGE:
