@@ -2,6 +2,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use log::Level;
 use watchexec::action::{Action, Outcome};
 use watchexec::config::{InitConfig, RuntimeConfig};
 use watchexec::filter::tagged::{Filter, Matcher, Op, Pattern, TaggedFilterer};
@@ -17,11 +18,11 @@ pub(crate) async fn watch(opt: Options) -> Result<()> {
     let mut init = InitConfig::default();
     let mut errors = false;
     init.on_error(SyncFnHandler::from(move |e| {
-        if !errors {
+        if !errors && !log::log_enabled!(Level::Debug) {
             log::warn!("Watcher produced errors. Re-run with -vv to see them.");
             errors = true;
         }
-        log::debug!("{e:?}");
+        log::debug!("Watcher error: {e:#?}");
         Ok::<(), Infallible>(())
     }));
 
