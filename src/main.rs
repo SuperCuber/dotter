@@ -99,7 +99,10 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
         }
         args::Action::Watch => {
             debug!("Watching...");
-            watch::watch(opt).context("watch repository")?;
+            tokio::runtime::Runtime::new()
+                .expect("create a tokio runtime")
+                .block_on(watch::watch(opt))
+                .context("watch repository")?;
         }
     }
 

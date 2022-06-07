@@ -24,8 +24,9 @@ serde = "1.*"
 shellexpand = "2.*"
 simplelog = "0.12.*"
 structopt = "0.3.*"
+tokio = "*"
 toml = "0.4.*"
-watchexec = "1.*"
+watchexec = "=2.0.0-pre.14"
 
 [dependencies.handlebars_misc_helpers]
 version = "0.12.*"
