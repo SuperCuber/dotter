@@ -167,10 +167,12 @@ impl Filesystem for RealFilesystem {
                 owner, link, target
             );
         }
-        fs::symlink_file(
-            real_path(target).context("get real path of source file")?,
-            link,
-        )
+        let real_target_path = real_path(target).context("get real path of source file")?;
+        if real_target_path.is_dir() {
+            fs::symlink_dir(real_target_path, link)
+        } else {
+            fs::symlink_file(real_target_path, link)
+        }
         .context("create symlink")
     }
 
