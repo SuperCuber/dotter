@@ -330,8 +330,17 @@ fn merge_configuration_files(
             }
 
             for (variable_name, variable_value) in package.variables {
-                if first_package.variables.contains_key(&variable_name) {
-                    anyhow::bail!("variable {:?} already encountered", variable_name);
+                if let Some(first_value) = first_package.variables.get_mut(&variable_name).as_mut()
+                {
+                    match (first_value, variable_value) {
+                        (toml::Value::Table(first_value), toml::Value::Table(variable_value)) => {
+                            trace!("Merging {:?} tables", variable_name);
+                            recursive_extend_map(first_value, variable_value);
+                        }
+                        _ => {
+                            anyhow::bail!("variable {:?} already encountered", variable_name);
+                        }
+                    }
                 } else {
                     first_package
                         .variables
