@@ -1,80 +1,92 @@
 use std::path::PathBuf;
 
-use structopt::StructOpt;
+use clap::{Parser, Subcommand};
 
-#[derive(Debug, StructOpt, Default, Clone)]
-#[structopt(name = "Dotter")]
 /// A small dotfile manager.
+#[derive(Debug, Parser, Default, Clone)]
+#[clap(author, version, about, long_about = None)]
 pub struct Options {
     /// Location of the global configuration
-    #[structopt(short, long, default_value = ".dotter/global.toml", global = true)]
+    #[clap(
+        short,
+        long,
+        value_parser,
+        default_value = ".dotter/global.toml",
+        global = true
+    )]
     pub global_config: PathBuf,
 
     /// Location of the local configuration
-    #[structopt(short, long, default_value = ".dotter/local.toml", global = true)]
+    #[clap(
+        short,
+        long,
+        value_parser,
+        default_value = ".dotter/local.toml",
+        global = true
+    )]
     pub local_config: PathBuf,
 
     /// Location of cache file
-    #[structopt(long, default_value = ".dotter/cache.toml")]
+    #[clap(long, value_parser, default_value = ".dotter/cache.toml")]
     pub cache_file: PathBuf,
 
     /// Directory to cache into.
-    #[structopt(long, default_value = ".dotter/cache")]
+    #[clap(long, value_parser, default_value = ".dotter/cache")]
     pub cache_directory: PathBuf,
 
     /// Location of optional pre-deploy hook
-    #[structopt(long, default_value = ".dotter/pre_deploy.sh")]
+    #[clap(long, value_parser, default_value = ".dotter/pre_deploy.sh")]
     pub pre_deploy: PathBuf,
 
     /// Location of optional post-deploy hook
-    #[structopt(long, default_value = ".dotter/post_deploy.sh")]
+    #[clap(long, value_parser, default_value = ".dotter/post_deploy.sh")]
     pub post_deploy: PathBuf,
 
     /// Location of optional pre-undeploy hook
-    #[structopt(long, default_value = ".dotter/pre_undeploy.sh")]
+    #[clap(long, value_parser, default_value = ".dotter/pre_undeploy.sh")]
     pub pre_undeploy: PathBuf,
 
     /// Location of optional post-undeploy hook
-    #[structopt(long, default_value = ".dotter/post_undeploy.sh")]
+    #[clap(long, value_parser, default_value = ".dotter/post_undeploy.sh")]
     pub post_undeploy: PathBuf,
 
     /// Dry run - don't do anything, only print information.
     /// Implies -v at least once
-    #[structopt(short = "d", long = "dry-run", parse(from_flag = std::ops::Not::not), global = true)]
+    #[clap(short = 'd', long = "dry-run", parse(from_flag = std::ops::Not::not), global = true)]
     pub act: bool,
 
     /// Verbosity level - specify up to 3 times to get more detailed output.
     /// Specifying at least once prints the differences between what was before and after Dotter's run
-    #[structopt(short = "v", long = "verbose", parse(from_occurrences), global = true)]
-    pub verbosity: u64,
+    #[clap(short = 'v', long = "verbose", action = clap::ArgAction::Count, global = true)]
+    pub verbosity: u8,
 
     /// Quiet - only print errors
-    #[structopt(short, long, global = true)]
+    #[clap(short, long, value_parser, global = true)]
     pub quiet: bool,
 
     /// Force - instead of skipping, overwrite target files if their content is unexpected.
     /// Overrides --dry-run.
-    #[structopt(short, long, global = true)]
+    #[clap(short, long, value_parser, global = true)]
     pub force: bool,
 
     /// Assume "yes" instead of prompting when removing empty directories
-    #[structopt(short = "y", long = "noconfirm", parse(from_flag = std::ops::Not::not), global = true)]
+    #[clap(short = 'y', long = "noconfirm", parse(from_flag = std::ops::Not::not), global = true)]
     pub interactive: bool,
 
     /// Take standard input as an additional files/variables patch, added after evaluating
     /// `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch.
-    #[structopt(short, long, global = true)]
+    #[clap(short, long, value_parser, global = true)]
     pub patch: bool,
 
     /// Amount of lines that are printed before and after a diff hunk.
-    #[structopt(long, default_value = "3")]
+    #[clap(long, value_parser, default_value = "3")]
     pub diff_context_lines: usize,
 
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     pub action: Option<Action>,
 }
 
-#[derive(Debug, Clone, Copy, StructOpt)]
+#[derive(Debug, Clone, Copy, Subcommand)]
 pub enum Action {
     /// Deploy the files to their respective targets. This is the default subcommand.
     Deploy,
@@ -99,7 +111,7 @@ impl Default for Action {
 }
 
 pub fn get_options() -> Options {
-    let mut opt = Options::from_args();
+    let mut opt = Options::parse();
     if !opt.act {
         opt.verbosity = std::cmp::max(opt.verbosity, 1);
     }
