@@ -12,7 +12,7 @@ license = "Unlicense"
 
 [dependencies]
 anyhow = "1.*"
-clap = "2.*"
+clap = { version = "3.*", features = ["derive"] }
 crossterm = "0.18.*"
 diff = "0.1.*"
 handlebars = { version = "4.*", features = ["script_helper"] }
@@ -23,7 +23,6 @@ meval = "0.2.*"
 serde = "1.*"
 shellexpand = "2.*"
 simplelog = "0.12.*"
-structopt = "0.3.*"
 tokio = "1.*"
 toml = "0.4.*"
 watchexec = "=2.0.0-pre.14"
