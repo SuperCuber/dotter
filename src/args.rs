@@ -7,11 +7,23 @@ use clap::{Parser, Subcommand};
 #[clap(author, version, about, long_about = None)]
 pub struct Options {
     /// Location of the global configuration
-    #[clap(short, long, value_parser, default_value = ".dotter/global.toml", global = true)]
+    #[clap(
+        short,
+        long,
+        value_parser,
+        default_value = ".dotter/global.toml",
+        global = true
+    )]
     pub global_config: PathBuf,
 
     /// Location of the local configuration
-    #[clap(short, long, value_parser, default_value = ".dotter/local.toml", global = true)]
+    #[clap(
+        short,
+        long,
+        value_parser,
+        default_value = ".dotter/local.toml",
+        global = true
+    )]
     pub local_config: PathBuf,
 
     /// Location of cache file
