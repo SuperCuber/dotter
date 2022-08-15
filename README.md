@@ -103,6 +103,7 @@ OPTIONS:
 
 SUBCOMMANDS:
     deploy      Deploy the files to their respective targets. This is the default subcommand
+    gen-completions    Generate shell completions
     help        Print this message or the help of the given subcommand(s)
     init        Initialize global.toml with a single package containing all the files in the
                     current directory pointing to a dummy value and a local.toml that selects that
