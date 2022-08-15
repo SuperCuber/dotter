@@ -109,7 +109,7 @@ pub enum Action {
         /// Set the shell for generating completions [values: bash, elvish, fish, powerShell, zsh]
         #[clap(long, short)]
         shell: Shell,
-    }
+    },
 }
 
 impl Default for Action {
