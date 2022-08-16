@@ -39,7 +39,7 @@ All the files will be deployed to their target locations.
 Check out `dotter -h` for the command-line flags that Dotter supports:
 
 ```
-dotter 0.12.13
+dotter 0.12.14
 SuperCuber <amit.gold01@gmail.com>
 A dotfile manager and templater written in rust
 
