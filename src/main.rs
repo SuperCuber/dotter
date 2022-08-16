@@ -12,6 +12,7 @@ mod hooks;
 mod init;
 mod watch;
 
+use std::fmt::Write;
 use std::io;
 
 use anyhow::{Context, Result};
@@ -34,7 +35,7 @@ pub(crate) fn display_error(error: anyhow::Error) {
     let mut error_message = format!("Failed to {}\nCaused by:\n", chain.next().unwrap());
 
     for e in chain {
-        error_message.push_str(&format!("    {}\n", e));
+        writeln!(error_message, "    {}", e).unwrap();
     }
     // Remove last \n
     error_message.pop();

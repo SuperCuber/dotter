@@ -714,7 +714,7 @@ fn get_file_state(path: &Path) -> Result<FileState> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SymlinkComparison {
     Identical,
     OnlySourceExists,
@@ -759,7 +759,7 @@ fn compare_symlink(
     })
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TemplateComparison {
     Identical,
     OnlyCacheExists,
