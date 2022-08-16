@@ -13,6 +13,7 @@ license = "Unlicense"
 [dependencies]
 anyhow = "1.*"
 clap = { version = "3.*", features = ["derive"] }
+clap_complete = "3.*"
 crossterm = "0.18.*"
 diff = "0.1.*"
 handlebars = { version = "4.*", features = ["script_helper"] }
