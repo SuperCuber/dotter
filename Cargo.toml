@@ -12,8 +12,8 @@ license = "Unlicense"
 
 [dependencies]
 anyhow = "1.*"
-clap = { version = "3.*", features = ["derive"] }
-clap_complete = "3.*"
+clap = { version = "4.0.26", features = ["derive"] }
+clap_complete = "4.0.5"
 crossterm = "0.18.*"
 diff = "0.1.*"
 handlebars = { version = "4.*", features = ["script_helper"] }
