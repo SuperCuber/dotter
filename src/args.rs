@@ -53,7 +53,7 @@ pub struct Options {
 
     /// Dry run - don't do anything, only print information.
     /// Implies -v at least once
-    #[clap(short = 'd', long = "dry-run", parse(from_flag = std::ops::Not::not), global = true)]
+    #[clap(short = 'd', long = "dry-run", global = true)]
     pub act: bool,
 
     /// Verbosity level - specify up to 3 times to get more detailed output.
@@ -71,7 +71,7 @@ pub struct Options {
     pub force: bool,
 
     /// Assume "yes" instead of prompting when removing empty directories
-    #[clap(short = 'y', long = "noconfirm", parse(from_flag = std::ops::Not::not), global = true)]
+    #[clap(short = 'y', long = "noconfirm", global = true)]
     pub interactive: bool,
 
     /// Take standard input as an additional files/variables patch, added after evaluating

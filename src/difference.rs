@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use crossterm::style::Colorize;
+use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
 use std::cmp::{max, min};

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use crossterm::style::Colorize;
+use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
 use crate::config::{SymbolicTarget, TemplateTarget, Variables};
