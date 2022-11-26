@@ -89,13 +89,13 @@ pub trait Filesystem {
 
 #[cfg(windows)]
 pub struct RealFilesystem {
-    interactive: bool,
+    noconfirm: bool,
 }
 
 #[cfg(windows)]
 impl RealFilesystem {
-    pub fn new(interactive: bool) -> RealFilesystem {
-        RealFilesystem { interactive }
+    pub fn new(noconfirm: bool) -> RealFilesystem {
+        RealFilesystem { noconfirm }
     }
 }
 
@@ -145,7 +145,7 @@ impl Filesystem for RealFilesystem {
                 .next()
                 .is_none()
         {
-            if (!self.interactive || no_ask)
+            if (self.noconfirm || no_ask)
                 || ask_boolean(&format!(
                     "Directory at {:?} is now empty. Delete [y/N]? ",
                     path
@@ -231,16 +231,16 @@ impl Filesystem for RealFilesystem {
 
 #[cfg(unix)]
 pub struct RealFilesystem {
-    interactive: bool,
+    noconfirm: bool,
     sudo_occurred: bool,
 }
 
 #[cfg(unix)]
 impl RealFilesystem {
-    pub fn new(interactive: bool) -> RealFilesystem {
+    pub fn new(noconfirm: bool) -> RealFilesystem {
         RealFilesystem {
             sudo_occurred: false,
-            interactive,
+            noconfirm,
         }
     }
 
@@ -326,7 +326,7 @@ impl Filesystem for RealFilesystem {
                 .next()
                 .is_none()
         {
-            if (!self.interactive || no_ask)
+            if (self.noconfirm || no_ask)
                 || ask_boolean(&format!(
                     "Directory at {:?} is now empty. Delete [y/N]? ",
                     path

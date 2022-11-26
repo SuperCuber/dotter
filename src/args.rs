@@ -54,7 +54,7 @@ pub struct Options {
     /// Dry run - don't do anything, only print information.
     /// Implies -v at least once
     #[clap(short = 'd', long = "dry-run", global = true)]
-    pub act: bool,
+    pub dry_run: bool,
 
     /// Verbosity level - specify up to 3 times to get more detailed output.
     /// Specifying at least once prints the differences between what was before and after Dotter's run
@@ -72,7 +72,7 @@ pub struct Options {
 
     /// Assume "yes" instead of prompting when removing empty directories
     #[clap(short = 'y', long = "noconfirm", global = true)]
-    pub interactive: bool,
+    pub noconfirm: bool,
 
     /// Take standard input as an additional files/variables patch, added after evaluating
     /// `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch.
@@ -120,12 +120,12 @@ impl Default for Action {
 
 pub fn get_options() -> Options {
     let mut opt = Options::parse();
-    if !opt.act {
+    if opt.dry_run {
         opt.verbosity = std::cmp::max(opt.verbosity, 1);
     }
     opt.verbosity = std::cmp::min(3, opt.verbosity);
     if opt.patch {
-        opt.interactive = false;
+        opt.noconfirm = true;
     }
     opt
 }
