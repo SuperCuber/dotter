@@ -54,7 +54,7 @@ pub struct Options {
     /// Dry run - don't do anything, only print information.
     /// Implies -v at least once
     #[clap(short = 'd', long = "dry-run", global = true)]
-    pub act: bool,
+    pub dry_run: bool,
 
     /// Verbosity level - specify up to 3 times to get more detailed output.
     /// Specifying at least once prints the differences between what was before and after Dotter's run
@@ -120,7 +120,7 @@ impl Default for Action {
 
 pub fn get_options() -> Options {
     let mut opt = Options::parse();
-    if !opt.act {
+    if opt.dry_run {
         opt.verbosity = std::cmp::max(opt.verbosity, 1);
     }
     opt.verbosity = std::cmp::min(3, opt.verbosity);
