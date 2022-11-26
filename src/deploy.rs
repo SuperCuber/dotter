@@ -54,7 +54,7 @@ pub fn deploy(opt: &Options) -> Result<bool> {
 
     let (mut real_fs, mut dry_run_fs);
     let fs: &mut dyn Filesystem = if !opt.dry_run {
-        real_fs = crate::filesystem::RealFilesystem::new(opt.interactive);
+        real_fs = crate::filesystem::RealFilesystem::new(opt.noconfirm);
         &mut real_fs
     } else {
         dry_run_fs = crate::filesystem::DryRunFilesystem::new();
@@ -185,7 +185,7 @@ pub fn undeploy(opt: Options) -> Result<bool> {
 
     let (mut real_fs, mut dry_run_fs);
     let fs: &mut dyn Filesystem = if !opt.dry_run {
-        real_fs = crate::filesystem::RealFilesystem::new(opt.interactive);
+        real_fs = crate::filesystem::RealFilesystem::new(opt.noconfirm);
         &mut real_fs
     } else {
         dry_run_fs = crate::filesystem::DryRunFilesystem::new();
