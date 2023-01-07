@@ -93,6 +93,9 @@ pub enum Action {
     #[default]
     Deploy,
 
+    /// Modify the local configuration file.
+    Config,
+
     /// Delete all deployed files from their target locations.
     /// Note that this operates on all files that are currently in cache.
     Undeploy,

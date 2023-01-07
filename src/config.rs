@@ -92,7 +92,7 @@ pub struct Configuration {
     pub recurse: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Package {
     #[serde(default)]
@@ -103,57 +103,48 @@ pub struct Package {
     variables: Variables,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct GlobalConfig {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GlobalConfig {
     #[serde(default)]
     #[cfg(feature = "scripting")]
     helpers: Helpers,
     #[serde(flatten)]
-    packages: BTreeMap<String, Package>,
+    pub packages: BTreeMap<String, Package>,
 }
 
 type IncludedConfig = BTreeMap<String, Package>;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(deny_unknown_fields)]
-struct LocalConfig {
+pub struct LocalConfig {
     #[serde(default)]
     includes: Vec<PathBuf>,
-    packages: Vec<String>,
+    pub packages: Vec<String>,
     #[serde(default)]
     files: Files,
     #[serde(default)]
     variables: Variables,
 }
 
+impl LocalConfig {
+    pub fn empty_config() -> Self {
+        Self {
+            includes: Vec::new(),
+            packages: Vec::new(),
+            files: Files::new(),
+            variables: Variables::new(),
+        }
+    }
+}
+
 pub fn load_configuration(
-    local_config: &Path,
-    global_config: &Path,
+    local_config_path: &Path,
+    global_config_path: &Path,
     patch: Option<Package>,
 ) -> Result<Configuration> {
-    let global: GlobalConfig = filesystem::load_file(global_config)
-        .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
-        .with_context(|| format!("load global config {:?}", global_config))?;
-    trace!("Global config: {:#?}", global);
+    let global: GlobalConfig = load_global_config(global_config_path)?;
 
-    // If local.toml can't be found, look for a file named <hostname>.toml instead
-    let mut local_config_buf = local_config.to_path_buf();
-    if !local_config_buf.exists() {
-        let hostname = hostname::get()
-            .context("failed to get the computer hostname")?
-            .into_string()
-            .expect("hostname cannot be converted to string");
-        info!(
-            "{:?} not found, using {}.toml instead (based on hostname)",
-            local_config, hostname
-        );
-        local_config_buf.set_file_name(&format!("{}.toml", hostname));
-    }
-
-    let local: LocalConfig = filesystem::load_file(local_config_buf.as_path())
-        .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
-        .with_context(|| format!("load local config {:?}", local_config))?;
-    trace!("Local config: {:#?}", local);
+    let local: LocalConfig = load_local_config(local_config_path)?;
 
     let mut merged_config =
         merge_configuration_files(global, local, patch).context("merge configuration files")?;
@@ -183,6 +174,38 @@ pub fn load_configuration(
     trace!("Final helpers: {:?}", merged_config.helpers);
 
     Ok(merged_config)
+}
+
+pub fn load_global_config(global_config: &Path) -> Result<GlobalConfig> {
+    let global: GlobalConfig = filesystem::load_file(global_config)
+        .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
+        .with_context(|| format!("load global config {:?}", global_config))?;
+    trace!("Global config: {:#?}", global);
+
+    Ok(global)
+}
+
+pub fn load_local_config(local_config: &Path) -> Result<LocalConfig> {
+    // If local.toml can't be found, look for a file named <hostname>.toml instead
+    let mut local_config_buf = local_config.to_path_buf();
+    if !local_config_buf.exists() {
+        let hostname = hostname::get()
+            .context("failed to get the computer hostname")?
+            .into_string()
+            .expect("hostname cannot be converted to string");
+        info!(
+            "{:?} not found, using {}.toml instead (based on hostname)",
+            local_config, hostname
+        );
+        local_config_buf.set_file_name(&format!("{}.toml", hostname));
+    }
+
+    let local: LocalConfig = filesystem::load_file(local_config_buf.as_path())
+        .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
+        .with_context(|| format!("load local config {:?}", local_config))?;
+    trace!("Local config: {:#?}", local);
+
+    Ok(local)
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -258,7 +281,7 @@ fn recursive_extend_map(
 }
 
 #[allow(clippy::map_entry)]
-fn merge_configuration_files(
+pub fn merge_configuration_files(
     mut global: GlobalConfig,
     local: LocalConfig,
     patch: Option<Package>,
