@@ -362,9 +362,7 @@ fn merge_configuration_files(
     }
 
     // Remove files with target = ""
-    output
-        .files
-        .retain(|_, v| v.path().to_string_lossy() != "");
+    output.files.retain(|_, v| v.path().to_string_lossy() != "");
 
     Ok(output)
 }
