@@ -1,9 +1,10 @@
+use std::collections::BTreeMap;
 use anyhow::Context;
 use anyhow::Result;
 use dialoguer::MultiSelect;
 use crate::args::Options;
 use crate::filesystem;
-use crate::config::{Configuration, GlobalConfig, load_global_config, load_local_config, LocalConfig, merge_configuration_files};
+use crate::config::{Configuration, GlobalConfig, load_global_config, load_local_config, LocalConfig, merge_configuration_files, Package};
 
 /// Returns true if an error was printed
 pub fn config(opt: &Options) -> Result<bool> {
@@ -21,9 +22,9 @@ pub fn config(opt: &Options) -> Result<bool> {
         let enabled_packages = config.packages;
 
         // all packages, including the ones that are disabled
-        let packages: Vec<&String> = global_config.packages.keys().collect();
-        for name in &packages {
-            multi_select.item_checked(name, enabled_packages.contains_key(*name));
+        let packages: Vec<PackageNames> = get_packages(global_config.packages);
+        for (pretty_name, package_name) in packages.iter() {
+            multi_select.item_checked(pretty_name, enabled_packages.contains_key(package_name));
         }
 
         println!("Use space to select packages to enable, and enter to confirm");
@@ -32,7 +33,7 @@ pub fn config(opt: &Options) -> Result<bool> {
 
         match selected_items {
             Some(selected_items) => {
-                modify_and_save(opt, &mut local_config, packages, selected_items)?;
+                modify_and_save(opt, &mut local_config, packages.iter().map(|(key, _)| key).collect(), selected_items)?;
             }
             None => {
                 // user pressed "Esc" or "q" to quit
@@ -42,12 +43,12 @@ pub fn config(opt: &Options) -> Result<bool> {
         Ok(false)
     } else {
         debug!("No local configuration file found at {}", opt.local_config.display());
-        let packages: Vec<&String> = global_config.packages.keys().collect();
+        let packages: Vec<PackageNames> = get_packages(global_config.packages);
         trace!("Available packages: {:?}", packages);
 
         println!("Use space to select packages to enable, and enter to confirm");
         let selected_elements = multi_select.with_prompt("Select packages to install")
-            .items(&packages)
+            .items(packages.iter().map(|(key, _)| key).collect::<Vec<&String>>().iter().as_slice())
             .interact_opt()?;
         trace!("Selected elements: {:?}", selected_elements);
 
@@ -58,7 +59,7 @@ pub fn config(opt: &Options) -> Result<bool> {
                     .context("Writing empty configuration")?;
             }
             Some(selected_elements) => {
-                modify_and_save(opt, &mut LocalConfig::empty_config(), packages, selected_elements)?;
+                modify_and_save(opt, &mut LocalConfig::empty_config(), packages.iter().map(|(key, _)| key).collect::<Vec<&String>>(), selected_elements)?;
             },
             None => {
                 // user pressed "Esc" or "q" to quit
@@ -67,6 +68,36 @@ pub fn config(opt: &Options) -> Result<bool> {
         }
         Ok(false)
     }
+}
+
+/// Pretty Name, Package Name
+type PackageNames = (String, String);
+
+fn get_packages(packages: BTreeMap<String, Package>) -> Vec<PackageNames> {
+    let mut result: Vec<PackageNames> = vec![];
+    // generate tree with all packages, packages that depend on another one will be indented by two spaces
+    // packages can have multiple parents, so we need to keep track of which packages we already added
+    let mut added_packages = vec![];
+    let package_clone = packages.clone();
+    for (name, package) in packages {
+        if !added_packages.contains(&name) && package.depends.is_empty() {
+            trace!("Adding {} to list of packages", name);
+            added_packages.push(name.clone());
+            result.push((name.clone(), name.clone()));
+
+            for (this_name, package) in package_clone.clone() {
+                if package.depends.contains(&name) {
+                    trace!("Adding {} to list of packages but with indent", this_name);
+                    added_packages.push(this_name.clone());
+                    result.push((format!("  {}", this_name), this_name));
+                }
+            }
+        }
+    }
+
+    debug!("Result: {:?}", result);
+
+    result
 }
 
 fn modify_and_save(opt: &Options, local_config: &mut LocalConfig, items_in_order: Vec<&String>, selected_items: Vec<usize>) -> Result<()> {
