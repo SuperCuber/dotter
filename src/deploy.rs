@@ -297,7 +297,7 @@ fn run_deploy<A: ActionRunner>(
         existing_templates.difference(&desired_templates.keys().cloned().collect())
     {
         execute_action(
-            runner.delete_template(source, &opt.cache_directory.join(&source), target),
+            runner.delete_template(source, &opt.cache_directory.join(source), target),
             || resulting_cache.templates.remove(source),
             || format!("delete template {:?} -> {:?}", source, target),
             &mut suggest_force,
@@ -337,7 +337,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.create_template(source, &opt.cache_directory.join(&source), target),
+            runner.create_template(source, &opt.cache_directory.join(source), target),
             || {
                 resulting_cache
                     .templates
@@ -371,7 +371,7 @@ fn run_deploy<A: ActionRunner>(
             .get(&(source.into(), target_path.into()))
             .unwrap();
         execute_action(
-            runner.update_template(source, &opt.cache_directory.join(&source), target),
+            runner.update_template(source, &opt.cache_directory.join(source), target),
             || (),
             || format!("update template {:?} -> {:?}", source, target_path),
             &mut suggest_force,

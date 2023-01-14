@@ -299,11 +299,7 @@ fn merge_configuration_files(
     }
 
     // Apply packages filter
-    global.packages = global
-        .packages
-        .into_iter()
-        .filter(|(k, _)| enabled_packages.contains(k))
-        .collect();
+    global.packages.retain(|k, _| enabled_packages.contains(k));
 
     let mut output = Configuration {
         helpers: global.helpers,
@@ -366,11 +362,9 @@ fn merge_configuration_files(
     }
 
     // Remove files with target = ""
-    output.files = output
+    output
         .files
-        .into_iter()
-        .filter(|(_, v)| v.path().to_string_lossy() != "")
-        .collect();
+        .retain(|_, v| v.path().to_string_lossy() != "");
 
     Ok(output)
 }

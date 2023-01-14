@@ -47,7 +47,7 @@ pub fn generate_diff(
     handlebars: &Handlebars<'_>,
     variables: &Variables,
 ) -> Result<Diff> {
-    let file_contents = fs::read_to_string(&source).context("read template source file")?;
+    let file_contents = fs::read_to_string(source).context("read template source file")?;
     let file_contents = target.apply_actions(file_contents);
     let rendered = handlebars
         .render_template(&file_contents, variables)

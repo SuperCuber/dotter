@@ -36,7 +36,7 @@ where
     T: Serialize,
 {
     let data = toml::to_string(&data).context("serialize data")?;
-    fs::write(filename, &data).context("write to file")
+    fs::write(filename, data).context("write to file")
 }
 
 // === Mockable filesystem ===
@@ -698,7 +698,7 @@ impl Filesystem for DryRunFilesystem {
 // === Comparisons ===
 
 fn get_file_state(path: &Path) -> Result<FileState> {
-    if let Ok(target) = fs::read_link(&path) {
+    if let Ok(target) = fs::read_link(path) {
         return Ok(FileState::SymbolicLink(target));
     }
 
@@ -803,7 +803,7 @@ fn compare_template(target_state: FileState, cache_state: FileState) -> Template
 /// === Utility functions ===
 
 pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
-    let path = std::fs::canonicalize(&path)?;
+    let path = std::fs::canonicalize(path)?;
     Ok(platform_dunce(&path))
 }
 
@@ -847,10 +847,10 @@ pub fn symlinks_enabled(test_file_path: &Path) -> Result<bool> {
         "Testing whether symlinks are enabled on path {:?}",
         test_file_path
     );
-    let _ = std::fs::remove_file(&test_file_path);
-    match fs::symlink_file("test.txt", &test_file_path) {
+    let _ = std::fs::remove_file(test_file_path);
+    match fs::symlink_file("test.txt", test_file_path) {
         Ok(()) => {
-            std::fs::remove_file(&test_file_path)
+            std::fs::remove_file(test_file_path)
                 .context(format!("remove test file {:?}", test_file_path))?;
             Ok(true)
         }
