@@ -4,7 +4,7 @@ use anyhow::Result;
 use dialoguer::MultiSelect;
 use crate::args::Options;
 use crate::filesystem;
-use crate::config::{Configuration, GlobalConfig, load_global_config, load_local_config, LocalConfig, merge_configuration_files, Package};
+use crate::config::{GlobalConfig, load_global_config, load_local_config, LocalConfig, Package};
 
 /// Returns true if an error was printed
 pub fn config(opt: &Options) -> Result<bool> {
@@ -17,9 +17,7 @@ pub fn config(opt: &Options) -> Result<bool> {
 
         let mut local_config: LocalConfig = load_local_config(&opt.local_config)?;
 
-        // this "config" variable will only contain the ENABLED packages
-        let config: Configuration = merge_configuration_files(global_config.clone(), local_config.clone(), None)?;
-        let enabled_packages = config.packages;
+        let enabled_packages = &local_config.packages;
 
         // all packages, including the ones that are disabled
         let packages: Vec<PackageNames> = get_packages(global_config.packages);
@@ -33,7 +31,7 @@ pub fn config(opt: &Options) -> Result<bool> {
 
         match selected_items {
             Some(selected_items) => {
-                modify_and_save(opt, &mut local_config, packages.iter().map(|(key, _)| key).collect(), selected_items)?;
+                modify_and_save(opt, &mut local_config, packages.iter().map(|(_, value)| value).collect(), selected_items)?;
             }
             None => {
                 // user pressed "Esc" or "q" to quit
