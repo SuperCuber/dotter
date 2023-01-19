@@ -93,7 +93,7 @@ pub enum Action {
     #[default]
     Deploy,
 
-    /// Modify the local configuration file.
+    /// Interactively modify the local configuration file.
     Config,
 
     /// Delete all deployed files from their target locations.

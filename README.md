@@ -45,6 +45,7 @@ Usage: dotter [OPTIONS] [COMMAND]
 
 Commands:
   deploy           Deploy the files to their respective targets. This is the default subcommand
+  config           Interactively modify the local configuration file
   undeploy         Delete all deployed files from their target locations. Note that this operates on all files that are currently in cache
   init             Initialize global.toml with a single package containing all the files in the current directory pointing to a dummy value and a local.toml that selects that package
   watch            Run continuously, watching the repository for changes and deploying as soon as they happen. Can be ran with `--dry-run`

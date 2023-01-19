@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, HashSet};
+use crate::args::Options;
+use crate::config::{load_global_config, load_local_config, GlobalConfig, LocalConfig, Package};
+use crate::filesystem;
 use anyhow::Context;
 use anyhow::Result;
 use dialoguer::MultiSelect;
-use crate::args::Options;
-use crate::filesystem;
-use crate::config::{GlobalConfig, load_global_config, load_local_config, LocalConfig, Package};
+use std::collections::{BTreeMap, HashSet};
 
 /// Returns true if an error was printed
 pub fn config(opt: &Options) -> Result<bool> {
@@ -22,7 +22,10 @@ pub fn config(opt: &Options) -> Result<bool> {
     let mut multi_select = MultiSelect::new();
 
     return if opt.local_config.exists() {
-        debug!("Local configuration file found at {}", opt.local_config.display());
+        debug!(
+            "Local configuration file found at {}",
+            opt.local_config.display()
+        );
 
         let mut local_config: LocalConfig = load_local_config(&opt.local_config)?;
 
@@ -39,7 +42,12 @@ pub fn config(opt: &Options) -> Result<bool> {
 
         match selected_items {
             Some(selected_items) => {
-                modify_and_save(opt, &mut local_config, packages.iter().map(|(_, value)| value).collect(), selected_items)?;
+                modify_and_save(
+                    opt,
+                    &mut local_config,
+                    packages.iter().map(|(_, value)| value).collect(),
+                    selected_items,
+                )?;
             }
             None => {
                 // user pressed "Esc" or "q" to quit
@@ -48,12 +56,23 @@ pub fn config(opt: &Options) -> Result<bool> {
         }
         Ok(false)
     } else {
-        debug!("No local configuration file found at {}", opt.local_config.display());
+        debug!(
+            "No local configuration file found at {}",
+            opt.local_config.display()
+        );
         trace!("Available packages: {:?}", packages);
 
         println!("Use space to select packages to enable, and enter to confirm");
-        let selected_elements = multi_select.with_prompt("Select packages to install")
-            .items(packages.iter().map(|(key, _)| key).collect::<Vec<&String>>().iter().as_slice())
+        let selected_elements = multi_select
+            .with_prompt("Select packages to install")
+            .items(
+                packages
+                    .iter()
+                    .map(|(key, _)| key)
+                    .collect::<Vec<&String>>()
+                    .iter()
+                    .as_slice(),
+            )
             .interact_opt()?;
         trace!("Selected elements: {:?}", selected_elements);
 
@@ -64,28 +83,44 @@ pub fn config(opt: &Options) -> Result<bool> {
                     .context("Writing empty configuration")?;
             }
             Some(selected_elements) => {
-                modify_and_save(opt, &mut LocalConfig::empty_config(), packages.iter().map(|(key, _)| key).collect::<Vec<&String>>(), selected_elements)?;
-            },
+                modify_and_save(
+                    opt,
+                    &mut LocalConfig::empty_config(),
+                    packages
+                        .iter()
+                        .map(|(key, _)| key)
+                        .collect::<Vec<&String>>(),
+                    selected_elements,
+                )?;
+            }
             None => {
                 // user pressed "Esc" or "q" to quit
                 println!("Aborting.");
             }
         }
         Ok(false)
-    }
+    };
 }
 
 /// Pretty Name, Package Name
 type PackageNames = (String, String);
 
-fn get_package_tree<'a>(package_map: &'a BTreeMap<String, Package>, package: &'a Package, indent: usize, visited: &mut HashSet<&'a Package>) -> Vec<PackageNames> {
+fn get_package_tree<'a>(
+    package_map: &'a BTreeMap<String, Package>,
+    package: &'a Package,
+    indent: usize,
+    visited: &mut HashSet<&'a Package>,
+) -> Vec<PackageNames> {
     let package_name = package_map.iter().find(|(_, p)| *p == package).unwrap().0;
     trace!("Computing tree for package {}", package_name);
 
     let mut result = vec![];
     if visited.contains(package) {
         debug!("Already visited package {package_name}!");
-        result.push((format!("{:indent$}(Cyclic Dependency)", "", indent = indent), String::from("(Cyclic Dependency)")));
+        result.push((
+            format!("{:indent$}(Cyclic Dependency)", "", indent = indent),
+            String::from("(Cyclic Dependency)"),
+        ));
         return result;
     }
     visited.insert(package);
@@ -104,9 +139,12 @@ fn get_package_tree<'a>(package_map: &'a BTreeMap<String, Package>, package: &'a
         trace!("Found dependency tree: {:#?}", dep_result);
 
         // add dependency tree to fancy package name
-        fancy_name += &"\n";
-        fancy_name += &dep_result.iter().map(|(name, _)| name.clone())
-            .collect::<Vec<String>>().join("\n");
+        fancy_name += "\n";
+        fancy_name += &dep_result
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<String>>()
+            .join("\n");
         trace!("New fancy_name: {}", fancy_name);
     }
 
@@ -114,15 +152,23 @@ fn get_package_tree<'a>(package_map: &'a BTreeMap<String, Package>, package: &'a
     result
 }
 
-
-fn modify_and_save(opt: &Options, local_config: &mut LocalConfig, items_in_order: Vec<&String>, selected_items: Vec<usize>) -> Result<()> {
+fn modify_and_save(
+    opt: &Options,
+    local_config: &mut LocalConfig,
+    items_in_order: Vec<&String>,
+    selected_items: Vec<usize>,
+) -> Result<()> {
     println!("Writing configuration to {}", opt.local_config.display());
-    trace!("Selected indexes: {:?} of {:?}", selected_items, items_in_order);
+    trace!(
+        "Selected indexes: {:?} of {:?}",
+        selected_items,
+        items_in_order
+    );
 
-    local_config.packages = selected_items.iter()
+    local_config.packages = selected_items
+        .iter()
         .map(|i| items_in_order[*i].clone())
         .collect::<Vec<String>>();
 
-    filesystem::save_file(&opt.local_config, local_config)
-        .context("Writing local config to file")
+    filesystem::save_file(&opt.local_config, local_config).context("Writing local config to file")
 }
