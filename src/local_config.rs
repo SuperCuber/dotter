@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use anyhow::Context;
 use anyhow::Result;
 use dialoguer::MultiSelect;
@@ -10,6 +10,15 @@ use crate::config::{GlobalConfig, load_global_config, load_local_config, LocalCo
 pub fn config(opt: &Options) -> Result<bool> {
     let global_config: GlobalConfig = load_global_config(&opt.global_config)?;
 
+    let mut visited = HashSet::new();
+    let mut packages = vec![];
+    for package in global_config.packages.values() {
+        let tree = get_package_tree(&global_config.packages, package, 0, &mut visited);
+        debug!("Generated tree: {:#?}", tree);
+        packages.extend(tree);
+        visited.clear();
+    }
+
     let mut multi_select = MultiSelect::new();
 
     return if opt.local_config.exists() {
@@ -20,9 +29,8 @@ pub fn config(opt: &Options) -> Result<bool> {
         let enabled_packages = &local_config.packages;
 
         // all packages, including the ones that are disabled
-        let packages: Vec<PackageNames> = get_packages(global_config.packages);
         for (pretty_name, package_name) in packages.iter() {
-            multi_select.item_checked(pretty_name, enabled_packages.contains_key(package_name));
+            multi_select.item_checked(pretty_name, enabled_packages.contains(package_name));
         }
 
         println!("Use space to select packages to enable, and enter to confirm");
@@ -41,7 +49,6 @@ pub fn config(opt: &Options) -> Result<bool> {
         Ok(false)
     } else {
         debug!("No local configuration file found at {}", opt.local_config.display());
-        let packages: Vec<PackageNames> = get_packages(global_config.packages);
         trace!("Available packages: {:?}", packages);
 
         println!("Use space to select packages to enable, and enter to confirm");
@@ -71,37 +78,51 @@ pub fn config(opt: &Options) -> Result<bool> {
 /// Pretty Name, Package Name
 type PackageNames = (String, String);
 
-fn get_packages(packages: BTreeMap<String, Package>) -> Vec<PackageNames> {
-    let mut result: Vec<PackageNames> = vec![];
-    // generate tree with all packages, packages that depend on another one will be indented by two spaces
-    // packages can have multiple parents, so we need to keep track of which packages we already added
-    let mut added_packages = vec![];
-    let package_clone = packages.clone();
-    for (name, package) in packages {
-        if !added_packages.contains(&name) && package.depends.is_empty() {
-            trace!("Adding {} to list of packages", name);
-            added_packages.push(name.clone());
-            result.push((name.clone(), name.clone()));
+fn get_package_tree<'a>(package_map: &'a BTreeMap<String, Package>, package: &'a Package, indent: usize, visited: &mut HashSet<&'a Package>) -> Vec<PackageNames> {
+    let package_name = package_map.iter().find(|(_, p)| *p == package).unwrap().0;
+    trace!("Computing tree for package {}", package_name);
 
-            for (this_name, package) in package_clone.clone() {
-                if package.depends.contains(&name) {
-                    trace!("Adding {} to list of packages but with indent", this_name);
-                    added_packages.push(this_name.clone());
-                    result.push((format!("  {}", this_name), this_name));
-                }
-            }
-        }
+    let mut result = vec![];
+    if visited.contains(package) {
+        debug!("Already visited package {package_name}!");
+        result.push((format!("{:indent$}(Cyclic Dependency)", "", indent = indent), String::from("(Cyclic Dependency)")));
+        return result;
+    }
+    visited.insert(package);
+
+    let mut fancy_name = format!("{:indent$}{}", "", package_name, indent = indent);
+
+    for dep_name in &package.depends {
+        trace!("Computing tree for dependency {}", dep_name);
+
+        // when running with depth = 0, we need to add extra padding to align the package name 2 spaces to the right of the parent
+        // when running with depth > 0, we just add 2 spaces to the existing padding
+        let indent = indent + 2 + if indent == 0 { 6 } else { 0 };
+
+        let dep_package = package_map.get(dep_name).unwrap();
+        let dep_result = get_package_tree(package_map, dep_package, indent, visited);
+        trace!("Found dependency tree: {:#?}", dep_result);
+
+        // add dependency tree to fancy package name
+        fancy_name += &"\n";
+        fancy_name += &dep_result.iter().map(|(name, _)| name.clone())
+            .collect::<Vec<String>>().join("\n");
+        trace!("New fancy_name: {}", fancy_name);
     }
 
-    debug!("Result: {:?}", result);
-
+    result.push((fancy_name.clone(), package_name.clone()));
     result
 }
+
 
 fn modify_and_save(opt: &Options, local_config: &mut LocalConfig, items_in_order: Vec<&String>, selected_items: Vec<usize>) -> Result<()> {
     println!("Writing configuration to {}", opt.local_config.display());
     trace!("Selected indexes: {:?} of {:?}", selected_items, items_in_order);
-    local_config.packages = selected_items.iter().map(|i| items_in_order[*i].clone()).collect();
+
+    local_config.packages = selected_items.iter()
+        .map(|i| items_in_order[*i].clone())
+        .collect::<Vec<String>>();
+
     filesystem::save_file(&opt.local_config, local_config)
         .context("Writing local config to file")
 }
