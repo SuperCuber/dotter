@@ -87,9 +87,10 @@ pub struct Options {
     pub action: Option<Action>,
 }
 
-#[derive(Debug, Clone, Copy, Subcommand)]
+#[derive(Debug, Clone, Copy, Subcommand, Default)]
 pub enum Action {
     /// Deploy the files to their respective targets. This is the default subcommand.
+    #[default]
     Deploy,
 
     /// Delete all deployed files from their target locations.
@@ -110,12 +111,6 @@ pub enum Action {
         #[clap(long, short)]
         shell: Shell,
     },
-}
-
-impl Default for Action {
-    fn default() -> Self {
-        Action::Deploy
-    }
 }
 
 pub fn get_options() -> Options {

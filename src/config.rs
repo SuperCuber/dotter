@@ -268,7 +268,7 @@ fn merge_configuration_files(
             if !included.is_empty() {
                 anyhow::bail!(
                     "unknown packages: {:?}",
-                    included.keys().into_iter().cloned().collect::<Vec<_>>()
+                    included.keys().cloned().collect::<Vec<_>>()
                 );
             }
 

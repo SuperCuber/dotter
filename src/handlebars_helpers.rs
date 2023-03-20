@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 
 use crate::config::{Configuration, Files, Helpers, Variables};
 
-pub fn create_new_handlebars<'a, 'b>(config: &'a mut Configuration) -> Result<Handlebars<'b>> {
+pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebars<'b>> {
     debug!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
     handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
