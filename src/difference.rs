@@ -19,7 +19,7 @@ pub fn print_template_diff(
     diff_context_lines: usize,
 ) {
     if log_enabled!(log::Level::Info) {
-        match generate_diff(source, target, handlebars, variables) {
+        match generate_template_diff(source, target, handlebars, variables, true) {
             Ok(diff) => {
                 if diff_nonempty(&diff) {
                     info!(
@@ -41,11 +41,12 @@ pub fn print_template_diff(
     }
 }
 
-pub fn generate_diff(
+pub fn generate_template_diff(
     source: &Path,
     target: &TemplateTarget,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
+    source_to_target: bool,
 ) -> Result<Diff> {
     let file_contents = fs::read_to_string(source).context("read template source file")?;
     let file_contents = target.apply_actions(file_contents);
@@ -56,7 +57,11 @@ pub fn generate_diff(
     let target_contents =
         fs::read_to_string(&target.target).context("read template target file")?;
 
-    let diff_result = diff::lines(&target_contents, &rendered);
+    let diff_result = if source_to_target {
+        diff::lines(&target_contents, &rendered)
+    } else {
+        diff::lines(&rendered, &target_contents)
+    };
 
     Ok(diff_result.into_iter().map(to_owned_diff_result).collect())
 }
