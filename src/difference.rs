@@ -186,7 +186,7 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
     }
 }
 
-fn print_diff(diff: Diff, extra_lines: usize) {
+pub fn print_diff(diff: Diff, extra_lines: usize) {
     let mut diff = hunkify_diff(diff, extra_lines);
 
     let last_hunk = diff.pop().expect("at least one hunk");

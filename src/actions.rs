@@ -6,7 +6,7 @@ use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
 use crate::config::{SymbolicTarget, TemplateTarget, Variables};
-use crate::difference::{self, diff_nonempty, generate_diff, print_diff};
+use crate::difference;
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
 #[cfg_attr(test, mockall::automock)]
@@ -537,9 +537,9 @@ pub fn update_template(
         TemplateComparison::Changed => {
             // At this point, we're not sure if there's a difference between the rendered source
             // and target, only that the target has been modified in some way.
-            let diff = generate_diff(source, target, handlebars, variables)
+            let diff = difference::generate_diff(source, target, handlebars, variables)
                 .context("diff source with target")?;
-            if diff_nonempty(&diff) {
+            if difference::diff_nonempty(&diff) {
                 error!(
                     "Updating template {:?} -> {:?} but {}. Skipping.",
                     source, target.target, comparison
@@ -548,7 +548,7 @@ pub fn update_template(
                     "{} template {:?} -> {:?}",
                     "[~].yellow()", source, target.target,
                 );
-                print_diff(diff, diff_context_lines);
+                difference::print_diff(diff, diff_context_lines);
                 Ok(false)
             } else {
                 perform_template_deploy(source, cache, target, fs, handlebars, variables)
