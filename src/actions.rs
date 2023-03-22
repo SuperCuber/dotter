@@ -545,7 +545,7 @@ pub fn update_template(
                     source, target.target, comparison
                 );
                 if log_enabled!(log::Level::Info) {
-                    info!("Refusing because of the following changes in source: ");
+                    info!("Refusing because of the following changes in target location: ");
                     print_diff(diff, diff_context_lines);
                 }
                 Ok(false)
