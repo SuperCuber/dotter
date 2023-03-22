@@ -1,11 +1,12 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
+
 use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
 use crate::config::{SymbolicTarget, TemplateTarget, Variables};
-use crate::difference;
+use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
 #[cfg_attr(test, mockall::automock)]
@@ -533,7 +534,29 @@ pub fn update_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {
+        TemplateComparison::Changed => {
+            // At this point, we're not sure if there's a difference between the rendered source
+            // and target, only that the target has been modified in some way.
+            let diff = generate_template_diff(source, target, handlebars, variables, false)
+                .context("diff source and target")?;
+            if diff_nonempty(&diff) {
+                error!(
+                    "Updating template {:?} -> {:?} but {}. Skipping",
+                    source, target.target, comparison
+                );
+                if log_enabled!(log::Level::Info) {
+                    info!("Refusing because of the following changes in target location: ");
+                    print_diff(diff, diff_context_lines);
+                }
+                Ok(false)
+            } else {
+                perform_template_deploy(source, cache, target, fs, handlebars, variables)
+                    .context("perform template cache")?;
+                Ok(true)
+            }
+        }
+
+        TemplateComparison::TargetNotRegularFile => {
             error!(
                 "Updating template {:?} -> {:?} but {}. Skipping.",
                 source, target.target, comparison
