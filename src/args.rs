@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use clap_complete::Shell;
 
 /// A small dotfile manager.
 #[derive(Debug, Parser, Default, Clone)]
@@ -104,13 +103,6 @@ pub enum Action {
     /// Run continuously, watching the repository for changes and deploying as soon as they
     /// happen. Can be ran with `--dry-run`
     Watch,
-
-    /// Generate shell completions
-    GenCompletions {
-        /// Set the shell for generating completions [values: bash, elvish, fish, powerShell, zsh]
-        #[clap(long, short)]
-        shell: Shell,
-    },
 }
 
 pub fn get_options() -> Options {

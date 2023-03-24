@@ -1,0 +1,251 @@
+#compdef dotter
+
+autoload -U is-at-least
+
+_dotter() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" \
+'-g+[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'--global-config=[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'-l+[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'--local-config=[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'--cache-file=[Location of cache file]:CACHE_FILE:_files' \
+'--cache-directory=[Directory to cache into]:CACHE_DIRECTORY:_files' \
+'--pre-deploy=[Location of optional pre-deploy hook]:PRE_DEPLOY:_files' \
+'--post-deploy=[Location of optional post-deploy hook]:POST_DEPLOY:_files' \
+'--pre-undeploy=[Location of optional pre-undeploy hook]:PRE_UNDEPLOY:_files' \
+'--post-undeploy=[Location of optional post-undeploy hook]:POST_UNDEPLOY:_files' \
+'--diff-context-lines=[Amount of lines that are printed before and after a diff hunk]:DIFF_CONTEXT_LINES: ' \
+'-d[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'--dry-run[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'*-v[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'*--verbose[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'-q[Quiet - only print errors]' \
+'--quiet[Quiet - only print errors]' \
+'-f[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'--force[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'-y[Assume "yes" instead of prompting when removing empty directories]' \
+'--noconfirm[Assume "yes" instead of prompting when removing empty directories]' \
+'-p[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'--patch[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+'-V[Print version information]' \
+'--version[Print version information]' \
+":: :_dotter_commands" \
+"*::: :->dotter" \
+&& ret=0
+    case $state in
+    (dotter)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:dotter-command-$line[1]:"
+        case $line[1] in
+            (deploy)
+_arguments "${_arguments_options[@]}" \
+'-g+[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'--global-config=[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'-l+[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'--local-config=[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'-d[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'--dry-run[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'*-v[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'*--verbose[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'-q[Quiet - only print errors]' \
+'--quiet[Quiet - only print errors]' \
+'-f[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'--force[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'-y[Assume "yes" instead of prompting when removing empty directories]' \
+'--noconfirm[Assume "yes" instead of prompting when removing empty directories]' \
+'-p[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'--patch[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+&& ret=0
+;;
+(undeploy)
+_arguments "${_arguments_options[@]}" \
+'-g+[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'--global-config=[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'-l+[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'--local-config=[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'-d[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'--dry-run[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'*-v[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'*--verbose[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'-q[Quiet - only print errors]' \
+'--quiet[Quiet - only print errors]' \
+'-f[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'--force[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'-y[Assume "yes" instead of prompting when removing empty directories]' \
+'--noconfirm[Assume "yes" instead of prompting when removing empty directories]' \
+'-p[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'--patch[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+&& ret=0
+;;
+(init)
+_arguments "${_arguments_options[@]}" \
+'-g+[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'--global-config=[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'-l+[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'--local-config=[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'-d[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'--dry-run[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'*-v[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'*--verbose[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'-q[Quiet - only print errors]' \
+'--quiet[Quiet - only print errors]' \
+'-f[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'--force[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'-y[Assume "yes" instead of prompting when removing empty directories]' \
+'--noconfirm[Assume "yes" instead of prompting when removing empty directories]' \
+'-p[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'--patch[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+&& ret=0
+;;
+(watch)
+_arguments "${_arguments_options[@]}" \
+'-g+[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'--global-config=[Location of the global configuration]:GLOBAL_CONFIG:_files' \
+'-l+[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'--local-config=[Location of the local configuration]:LOCAL_CONFIG:_files' \
+'-d[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'--dry-run[Dry run - don'\''t do anything, only print information. Implies -v at least once]' \
+'*-v[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'*--verbose[Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter'\''s run]' \
+'-q[Quiet - only print errors]' \
+'--quiet[Quiet - only print errors]' \
+'-f[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'--force[Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run]' \
+'-y[Assume "yes" instead of prompting when removing empty directories]' \
+'--noconfirm[Assume "yes" instead of prompting when removing empty directories]' \
+'-p[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'--patch[Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch]' \
+'-h[Print help information]' \
+'--help[Print help information]' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" \
+":: :_dotter__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:dotter-help-command-$line[1]:"
+        case $line[1] in
+            (deploy)
+_arguments "${_arguments_options[@]}" \
+&& ret=0
+;;
+(undeploy)
+_arguments "${_arguments_options[@]}" \
+&& ret=0
+;;
+(init)
+_arguments "${_arguments_options[@]}" \
+&& ret=0
+;;
+(watch)
+_arguments "${_arguments_options[@]}" \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_dotter_commands] )) ||
+_dotter_commands() {
+    local commands; commands=(
+'deploy:Deploy the files to their respective targets. This is the default subcommand' \
+'undeploy:Delete all deployed files from their target locations. Note that this operates on all files that are currently in cache' \
+'init:Initialize global.toml with a single package containing all the files in the current directory pointing to a dummy value and a local.toml that selects that package' \
+'watch:Run continuously, watching the repository for changes and deploying as soon as they happen. Can be ran with `--dry-run`' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'dotter commands' commands "$@"
+}
+(( $+functions[_dotter__deploy_commands] )) ||
+_dotter__deploy_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter deploy commands' commands "$@"
+}
+(( $+functions[_dotter__help__deploy_commands] )) ||
+_dotter__help__deploy_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter help deploy commands' commands "$@"
+}
+(( $+functions[_dotter__help_commands] )) ||
+_dotter__help_commands() {
+    local commands; commands=(
+'deploy:Deploy the files to their respective targets. This is the default subcommand' \
+'undeploy:Delete all deployed files from their target locations. Note that this operates on all files that are currently in cache' \
+'init:Initialize global.toml with a single package containing all the files in the current directory pointing to a dummy value and a local.toml that selects that package' \
+'watch:Run continuously, watching the repository for changes and deploying as soon as they happen. Can be ran with `--dry-run`' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'dotter help commands' commands "$@"
+}
+(( $+functions[_dotter__help__help_commands] )) ||
+_dotter__help__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter help help commands' commands "$@"
+}
+(( $+functions[_dotter__help__init_commands] )) ||
+_dotter__help__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter help init commands' commands "$@"
+}
+(( $+functions[_dotter__init_commands] )) ||
+_dotter__init_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter init commands' commands "$@"
+}
+(( $+functions[_dotter__help__undeploy_commands] )) ||
+_dotter__help__undeploy_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter help undeploy commands' commands "$@"
+}
+(( $+functions[_dotter__undeploy_commands] )) ||
+_dotter__undeploy_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter undeploy commands' commands "$@"
+}
+(( $+functions[_dotter__help__watch_commands] )) ||
+_dotter__help__watch_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter help watch commands' commands "$@"
+}
+(( $+functions[_dotter__watch_commands] )) ||
+_dotter__watch_commands() {
+    local commands; commands=()
+    _describe -t commands 'dotter watch commands' commands "$@"
+}
+
+_dotter "$@"
