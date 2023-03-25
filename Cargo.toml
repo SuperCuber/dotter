@@ -38,7 +38,7 @@ mockall = "0.11.3"
 # mockall = { version = "0.9.*", features = ["nightly"] }
 
 [build-dependencies]
-clap = "4.0.26"
+clap = { version = "4.0.26", features = ["derive"] }
 clap_complete = "4.0.5"
 clap_complete_nushell = "0.1.10"
 
