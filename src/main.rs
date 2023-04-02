@@ -109,6 +109,7 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
                 .block_on(watch::watch(opt))
                 .context("watch repository")?;
         }
+
         args::Action::GenCompletions { shell } => {
             generate(
                 shell,
