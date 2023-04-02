@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 #[path = "src/args.rs"]
 mod args;
 
@@ -6,12 +7,15 @@ use clap::CommandFactory;
 use clap_complete::generate_to;
 use clap_complete::Shell::*;
 use clap_complete_nushell::Nushell;
+use std::fs;
 use std::io;
 
 fn main() -> io::Result<()> {
     let cmd = &mut Options::command();
     let name = "dotter";
     let dir = "completions";
+
+    fs::create_dir_all(dir)?;
 
     generate_to(Bash, cmd, name, dir)?;
     generate_to(Zsh, cmd, name, dir)?;
