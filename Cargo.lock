@@ -406,7 +406,7 @@ dependencies = [
 
 [[package]]
 name = "dotter"
-version = "0.12.15"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "clap",
