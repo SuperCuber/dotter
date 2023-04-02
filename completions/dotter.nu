@@ -73,6 +73,24 @@ module completions {
     --help(-h)                # Print help information
   ]
 
+  def "nu-complete dotter gen-completions shell" [] {
+    [ "bash" "elvish" "fish" "powershell" "zsh" "nushell" ]
+  }
+
+  # Generate shell completions
+  export extern "dotter gen-completions" [
+    --shell(-s): string@"nu-complete dotter gen-completions shell" # Set the shell for generating completions [values: bash, elvish, fish, powershell, zsh, nushell]
+    --global-config(-g): string # Location of the global configuration
+    --local-config(-l): string # Location of the local configuration
+    --dry-run(-d)             # Dry run - don't do anything, only print information. Implies -v at least once
+    --verbose(-v)             # Verbosity level - specify up to 3 times to get more detailed output. Specifying at least once prints the differences between what was before and after Dotter's run
+    --quiet(-q)               # Quiet - only print errors
+    --force(-f)               # Force - instead of skipping, overwrite target files if their content is unexpected. Overrides --dry-run
+    --noconfirm(-y)           # Assume "yes" instead of prompting when removing empty directories
+    --patch(-p)               # Take standard input as an additional files/variables patch, added after evaluating `local.toml`. Assumes --noconfirm flag because all of stdin is taken as the patch
+    --help(-h)                # Print help information
+  ]
+
   # Print this message or the help of the given subcommand(s)
   export extern "dotter help" [
   ]
@@ -91,6 +109,10 @@ module completions {
 
   # Run continuously, watching the repository for changes and deploying as soon as they happen. Can be ran with `--dry-run`
   export extern "dotter help watch" [
+  ]
+
+  # Generate shell completions
+  export extern "dotter help gen-completions" [
   ]
 
   # Print this message or the help of the given subcommand(s)

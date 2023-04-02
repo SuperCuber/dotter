@@ -15,6 +15,9 @@ _dotter() {
             dotter,deploy)
                 cmd="dotter__deploy"
                 ;;
+            dotter,gen-completions)
+                cmd="dotter__gen__completions"
+                ;;
             dotter,help)
                 cmd="dotter__help"
                 ;;
@@ -29,6 +32,9 @@ _dotter() {
                 ;;
             dotter__help,deploy)
                 cmd="dotter__help__deploy"
+                ;;
+            dotter__help,gen-completions)
+                cmd="dotter__help__gen__completions"
                 ;;
             dotter__help,help)
                 cmd="dotter__help__help"
@@ -49,7 +55,7 @@ _dotter() {
 
     case "${cmd}" in
         dotter)
-            opts="-g -l -d -v -q -f -y -p -h -V --global-config --local-config --cache-file --cache-directory --pre-deploy --post-deploy --pre-undeploy --post-undeploy --dry-run --verbose --quiet --force --noconfirm --patch --diff-context-lines --help --version deploy undeploy init watch help"
+            opts="-g -l -d -v -q -f -y -p -h -V --global-config --local-config --cache-file --cache-directory --pre-deploy --post-deploy --pre-undeploy --post-undeploy --dry-run --verbose --quiet --force --noconfirm --patch --diff-context-lines --help --version deploy undeploy init watch gen-completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -136,8 +142,46 @@ _dotter() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        dotter__gen__completions)
+            opts="-s -g -l -d -v -q -f -y -p -h --shell --global-config --local-config --dry-run --verbose --quiet --force --noconfirm --patch --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --shell)
+                    COMPREPLY=($(compgen -W "bash elvish fish powershell zsh nushell" -- "${cur}"))
+                    return 0
+                    ;;
+                -s)
+                    COMPREPLY=($(compgen -W "bash elvish fish powershell zsh nushell" -- "${cur}"))
+                    return 0
+                    ;;
+                --global-config)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -g)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --local-config)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -l)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         dotter__help)
-            opts="deploy undeploy init watch help"
+            opts="deploy undeploy init watch gen-completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -151,6 +195,20 @@ _dotter() {
             return 0
             ;;
         dotter__help__deploy)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        dotter__help__gen__completions)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

@@ -13,8 +13,11 @@ mod init;
 mod watch;
 
 use std::fmt::Write;
+use std::io;
 
 use anyhow::{Context, Result};
+use clap::CommandFactory;
+use clap_complete::generate;
 
 fn main() {
     match run() {
@@ -105,6 +108,15 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
                 .expect("create a tokio runtime")
                 .block_on(watch::watch(opt))
                 .context("watch repository")?;
+        }
+
+        args::Action::GenCompletions { shell } => {
+            generate(
+                shell,
+                &mut args::Options::command(),
+                "dotter",
+                &mut io::stdout(),
+            );
         }
     }
 
