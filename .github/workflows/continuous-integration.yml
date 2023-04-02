@@ -26,7 +26,7 @@ jobs:
           target: ${{ matrix.target }}
           override: true
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
         with:
           command: check
@@ -42,13 +42,29 @@ jobs:
           toolchain: stable
           override: true
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
         with:
           command: build
           args: --verbose --locked
       - name: Check README help message
         run: "[[ ! $(comm -13 <(sort README.md) <(cargo run --locked -- --help | sort)) ]] || cargo run --locked -- --help | diff - README.md"
+  check-publish:
+    name: Check cargo publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: --dry-run --verbose --locked
   test:
     name: Test Suite
     runs-on: ubuntu-latest
@@ -60,7 +76,7 @@ jobs:
           toolchain: stable
           override: true
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
         with:
           command: test
@@ -76,7 +92,7 @@ jobs:
           override: true
       - run: rustup component add rustfmt
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -93,7 +109,7 @@ jobs:
           override: true
       - run: rustup component add clippy
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
