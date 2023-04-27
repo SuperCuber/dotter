@@ -1,10 +1,12 @@
-use crate::args::Options;
-use crate::config::{load_global_config, load_local_config, GlobalConfig, LocalConfig, Package};
-use crate::filesystem;
+use std::collections::{BTreeMap, HashSet};
+
 use anyhow::Context;
 use anyhow::Result;
 use dialoguer::MultiSelect;
-use std::collections::{BTreeMap, HashSet};
+
+use crate::args::Options;
+use crate::config::{load_global_config, load_local_config, GlobalConfig, LocalConfig, Package};
+use crate::filesystem;
 
 /// Returns true if an error was printed
 pub fn config(opt: &Options) -> Result<bool> {
@@ -13,9 +15,10 @@ pub fn config(opt: &Options) -> Result<bool> {
     let mut visited = HashSet::new();
     let mut packages = vec![];
     for package in global_config.packages.values() {
-        let tree = get_package_tree(&global_config.packages, package, 0, &mut visited);
-        debug!("Generated tree: {:#?}", tree);
-        packages.extend(tree);
+        let dependency_names =
+            get_package_dependencies(&global_config.packages, package, &mut visited, 0, 6);
+        debug!("Generated dependency names: {:#?}", dependency_names);
+        packages.extend(dependency_names);
         visited.clear();
     }
 
@@ -32,8 +35,11 @@ pub fn config(opt: &Options) -> Result<bool> {
         let enabled_packages = &local_config.packages;
 
         // all packages, including the ones that are disabled
-        for (pretty_name, package_name) in packages.iter() {
-            multi_select.item_checked(pretty_name, enabled_packages.contains(package_name));
+        for (package_name, dependencies) in packages.iter() {
+            multi_select.item_checked(
+                format_package(package_name, dependencies),
+                enabled_packages.contains(package_name),
+            );
         }
 
         println!("Use space to select packages to enable, and enter to confirm");
@@ -45,7 +51,7 @@ pub fn config(opt: &Options) -> Result<bool> {
                 modify_and_save(
                     opt,
                     &mut local_config,
-                    packages.iter().map(|(_, value)| value).collect(),
+                    packages.iter().map(|(key, _)| key).collect(),
                     selected_items,
                 )?;
             }
@@ -68,8 +74,8 @@ pub fn config(opt: &Options) -> Result<bool> {
             .items(
                 packages
                     .iter()
-                    .map(|(key, _)| key)
-                    .collect::<Vec<&String>>()
+                    .map(|(key, value)| format_package(key, value))
+                    .collect::<Vec<String>>()
                     .iter()
                     .as_slice(),
             )
@@ -102,53 +108,54 @@ pub fn config(opt: &Options) -> Result<bool> {
     };
 }
 
-/// Pretty Name, Package Name
-type PackageNames = (String, String);
+fn format_package(package_name: &String, dependencies: &Vec<String>) -> String {
+    let dependencies_string = if !dependencies.is_empty() {
+        format!(" # (will enable {})", dependencies.join(", "))
+    } else {
+        String::new()
+    };
+    format!("{package_name}{dependencies_string}")
+}
 
-fn get_package_tree<'a>(
+/// (package_name, dependencies)
+type PackageNames = (String, Vec<String>);
+
+fn get_package_dependencies<'a>(
     package_map: &'a BTreeMap<String, Package>,
     package: &'a Package,
-    indent: usize,
     visited: &mut HashSet<&'a Package>,
+    depth: usize,
+    max_depth: usize,
 ) -> Vec<PackageNames> {
-    let package_name = package_map.iter().find(|(_, p)| *p == package).unwrap().0;
-    trace!("Computing tree for package {}", package_name);
+    if depth > max_depth {
+        return Vec::new();
+    }
 
-    let mut result = vec![];
-    if visited.contains(package) {
-        debug!("Already visited package {package_name}!");
-        result.push((
-            format!("{:indent$}(Cyclic Dependency)", "", indent = indent),
-            String::from("(Cyclic Dependency)"),
-        ));
+    let mut result = Vec::new();
+    if visited.contains(&package) {
+        // Avoid infinite recursion caused by circular dependencies
         return result;
     }
     visited.insert(package);
 
-    let mut fancy_name = format!("{:indent$}{}", "", package_name, indent = indent);
+    let package_name = package_map.iter().find(|(_, p)| *p == package).unwrap().0;
 
+    let mut dependencies = Vec::new();
     for dep_name in &package.depends {
-        trace!("Computing tree for dependency {}", dep_name);
-
-        // when running with depth = 0, we need to add extra padding to align the package name 2 spaces to the right of the parent
-        // when running with depth > 0, we just add 2 spaces to the existing padding
-        let indent = indent + 2 + if indent == 0 { 6 } else { 0 };
-
-        let dep_package = package_map.get(dep_name).unwrap();
-        let dep_result = get_package_tree(package_map, dep_package, indent, visited);
-        trace!("Found dependency tree: {:#?}", dep_result);
-
-        // add dependency tree to fancy package name
-        fancy_name += "\n";
-        fancy_name += &dep_result
-            .iter()
-            .map(|(name, _)| name.clone())
-            .collect::<Vec<String>>()
-            .join("\n");
-        trace!("New fancy_name: {}", fancy_name);
+        if let Some(dep_package) = package_map.get(dep_name) {
+            let dep_desc =
+                get_package_dependencies(package_map, dep_package, visited, depth + 1, max_depth);
+            for (dep_name, dep_deps) in dep_desc {
+                dependencies.push(dep_name);
+                dependencies.extend(dep_deps);
+            }
+        }
     }
 
-    result.push((fancy_name.clone(), package_name.clone()));
+    let package_names = (package_name.to_owned(), dependencies);
+    result.push(package_names);
+
+    visited.remove(&package);
     result
 }
 
