@@ -14,7 +14,6 @@ license = "Unlicense"
 anyhow = "1.*"
 clap = { version = "4.0.26", features = ["derive"] }
 clap_complete = "4.0.5"
-clap_complete_nushell = "0.1.10"
 crossterm = "0.25.0"
 diff = "0.1.*"
 handlebars = { version = "4.*", features = ["script_helper"] }
@@ -38,11 +37,6 @@ features = ["string", "json"]
 mockall = "0.11.3"
 # Enable this instead for better failure messages (on nightly only)
 # mockall = { version = "0.9.*", features = ["nightly"] }
-
-[build-dependencies]
-clap = { version = "4.0.26", features = ["derive"] }
-clap_complete = "4.0.5"
-clap_complete_nushell = "0.1.10"
 
 [target.'cfg(windows)'.dependencies]
 dunce = "1.*"

@@ -17,7 +17,7 @@ use std::io;
 
 use anyhow::{Context, Result};
 use clap::CommandFactory;
-use clap_complete::generate;
+use clap_complete::{generate, generate_to};
 
 fn main() {
     match run() {
@@ -83,7 +83,7 @@ If you're truly logged in as root, it is safe to ignore this message.
 Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, then use Dotter as a regular user.");
     }
 
-    match opt.action.unwrap_or_default() {
+    match opt.action.clone().unwrap_or_default() {
         args::Action::Deploy => {
             debug!("Deploying...");
             if deploy::deploy(&opt).context("deploy")? {
@@ -109,14 +109,18 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
                 .block_on(watch::watch(opt))
                 .context("watch repository")?;
         }
-
-        args::Action::GenCompletions { shell } => {
-            generate(
-                shell,
-                &mut args::Options::command(),
-                "dotter",
-                &mut io::stdout(),
-            );
+        args::Action::GenCompletions { shell, to } => {
+            if let Some(to) = to {
+                generate_to(shell, &mut args::Options::command(), "dotter", to)
+                    .context("write completion to a file")?;
+            } else {
+                generate(
+                    shell,
+                    &mut args::Options::command(),
+                    "dotter",
+                    &mut io::stdout(),
+                );
+            }
         }
     }
 

@@ -1,4 +1,7 @@
-on: [push, pull_request]
+on:
+  push:
+    branches: [ $default-branch ]
+  pull_request:
 
 name: Continuous integration
 
@@ -19,82 +22,64 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+      - name: Update Rust
+        run: |
+          rustup update
+          rustup target add ${{ matrix.target }}
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --verbose --locked --target ${{ matrix.target }}
+        uses: Swatinem/rust-cache@v2
+      - run: cargo check --verbose --locked --target ${{ matrix.target }}
   check-readme:
     name: Check README
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Update Rust
+        run: rustup update
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --verbose --locked
+        uses: Swatinem/rust-cache@v2
+      - run: cargo build --verbose --locked
       - name: Check README help message
         run: "[[ ! $(comm -13 <(sort README.md) <(cargo run --locked -- --help | sort)) ]] || cargo run --locked -- --help | diff - README.md"
+  check-publish:
+    name: Check cargo publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Update Rust
+        run: rustup update
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+      - run: cargo publish --dry-run --verbose --locked
   test:
     name: Test Suite
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Update Rust
+        run: rustup update
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
+        uses: Swatinem/rust-cache@v2
+      - run: cargo test
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Update Rust
+        run: rustup update
       - run: rustup component add rustfmt
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Update Rust
+        run: rustup update
       - run: rustup component add clippy
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -D warnings
+        uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -- -D warnings
