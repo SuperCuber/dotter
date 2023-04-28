@@ -20,11 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Update Rust
-        env:
-          TARGET: ${{ matrix.target }}
         run: |
           rustup update
-          rustup target add $TARGET
+          rustup target add ${{ matrix.target }}
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
       - run: cargo check --verbose --locked --target ${{ matrix.target }}
