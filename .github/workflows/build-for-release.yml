@@ -1,9 +1,8 @@
 name: Build assets for a Release
 
 on:
-  push:
-    tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+  release:
+    types: [published]
 
 jobs:
   build-artifact:
@@ -13,52 +12,39 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
+            exe_suffix: ""
             target: x86_64-unknown-linux-musl
           - os: windows-latest
+            exe_suffix: ".exe"
             target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v3
-
+      - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
-
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build
-        run: cargo build --release --locked --verbose --target ${{ matrix.target }}
-
-      - name: Pack completions
-        if: matrix.os == 'ubuntu-latest' # Runs only once
-        run: zip -r completions.zip completions
-
-      - name: Upload asset on Linux
-        uses: softprops/action-gh-release@v1
+        uses: Swatinem/rust-cache@v1
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --locked --verbose --target ${{ matrix.target }}
+      - name: Upload asset
+        uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'ubuntu-latest'
         with:
-          files: |
-            target/${{ matrix.target }}/release/dotter
-            completions.zip
-
-      - name: Upload asset on Windows
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: startsWith(github.ref, 'refs/tags/') && matrix.os == 'windows-latest'
-        with:
-          files: target/${{ matrix.target }}/release/dotter.exe
-
+          asset_path: target/${{ matrix.target }}/release/dotter${{ matrix.exe_suffix }}
+          asset_name: dotter${{ matrix.exe_suffix }}
+          asset_content_type: application/octet-stream
+          upload_url: ${{ github.event.release.upload_url }}
   cargo-publish:
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v3
-        - run: cargo login ${CRATES_IO_TOKEN}
-          env:
-            CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        - run: cargo publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - run: cargo login ${CRATES_IO_TOKEN}
+        env:
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      - run: cargo publish
