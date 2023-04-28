@@ -87,7 +87,7 @@ pub struct Options {
     pub action: Option<Action>,
 }
 
-#[derive(Debug, Clone, Copy, Subcommand, Default)]
+#[derive(Debug, Clone, Subcommand, Default)]
 pub enum Action {
     /// Deploy the files to their respective targets. This is the default subcommand.
     #[default]
@@ -110,6 +110,10 @@ pub enum Action {
         /// Set the shell for generating completions [values: bash, elvish, fish, powerShell, zsh]
         #[clap(long, short)]
         shell: Shell,
+
+        /// Set the out directory for writing completions file
+        #[clap(long)]
+        to: Option<PathBuf>,
     },
 }
 

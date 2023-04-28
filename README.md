@@ -83,9 +83,9 @@ Options:
       --diff-context-lines <DIFF_CONTEXT_LINES>
           Amount of lines that are printed before and after a diff hunk [default: 3]
   -h, --help
-          Print help information
+          Print help
   -V, --version
-          Print version information
+          Print version
 ```
 
 # Contributing
