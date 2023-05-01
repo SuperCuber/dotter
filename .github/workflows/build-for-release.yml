@@ -20,7 +20,7 @@ jobs:
           - os: macos-latest
             exe_suffix: ""
             target: x86_64-apple-darwin
-          - os: macos-aarch64
+          - os: macos-latest
             exe_suffix: ""
             target: aarch64-apple-darwin
     steps:
