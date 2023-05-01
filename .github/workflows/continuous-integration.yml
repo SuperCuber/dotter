@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest, macos-aarch64]
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -19,6 +19,8 @@ jobs:
             target: x86_64-unknown-linux-musl
           - os: macos-latest
             target: x86_64-apple-darwin
+          - os: macos-aarch64
+            target: aarch64-apple-darwin
       fail-fast: false
     steps:
       - uses: actions/checkout@v2

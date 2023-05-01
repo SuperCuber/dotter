@@ -9,7 +9,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-aarch64]
         include:
           - os: ubuntu-latest
             exe_suffix: ""
@@ -17,6 +17,12 @@ jobs:
           - os: windows-latest
             exe_suffix: ".exe"
             target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            exe_suffix: ""
+            target: x86_64-apple-darwin
+          - os: macos-aarch64
+            exe_suffix: ""
+            target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v3
       - name: Update rust
@@ -31,7 +37,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           asset_path: target/${{ matrix.target }}/release/dotter${{ matrix.exe_suffix }}
-          asset_name: dotter${{ matrix.exe_suffix }}
+          asset_name: dotter-${{matrix.target}}${{ matrix.exe_suffix }}
           asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
   build-completions:
