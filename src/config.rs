@@ -63,14 +63,17 @@ enum FileTargetInnerRepr {
 
 pub type Files = BTreeMap<PathBuf, FileTarget>;
 pub type Variables = toml::value::Table;
+#[cfg(feature = "scripting")]
 pub type Helpers = BTreeMap<String, PathBuf>;
 
 #[derive(Debug, Clone)]
 pub struct Configuration {
     pub files: Files,
     pub variables: Variables,
-    pub helpers: Helpers,
     pub packages: Vec<String>,
+    
+    #[cfg(feature = "scripting")]
+    pub helpers: Helpers,
 
     /// If the source is a directory, or a symlink to a directory,
     /// and this option is true, the source will be recursed and
@@ -93,6 +96,7 @@ pub struct Package {
 #[derive(Debug, Deserialize, Serialize)]
 struct GlobalConfig {
     #[serde(default)]
+    #[cfg(feature = "scripting")]
     helpers: Helpers,
     #[serde(flatten)]
     packages: BTreeMap<String, Package>,
@@ -165,6 +169,7 @@ pub fn load_configuration(
 
     trace!("Final files: {:#?}", merged_config.files);
     trace!("Final variables: {:#?}", merged_config.variables);
+    #[cfg(feature = "scripting")]
     trace!("Final helpers: {:?}", merged_config.helpers);
 
     Ok(merged_config)
@@ -193,6 +198,7 @@ pub fn save_dummy_config(
     let mut packages = BTreeMap::new();
     packages.insert("default".into(), package);
     let global_config = GlobalConfig {
+        #[cfg(feature = "scripting")]
         helpers: Helpers::new(),
         packages,
     };
@@ -302,6 +308,7 @@ fn merge_configuration_files(
     global.packages.retain(|k, _| enabled_packages.contains(k));
 
     let mut output = Configuration {
+        #[cfg(feature = "scripting")]
         helpers: global.helpers,
         files: Files::default(),
         variables: Variables::default(),
