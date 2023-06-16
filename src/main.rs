@@ -10,6 +10,7 @@ mod filesystem;
 mod handlebars_helpers;
 mod hooks;
 mod init;
+#[cfg(feature = "watch")]
 mod watch;
 
 use std::fmt::Write;
@@ -102,6 +103,7 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
             debug!("Initializing repo...");
             init::init(opt).context("initalize directory")?;
         }
+        #[cfg(feature = "watch")]
         args::Action::Watch => {
             debug!("Watching...");
             tokio::runtime::Runtime::new()

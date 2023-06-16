@@ -26,12 +26,12 @@ shellexpand = "2.*"
 simplelog = "0.12.*"
 tokio = "1.*"
 toml = "0.4.*"
-watchexec = "=2.0.0-pre.14"
+watchexec = {version="=2.0.0-pre.14", optional = true}
 
 [features]
-default = ["scripting"]
+default = ["scripting", "watch"]
 scripting = ["handlebars/script_helper"]
-
+watch = ["watchexec"]
 
 [dependencies.handlebars_misc_helpers]
 version = "0.12.*"

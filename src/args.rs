@@ -103,6 +103,7 @@ pub enum Action {
 
     /// Run continuously, watching the repository for changes and deploying as soon as they
     /// happen. Can be ran with `--dry-run`
+    #[cfg(feature = "watch")]
     Watch,
 
     /// Generate shell completions
