@@ -71,7 +71,7 @@ pub struct Configuration {
     pub files: Files,
     pub variables: Variables,
     pub packages: Vec<String>,
-    
+
     #[cfg(feature = "scripting")]
     pub helpers: Helpers,
 

@@ -7,9 +7,9 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use crate::config::{Configuration, Files, Variables};
 #[cfg(feature = "scripting")]
 use crate::config::Helpers;
+use crate::config::{Configuration, Files, Variables};
 
 pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebars<'b>> {
     debug!("Creating Handlebars instance...");
@@ -17,10 +17,10 @@ pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebar
     handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
     handlebars.set_strict_mode(true); // Report missing variables as errors
     register_rust_helpers(&mut handlebars);
-    
+
     #[cfg(feature = "scripting")]
     register_script_helpers(&mut handlebars, &config.helpers);
-    
+
     add_dotter_variable(&mut config.variables, &config.files, &config.packages);
     filter_files_condition(&handlebars, &config.variables, &mut config.files)
         .context("filter files based on `if` field")?;
