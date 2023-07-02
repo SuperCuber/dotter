@@ -317,6 +317,14 @@ fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[Str
                 .into(),
         ),
     );
+    if let Ok(hostname) = hostname::get() {
+        dotter.insert(
+            "hostname".into(),
+            Value::String(hostname.to_string_lossy().into()),
+        );
+    } else {
+        warn!("Failed to get hostname, skipping dotter.hostname variable");
+    }
 
     variables.insert("dotter".into(), dotter.into());
 }
