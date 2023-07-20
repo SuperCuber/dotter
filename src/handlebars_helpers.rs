@@ -349,7 +349,7 @@ mod test {
             files: Files::new(),
             variables: maplit::btreemap! { "foo".into() => 2.into() },
             helpers: Helpers::new(),
-            packages: vec!["default".into()],
+            packages: maplit::btreemap! { "default".into() => true },
             recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
@@ -370,6 +370,10 @@ mod test {
             eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap(),
             false
         );
+        assert_eq!(
+            eval_condition(&handlebars, &config.variables, "(and true dotter.packages.nonexist)").unwrap(),
+            false
+        );
     }
 
     #[test]
@@ -378,7 +382,7 @@ mod test {
             files: Files::new(),
             variables: Variables::new(),
             helpers: Helpers::new(),
-            packages: vec!["default".into()],
+            packages: BTreeMap::new(),
             recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
