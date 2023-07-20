@@ -3,7 +3,7 @@ use anyhow::{Context as AnyhowContext, Result};
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
 use toml::value::{Table, Value};
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, BTreeMap};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -298,14 +298,14 @@ fn files_as_toml(files: &Files) -> Value {
     )
 }
 
-fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[String]) {
+fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &BTreeMap<String, bool>) {
     let mut dotter = Table::new();
     dotter.insert(
         "packages".into(),
         Value::Table(
             packages
                 .iter()
-                .map(|p| (p.to_string(), Value::Boolean(true)))
+                .map(|(p, e)| (p.to_string(), Value::Boolean(*e)))
                 .collect(),
         ),
     );

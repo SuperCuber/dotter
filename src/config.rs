@@ -70,7 +70,7 @@ pub type Helpers = BTreeMap<String, PathBuf>;
 pub struct Configuration {
     pub files: Files,
     pub variables: Variables,
-    pub packages: Vec<String>,
+    pub packages: BTreeMap<String, bool>,
 
     #[cfg(feature = "scripting")]
     pub helpers: Helpers,
@@ -304,6 +304,12 @@ fn merge_configuration_files(
         enabled_packages.extend(new_packages);
     }
 
+    let packages_map = global
+        .packages
+        .keys()
+        .map(|k| (k.to_string(), enabled_packages.contains(k)))
+        .collect();
+
     // Apply packages filter
     global.packages.retain(|k, _| enabled_packages.contains(k));
 
@@ -312,7 +318,7 @@ fn merge_configuration_files(
         helpers: global.helpers,
         files: Files::default(),
         variables: Variables::default(),
-        packages: enabled_packages.into_iter().collect(),
+        packages: packages_map,
         recurse: true,
     };
 
