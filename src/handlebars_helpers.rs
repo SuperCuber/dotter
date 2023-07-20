@@ -371,7 +371,12 @@ mod test {
             false
         );
         assert_eq!(
-            eval_condition(&handlebars, &config.variables, "(and true dotter.packages.nonexist)").unwrap(),
+            eval_condition(
+                &handlebars,
+                &config.variables,
+                "(and true dotter.packages.nonexist)"
+            )
+            .unwrap(),
             false
         );
     }
