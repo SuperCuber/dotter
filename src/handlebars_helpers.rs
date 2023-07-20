@@ -349,7 +349,7 @@ mod test {
             files: Files::new(),
             variables: maplit::btreemap! { "foo".into() => 2.into() },
             helpers: Helpers::new(),
-            packages: maplit::btreemap! { "default".into() => true },
+            packages: maplit::btreemap! { "default".into() => true, "disabled".into() => false },
             recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
@@ -374,7 +374,7 @@ mod test {
             eval_condition(
                 &handlebars,
                 &config.variables,
-                "(and true dotter.packages.nonexist)"
+                "(and true dotter.packages.disabled)"
             )
             .unwrap(),
             false
