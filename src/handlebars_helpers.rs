@@ -3,7 +3,7 @@ use anyhow::{Context as AnyhowContext, Result};
 use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
 use toml::value::{Table, Value};
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -298,14 +298,18 @@ fn files_as_toml(files: &Files) -> Value {
     )
 }
 
-fn add_dotter_variable(variables: &mut Variables, files: &Files, packages: &[String]) {
+fn add_dotter_variable(
+    variables: &mut Variables,
+    files: &Files,
+    packages: &BTreeMap<String, bool>,
+) {
     let mut dotter = Table::new();
     dotter.insert(
         "packages".into(),
         Value::Table(
             packages
                 .iter()
-                .map(|p| (p.to_string(), Value::Boolean(true)))
+                .map(|(p, e)| (p.to_string(), Value::Boolean(*e)))
                 .collect(),
         ),
     );
@@ -345,7 +349,7 @@ mod test {
             files: Files::new(),
             variables: maplit::btreemap! { "foo".into() => 2.into() },
             helpers: Helpers::new(),
-            packages: vec!["default".into()],
+            packages: maplit::btreemap! { "default".into() => true, "disabled".into() => false },
             recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
@@ -366,6 +370,15 @@ mod test {
             eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap(),
             false
         );
+        assert_eq!(
+            eval_condition(
+                &handlebars,
+                &config.variables,
+                "(and true dotter.packages.disabled)"
+            )
+            .unwrap(),
+            false
+        );
     }
 
     #[test]
@@ -374,7 +387,7 @@ mod test {
             files: Files::new(),
             variables: Variables::new(),
             helpers: Helpers::new(),
-            packages: vec!["default".into()],
+            packages: BTreeMap::new(),
             recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
