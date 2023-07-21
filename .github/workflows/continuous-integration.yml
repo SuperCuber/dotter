@@ -11,17 +11,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        build_name: [windows, ubuntu, macos-x86, macos-aarch64]
         include:
-          - os: windows-latest
+          - build_name: windows
+            os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: ubuntu-latest
+          - build_name: ubuntu
+            os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-          - os: macos-latest
+          - build_name: macos-x86
+            os: macos-latest
             target: x86_64-apple-darwin
+          - build_name: macos-aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
       fail-fast: false
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Update Rust
         run: |
           rustup update
@@ -33,7 +39,7 @@ jobs:
     name: Check README
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Update Rust
         run: rustup update
       - name: Cache dependencies
@@ -45,7 +51,7 @@ jobs:
     name: Check cargo publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Update Rust
         run: rustup update
       - name: Cache dependencies
@@ -55,7 +61,7 @@ jobs:
     name: Test Suite
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Update Rust
         run: rustup update
       - name: Cache dependencies
@@ -65,7 +71,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Update Rust
         run: rustup update
       - run: rustup component add rustfmt
@@ -76,7 +82,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Update Rust
         run: rustup update
       - run: rustup component add clippy
