@@ -9,13 +9,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
             exe_suffix: ""
+            name_suffix: ""
             target: x86_64-unknown-linux-musl
+          - os: macos-latest
+            exe_suffix: ""
+            name_suffix: ".arm"
+            target: aarch64-apple-darwin
           - os: windows-latest
             exe_suffix: ".exe"
+            name_suffix: ".exe"
             target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v3
@@ -33,7 +39,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           asset_path: target/${{ matrix.target }}/release/dotter${{ matrix.exe_suffix }}
-          asset_name: dotter${{ matrix.exe_suffix }}
+          asset_name: dotter${{ matrix.name_suffix }}
           asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
   build-completions:
