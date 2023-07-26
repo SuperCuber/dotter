@@ -5,6 +5,8 @@ use std::path::Path;
 use std::process::Child;
 use std::process::Command;
 
+use crate::filesystem::{Filesystem, RealFilesystem};
+
 pub(crate) fn run_hook(
     location: &Path,
     cache_dir: &Path,
@@ -17,25 +19,26 @@ pub(crate) fn run_hook(
     }
 
     let mut script_file = cache_dir.join(location);
-    let mut target = std::env::temp_dir().join("dotter_temp");
     if cfg!(windows) {
         script_file.set_extension("bat");
-        target.set_extension("bat");
     }
-    debug!("Rendering script {:?} -> {:?}", location, script_file);
 
+    debug!("Rendering script {:?} -> {:?}", location, script_file);
+    let mut fs = RealFilesystem::new(false);
     crate::actions::perform_template_deploy(
         location,
         &script_file,
-        &target.clone().into(),
-        &mut crate::filesystem::RealFilesystem::new(false),
+        None,
+        &mut fs,
         handlebars,
         variables,
     )
     .context("deploy script")?;
+    fs.copy_permissions(location, &script_file, &None)
+        .context("copy permissions from source to cache")?;
 
     debug!("Running script file");
-    let mut child = run_script_file(&target)?;
+    let mut child = run_script_file(&script_file)?;
 
     anyhow::ensure!(
         child.wait().context("wait for child shell")?.success(),
