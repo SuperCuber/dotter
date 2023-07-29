@@ -333,7 +333,7 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -350,7 +350,7 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -373,7 +373,7 @@ pub fn create_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -487,7 +487,7 @@ pub fn update_template(
             );
             fs.set_owner(&target.target, &target.owner)
                 .context("set target file owner")?;
-            perform_template_deploy(source, cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -504,7 +504,7 @@ pub fn update_template(
                 &target.owner,
             )
             .context("create parent for target file")?;
-            perform_template_deploy(source, cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -530,7 +530,7 @@ pub fn update_template(
             );
             fs.remove_file(&target.target)
                 .context("remove target while forcing")?;
-            perform_template_deploy(source, cache, target, fs, handlebars, variables)
+            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
                 .context("perform template cache")?;
             Ok(true)
         }
@@ -550,7 +550,7 @@ pub fn update_template(
                 }
                 Ok(false)
             } else {
-                perform_template_deploy(source, cache, target, fs, handlebars, variables)
+                perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
                     .context("perform template cache")?;
                 Ok(true)
             }
@@ -569,7 +569,7 @@ pub fn update_template(
 pub(crate) fn perform_template_deploy(
     source: &Path,
     cache: &Path,
-    target: &TemplateTarget,
+    target: Option<&TemplateTarget>,
     fs: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
@@ -577,7 +577,10 @@ pub(crate) fn perform_template_deploy(
     let file_contents = fs
         .read_to_string(source)
         .context("read template source file")?;
-    let file_contents = target.apply_actions(file_contents);
+    let file_contents = match target {
+        Some(t) => t.apply_actions(file_contents),
+        None => file_contents,
+    };
     let rendered = handlebars
         .render_template(&file_contents, variables)
         .context("render template")?;
@@ -589,10 +592,12 @@ pub(crate) fn perform_template_deploy(
         .context("write rendered template to cache")?;
 
     // Target
-    fs.copy_file(cache, &target.target, &target.owner)
-        .context("copy template from cache to target")?;
-    fs.copy_permissions(source, &target.target, &target.owner)
-        .context("copy permissions from source to target")?;
+    if let Some(target) = target {
+        fs.copy_file(cache, &target.target, &target.owner)
+            .context("copy template from cache to target")?;
+        fs.copy_permissions(source, &target.target, &target.owner)
+            .context("copy permissions from source to target")?;
+    }
 
     Ok(())
 }
