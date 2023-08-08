@@ -103,7 +103,7 @@ fn include_template_helper(
     h: &Helper<'_, '_>,
     handlebars: &Handlebars<'_>,
     ctx: &Context,
-    _: &mut RenderContext<'_, '_>,
+    rc: &mut RenderContext<'_, '_>,
     out: &mut dyn Output,
 ) -> HelperResult {
     let mut params = h.params().iter();
@@ -120,7 +120,7 @@ fn include_template_helper(
     let included_file = std::fs::read_to_string(path)
         .map_err(|e| RenderError::from_error("include_template", e))?;
     let rendered_file = handlebars
-        .render_template_with_context(&included_file, ctx)
+        .render_template_with_context(&included_file, rc.context().as_deref().unwrap_or(ctx))
         .map_err(|e| RenderError::from_error("include_template", e))?;
 
     out.write(&rendered_file)?;
