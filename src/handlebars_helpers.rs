@@ -219,28 +219,6 @@ fn command_output_helper(
     Ok(())
 }
 
-fn env_helper(
-    h: &Helper<'_, '_>,
-    _: &Handlebars<'_>,
-    _: &Context,
-    _: &mut RenderContext<'_, '_>,
-    out: &mut dyn Output,
-) -> HelperResult {
-    let mut params = h.params().iter();
-    let variable = params
-        .next()
-        .ok_or_else(|| RenderError::new("env: No variable name given"))?
-        .render();
-    if params.next().is_some() {
-        return Err(RenderError::new("env: More than one parameter given"));
-    }
-
-    let value = std::env::var(variable).unwrap_or_default();
-    out.write(&value)?;
-
-    Ok(())
-}
-
 #[cfg(windows)]
 fn is_executable(name: &str) -> Result<bool, std::io::Error> {
     let name = if name.ends_with(".exe") {
@@ -291,7 +269,6 @@ fn register_rust_helpers(handlebars: &mut Handlebars<'_>) {
     handlebars.register_helper("is_executable", Box::new(is_executable_helper));
     handlebars.register_helper("command_success", Box::new(command_success_helper));
     handlebars.register_helper("command_output", Box::new(command_output_helper));
-    handlebars.register_helper("env", Box::new(env_helper));
 }
 
 #[cfg(feature = "scripting")]
