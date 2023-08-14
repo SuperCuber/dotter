@@ -68,6 +68,7 @@ fn run() -> Result<bool> {
             .set_location_level(LevelFilter::Debug)
             .set_target_level(LevelFilter::Off)
             .set_thread_level(LevelFilter::Off)
+            .set_level_padding(simplelog::LevelPadding::Left)
             .add_filter_allow("dotter".into())
             .build(),
         simplelog::TerminalMode::Mixed,
