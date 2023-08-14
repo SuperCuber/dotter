@@ -474,7 +474,7 @@ impl Filesystem for RealFilesystem {
         ));
 
         let success = self
-            .sudo(format!("Setting owner of {:?} to {:?}...", file, owner))
+            .sudo(format!("setting owner of {:?} to user \"{}\"", file, owner))
             .arg("chown")
             .arg(owner.as_chown_arg())
             .arg("-h") // no-dereference

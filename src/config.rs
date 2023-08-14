@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::filesystem;
 
+use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,6 +13,15 @@ use std::path::{Path, PathBuf};
 pub enum UnixUser {
     Uid(i32),
     Name(String),
+}
+
+impl fmt::Display for UnixUser {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnixUser::Uid(uid) => write!(f, "{}", uid),
+            UnixUser::Name(name) => write!(f, "{}", name),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
