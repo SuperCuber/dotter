@@ -24,7 +24,7 @@ pub fn config(opt: &Options) -> Result<bool> {
 
     let mut multi_select = MultiSelect::new();
 
-    return if opt.local_config.exists() {
+    if opt.local_config.exists() {
         debug!(
             "Local configuration file found at {}",
             opt.local_config.display()
@@ -60,7 +60,6 @@ pub fn config(opt: &Options) -> Result<bool> {
                 println!("Aborting.");
             }
         }
-        Ok(false)
     } else {
         debug!(
             "No local configuration file found at {}",
@@ -104,8 +103,9 @@ pub fn config(opt: &Options) -> Result<bool> {
                 println!("Aborting.");
             }
         }
-        Ok(false)
     };
+
+    Ok(false)
 }
 
 fn format_package(package_name: &String, dependencies: &Vec<String>) -> String {
