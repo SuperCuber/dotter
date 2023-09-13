@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
+use std::path::Path;
 
-use anyhow::Context;
 use anyhow::Result;
+use anyhow::{Context, Error};
 use dialoguer::MultiSelect;
 
 use crate::args::Options;
@@ -22,90 +23,78 @@ pub fn config(opt: &Options) -> Result<bool> {
         visited.clear();
     }
 
+    trace!("Available packages: {:?}", packages);
+
     let mut multi_select = MultiSelect::new();
 
-    if opt.local_config.exists() {
+    let enabled_packages = if opt.local_config.exists() {
         debug!(
             "Local configuration file found at {}",
             opt.local_config.display()
         );
 
-        let mut local_config: LocalConfig = load_local_config(&opt.local_config)?;
-
-        let enabled_packages = &local_config.packages;
-
-        // all packages, including the ones that are disabled
-        for (package_name, dependencies) in packages.iter() {
-            multi_select.item_checked(
-                format_package(package_name, dependencies),
-                enabled_packages.contains(package_name),
-            );
-        }
-
-        println!("Use space to select packages to enable, and enter to confirm");
-        let selected_items = multi_select.interact_opt()?;
-        trace!("Selected elements: {:?}", selected_items);
-
-        match selected_items {
-            Some(selected_items) => {
-                modify_and_save(
-                    opt,
-                    &mut local_config,
-                    packages.iter().map(|(key, _)| key).collect(),
-                    selected_items,
-                )?;
-            }
-            None => {
-                // user pressed "Esc" or "q" to quit
-                println!("Aborting.");
-            }
-        }
+        let local_config: LocalConfig = load_local_config(&opt.local_config)?;
+        trace!("Local configuration: {:?}", local_config);
+        local_config.packages
     } else {
         debug!(
             "No local configuration file found at {}",
             opt.local_config.display()
         );
-        trace!("Available packages: {:?}", packages);
-
-        println!("Use space to select packages to enable, and enter to confirm");
-        let selected_elements = multi_select
-            .with_prompt("Select packages to install")
-            .items(
-                packages
-                    .iter()
-                    .map(|(key, value)| format_package(key, value))
-                    .collect::<Vec<String>>()
-                    .iter()
-                    .as_slice(),
-            )
-            .interact_opt()?;
-        trace!("Selected elements: {:?}", selected_elements);
-
-        match selected_elements {
-            Some(selected_elements) if selected_elements.is_empty() => {
-                println!("No packages selected, writing empty configuration");
-                filesystem::save_file(opt.local_config.as_path(), LocalConfig::empty_config())
-                    .context("Writing empty configuration")?;
-            }
-            Some(selected_elements) => {
-                modify_and_save(
-                    opt,
-                    &mut LocalConfig::empty_config(),
-                    packages
-                        .iter()
-                        .map(|(key, _)| key)
-                        .collect::<Vec<&String>>(),
-                    selected_elements,
-                )?;
-            }
-            None => {
-                // user pressed "Esc" or "q" to quit
-                println!("Aborting.");
-            }
-        }
+        // no local config => no packages are enabled
+        Vec::new()
     };
+    let selected_items = prompt(&mut multi_select, &packages, &enabled_packages)?;
+    trace!("Selected elements: {:?}", selected_items);
+    write_selected_elements(&opt.local_config, selected_items, &packages, false)?;
 
     Ok(false)
+}
+
+fn prompt(
+    multi_select: &mut MultiSelect,
+    packages: &[PackageNames],
+    enabled_packages: &[String],
+) -> std::io::Result<Option<Vec<usize>>> {
+    return multi_select
+        .with_prompt("Select packages to install")
+        .items_checked(
+            packages
+                .iter()
+                .map(|(key, value)| (format_package(key, value), enabled_packages.contains(key)))
+                .collect::<Vec<(String, bool)>>()
+                .as_slice(),
+        )
+        .interact_opt();
+}
+
+fn write_selected_elements(
+    config_path: &Path,
+    selected_elements: Option<Vec<usize>>,
+    packages: &[PackageNames],
+    write_empty: bool,
+) -> Result<(), Error> {
+    return match selected_elements {
+        Some(selected_elements) if selected_elements.is_empty() && write_empty => {
+            println!("No packages selected, writing empty configuration");
+            filesystem::save_file(config_path, LocalConfig::empty_config())
+                .context("Writing empty configuration")
+        }
+        Some(selected_elements) => modify_and_save(
+            config_path,
+            &mut LocalConfig::empty_config(),
+            packages
+                .iter()
+                .map(|(key, _)| key)
+                .collect::<Vec<&String>>(),
+            selected_elements,
+        ),
+        None => {
+            // user pressed "Esc" or "q" to quit
+            println!("Aborting.");
+            Ok(())
+        }
+    };
 }
 
 fn format_package(package_name: &String, dependencies: &Vec<String>) -> String {
@@ -160,12 +149,12 @@ fn get_package_dependencies<'a>(
 }
 
 fn modify_and_save(
-    opt: &Options,
+    config_path: &Path,
     local_config: &mut LocalConfig,
     items_in_order: Vec<&String>,
     selected_items: Vec<usize>,
 ) -> Result<()> {
-    println!("Writing configuration to {}", opt.local_config.display());
+    println!("Writing configuration to {}", config_path.display());
     trace!(
         "Selected indexes: {:?} of {:?}",
         selected_items,
@@ -177,5 +166,5 @@ fn modify_and_save(
         .map(|i| items_in_order[*i].clone())
         .collect::<Vec<String>>();
 
-    filesystem::save_file(&opt.local_config, local_config).context("Writing local config to file")
+    filesystem::save_file(config_path, local_config).context("Writing local config to file")
 }
