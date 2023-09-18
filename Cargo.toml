@@ -26,7 +26,7 @@ shellexpand = "2.*"
 simplelog = "0.12.*"
 tokio = "1.*"
 toml = "0.4.*"
-dialoguer = { version = "0.10.2", features = [] }
+dialoguer = { git = "https://github.com/SIMULATAN/dialoguer", features = [] }
 watchexec = {version="=2.0.0-pre.14", optional = true}
 
 [features]

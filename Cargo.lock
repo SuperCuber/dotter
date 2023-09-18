@@ -395,12 +395,12 @@ dependencies = [
 [[package]]
 name = "dialoguer"
 version = "0.10.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59c6f2989294b9a498d3ad5491a79c6deb604617378e1cdc4bfc1c1361fe2f87"
+source = "git+https://github.com/SIMULATAN/dialoguer#f2efb751cffda840ec07787029f7f0a33767f30d"
 dependencies = [
  "console",
  "shell-words",
  "tempfile",
+ "thiserror",
  "zeroize",
 ]
 

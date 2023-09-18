@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use anyhow::{Context, Error};
-use dialoguer::MultiSelect;
+use dialoguer::{MultiSelectPlus, MultiSelectPlusItem};
 
 use crate::args::Options;
 use crate::config::{load_global_config, load_local_config, GlobalConfig, LocalConfig, Package};
@@ -25,7 +25,7 @@ pub fn config(opt: &Options) -> Result<bool> {
 
     trace!("Available packages: {:?}", packages);
 
-    let mut multi_select = MultiSelect::new();
+    let multi_select = MultiSelectPlus::new();
 
     let enabled_packages = if opt.local_config.exists() {
         debug!(
@@ -44,7 +44,7 @@ pub fn config(opt: &Options) -> Result<bool> {
         // no local config => no packages are enabled
         Vec::new()
     };
-    let selected_items = prompt(&mut multi_select, &packages, &enabled_packages)?;
+    let selected_items = prompt(multi_select, &packages, &enabled_packages)?;
     trace!("Selected elements: {:?}", selected_items);
     write_selected_elements(&opt.local_config, selected_items, &packages, false)?;
 
@@ -52,18 +52,21 @@ pub fn config(opt: &Options) -> Result<bool> {
 }
 
 fn prompt(
-    multi_select: &mut MultiSelect,
+    multi_select: MultiSelectPlus<String, String>,
     packages: &[PackageNames],
     enabled_packages: &[String],
-) -> std::io::Result<Option<Vec<usize>>> {
+) -> dialoguer::Result<Option<Vec<usize>>> {
     return multi_select
         .with_prompt("Select packages to install")
-        .items_checked(
+        .items(
             packages
                 .iter()
-                .map(|(key, value)| (format_package(key, value), enabled_packages.contains(key)))
-                .collect::<Vec<(String, bool)>>()
-                .as_slice(),
+                .map(|(key, value)| MultiSelectPlusItem {
+                    name: format_package(key, value),
+                    checked: enabled_packages.contains(key),
+                    summary_text: key.clone(),
+                })
+                .collect::<Vec<_>>(),
         )
         .interact_opt();
 }
