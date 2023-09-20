@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use anyhow::{Context, Error};
+use crossterm::style::{style, Color, Stylize};
 use dialoguer::{MultiSelectPlus, MultiSelectPlusItem};
 
 use crate::args::Options;
@@ -102,7 +103,11 @@ fn write_selected_elements(
 
 fn format_package(package_name: &String, dependencies: &Vec<String>) -> String {
     let dependencies_string = if !dependencies.is_empty() {
-        format!(" # (will enable {})", dependencies.join(", "))
+        style(format!(" # (will enable {})", dependencies.join(", ")))
+            // fallback for terms not supporting 8-bit ANSI
+            .with(Color::White)
+            .with(Color::AnsiValue(244))
+            .to_string()
     } else {
         String::new()
     };
