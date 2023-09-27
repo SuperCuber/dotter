@@ -395,7 +395,7 @@ dependencies = [
 [[package]]
 name = "dialoguer"
 version = "0.10.4"
-source = "git+https://github.com/SIMULATAN/dialoguer#f2efb751cffda840ec07787029f7f0a33767f30d"
+source = "git+https://github.com/SIMULATAN/dialoguer#786e19d39746c8fd49816a655d7cea225e569d9b"
 dependencies = [
  "console",
  "shell-words",

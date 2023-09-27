@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::Result;
 use anyhow::{Context, Error};
 use crossterm::style::{style, Color, Stylize};
-use dialoguer::{MultiSelectPlus, MultiSelectPlusItem};
+use dialoguer::{MultiSelectPlus, MultiSelectPlusItem, MultiSelectPlusStatus};
 
 use crate::args::Options;
 use crate::config::{load_global_config, load_local_config, GlobalConfig, LocalConfig, Package};
@@ -53,7 +53,7 @@ pub fn config(opt: &Options) -> Result<bool> {
 }
 
 fn prompt(
-    multi_select: MultiSelectPlus<String, String>,
+    multi_select: MultiSelectPlus,
     packages: &[PackageNames],
     enabled_packages: &[String],
 ) -> dialoguer::Result<Option<Vec<usize>>> {
@@ -64,12 +64,33 @@ fn prompt(
                 .iter()
                 .map(|(key, value)| MultiSelectPlusItem {
                     name: format_package(key, value),
-                    checked: enabled_packages.contains(key),
+                    status: if enabled_packages.contains(key) {
+                        MultiSelectPlusStatus::CHECKED
+                    } else if is_transitive_dependency(key, packages, enabled_packages) {
+                        MultiSelectPlusStatus {
+                            checked: false,
+                            symbol: "-",
+                        }
+                    } else {
+                        MultiSelectPlusStatus::UNCHECKED
+                    },
                     summary_text: key.clone(),
                 })
                 .collect::<Vec<_>>(),
         )
         .interact_opt();
+}
+
+// checks if a package is a transitive dependency of an enabled package
+fn is_transitive_dependency(
+    package_name: &String,
+    packages: &[PackageNames],
+    enabled_packages: &[String],
+) -> bool {
+    packages
+        .iter()
+        .filter(|(key, _)| enabled_packages.contains(key))
+        .any(|(_, dependencies)| dependencies.contains(package_name))
 }
 
 fn write_selected_elements(
