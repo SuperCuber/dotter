@@ -4,14 +4,19 @@ use std::path::Path;
 use anyhow::Result;
 use anyhow::{Context, Error};
 use crossterm::style::{style, Color, Stylize};
-use dialoguer::{MultiSelectPlus, MultiSelectPlusItem, MultiSelectPlusStatus};
+use dialoguer::{MultiSelectPlus, MultiSelectPlusItem, MultiSelectPlusStatus, SelectCallback};
 
 use crate::args::Options;
 use crate::config::{load_global_config, load_local_config, GlobalConfig, LocalConfig, Package};
 use crate::filesystem;
 
+const DEPENDENCY: MultiSelectPlusStatus = MultiSelectPlusStatus {
+    checked: false,
+    symbol: "-",
+};
+
 /// Returns true if an error was printed
-pub fn config(opt: &Options) -> Result<bool> {
+pub fn config<'a>(opt: &Options) -> Result<bool> {
     let global_config: GlobalConfig = load_global_config(&opt.global_config)?;
 
     let mut visited = HashSet::new();
@@ -25,8 +30,6 @@ pub fn config(opt: &Options) -> Result<bool> {
     }
 
     trace!("Available packages: {:?}", packages);
-
-    let multi_select = MultiSelectPlus::new();
 
     let enabled_packages = if opt.local_config.exists() {
         debug!(
@@ -45,11 +48,57 @@ pub fn config(opt: &Options) -> Result<bool> {
         // no local config => no packages are enabled
         Vec::new()
     };
+
+    let multi_select = MultiSelectPlus::new()
+        .with_select_callback(select_callback(&packages));
+
     let selected_items = prompt(multi_select, &packages, &enabled_packages)?;
     trace!("Selected elements: {:?}", selected_items);
     write_selected_elements(&opt.local_config, selected_items, &packages, false)?;
 
     Ok(false)
+}
+
+fn select_callback<'a>(packages: &'a [PackageNames]) -> Box<SelectCallback<'a>> {
+    Box::new(move |_, items| {
+        // update the status of the items, making ones that were enabled through a transitive
+        // dependency set to unchecked
+        let enabled_packages = items.iter().filter_map(|item| {
+            if item.status.checked {
+                Some(item.summary_text.clone())
+            } else {
+                None
+            }
+        }).collect::<Vec<_>>();
+
+        let new_items = items.iter().map(|item| {
+            if let Some(package) = packages.iter().find(|(key, _)| key == &item.summary_text) {
+                if is_transitive_dependency(&item.summary_text, packages, &enabled_packages) && item.status != MultiSelectPlusStatus::CHECKED {
+                    // items that are enabled due to a transitive dependency
+                    // CHECKED is excluded because it means the user explicitly enabled it
+                    MultiSelectPlusItem {
+                        name: format_package(&package.0, &package.1),
+                        status: DEPENDENCY,
+                        summary_text: item.summary_text.clone(),
+                    }
+                } else if item.status.symbol == "-" {
+                    // previous transitive dependencies that are now unchecked
+                    MultiSelectPlusItem {
+                        name: format_package(&package.0, &package.1),
+                        status: MultiSelectPlusStatus::UNCHECKED,
+                        summary_text: item.summary_text.clone(),
+                    }
+                } else {
+                    // checked or unchecked items are just cloned as that
+                    item.clone()
+                }
+            } else {
+                // items that are not in the package list are just cloned as that
+                item.clone()
+            }
+        }).collect();
+        Some(new_items)
+    })
 }
 
 fn prompt(
@@ -62,26 +111,29 @@ fn prompt(
         .items(
             packages
                 .iter()
-                .map(|(key, value)| MultiSelectPlusItem {
-                    name: format_package(key, value),
-                    status: if enabled_packages.contains(key) {
-                        MultiSelectPlusStatus::CHECKED
-                    } else if is_transitive_dependency(key, packages, enabled_packages) {
-                        MultiSelectPlusStatus {
-                            checked: false,
-                            symbol: "-",
-                        }
-                    } else {
-                        MultiSelectPlusStatus::UNCHECKED
-                    },
-                    summary_text: key.clone(),
+                .map(|(key, value)| {
+                    MultiSelectPlusItem {
+                        name: format_package(key, value),
+                        status: if enabled_packages.contains(key) {
+                            MultiSelectPlusStatus::CHECKED
+                        } else if is_transitive_dependency(key, packages, enabled_packages) {
+                            let status = MultiSelectPlusStatus {
+                                checked: false,
+                                symbol: "-",
+                            };
+                            status
+                        } else {
+                            MultiSelectPlusStatus::UNCHECKED
+                        },
+                        summary_text: key.clone(),
+                    }
                 })
                 .collect::<Vec<_>>(),
         )
         .interact_opt();
 }
 
-// checks if a package is a transitive dependency of an enabled package
+/// checks if a package is a transitive dependency of an enabled package
 fn is_transitive_dependency(
     package_name: &String,
     packages: &[PackageNames],
