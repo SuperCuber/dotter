@@ -115,16 +115,12 @@ fn prompt(
                     MultiSelectPlusItem {
                         name: format_package(key, value),
                         status: if enabled_packages.contains(key) {
-                            MultiSelectPlusStatus::CHECKED
-                        } else if is_transitive_dependency(key, packages, enabled_packages) {
-                            let status = MultiSelectPlusStatus {
-                                checked: false,
-                                symbol: "-",
-                            };
-                            status
-                        } else {
-                            MultiSelectPlusStatus::UNCHECKED
-                        },
+                                MultiSelectPlusStatus::CHECKED
+                            } else if is_transitive_dependency(key, packages, enabled_packages) {
+                                DEPENDENCY
+                            } else {
+                                MultiSelectPlusStatus::UNCHECKED
+                            },
                         summary_text: key.clone(),
                     }
                 })
@@ -187,7 +183,7 @@ fn format_package(package_name: &String, dependencies: &Vec<String>) -> String {
     format!("{package_name}{dependencies_string}")
 }
 
-/// (package_name, dependencies)
+/// (package_name, dependencies) - includes transitive dependencies
 type PackageNames = (String, Vec<String>);
 
 fn get_package_dependencies<'a>(
@@ -247,5 +243,6 @@ fn modify_and_save(
         .map(|i| items_in_order[*i].clone())
         .collect::<Vec<String>>();
 
-    filesystem::save_file(config_path, local_config).context("Writing local config to file")
+    filesystem::save_file(config_path, local_config)
+        .context("Writing local config to file")
 }
