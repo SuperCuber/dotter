@@ -16,7 +16,7 @@ const DEPENDENCY: MultiSelectPlusStatus = MultiSelectPlusStatus {
 };
 
 /// Returns true if an error was printed
-pub fn config<'a>(opt: &Options) -> Result<bool> {
+pub fn config(opt: &Options) -> Result<bool> {
     let global_config: GlobalConfig = load_global_config(&opt.global_config)?;
 
     let mut visited = HashSet::new();
@@ -49,8 +49,7 @@ pub fn config<'a>(opt: &Options) -> Result<bool> {
         Vec::new()
     };
 
-    let multi_select = MultiSelectPlus::new()
-        .with_select_callback(select_callback(&packages));
+    let multi_select = MultiSelectPlus::new().with_select_callback(select_callback(&packages));
 
     let selected_items = prompt(multi_select, &packages, &enabled_packages)?;
     trace!("Selected elements: {:?}", selected_items);
@@ -59,44 +58,52 @@ pub fn config<'a>(opt: &Options) -> Result<bool> {
     Ok(false)
 }
 
-fn select_callback<'a>(packages: &'a [PackageNames]) -> Box<SelectCallback<'a>> {
+fn select_callback(packages: &[PackageNames]) -> Box<SelectCallback> {
     Box::new(move |_, items| {
         // update the status of the items, making ones that were enabled through a transitive
         // dependency set to unchecked
-        let enabled_packages = items.iter().filter_map(|item| {
-            if item.status.checked {
-                Some(item.summary_text.clone())
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>();
+        let enabled_packages = items
+            .iter()
+            .filter_map(|item| {
+                if item.status.checked {
+                    Some(item.summary_text.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
 
-        let new_items = items.iter().map(|item| {
-            if let Some(package) = packages.iter().find(|(key, _)| key == &item.summary_text) {
-                if is_transitive_dependency(&item.summary_text, packages, &enabled_packages) && item.status != MultiSelectPlusStatus::CHECKED {
-                    // items that are enabled due to a transitive dependency
-                    // CHECKED is excluded because it means the user explicitly enabled it
-                    MultiSelectPlusItem {
-                        name: format_package(&package.0, &package.1),
-                        status: DEPENDENCY,
-                        summary_text: item.summary_text.clone(),
-                    }
-                } else if item.status.symbol == "-" {
-                    // previous transitive dependencies that are now unchecked
-                    MultiSelectPlusItem {
-                        name: format_package(&package.0, &package.1),
-                        status: MultiSelectPlusStatus::UNCHECKED,
-                        summary_text: item.summary_text.clone(),
+        let new_items = items
+            .iter()
+            .map(|item| {
+                if let Some(package) = packages.iter().find(|(key, _)| key == &item.summary_text) {
+                    if is_transitive_dependency(&item.summary_text, packages, &enabled_packages)
+                        && item.status != MultiSelectPlusStatus::CHECKED
+                    {
+                        // items that are enabled due to a transitive dependency
+                        // CHECKED is excluded because it means the user explicitly enabled it
+                        MultiSelectPlusItem {
+                            name: format_package(&package.0, &package.1),
+                            status: DEPENDENCY,
+                            summary_text: item.summary_text.clone(),
+                        }
+                    } else if item.status.symbol == "-" {
+                        // previous transitive dependencies that are now unchecked
+                        MultiSelectPlusItem {
+                            name: format_package(&package.0, &package.1),
+                            status: MultiSelectPlusStatus::UNCHECKED,
+                            summary_text: item.summary_text.clone(),
+                        }
+                    } else {
+                        // checked or unchecked items are just cloned as that
+                        item.clone()
                     }
                 } else {
-                    // checked or unchecked items are just cloned as that
+                    // items that are not in the package list are just cloned as that
                     item.clone()
                 }
-            } else {
-                // items that are not in the package list are just cloned as that
-                item.clone()
-            }
-        }).collect();
+            })
+            .collect();
         Some(new_items)
     })
 }
@@ -111,18 +118,16 @@ fn prompt(
         .items(
             packages
                 .iter()
-                .map(|(key, value)| {
-                    MultiSelectPlusItem {
-                        name: format_package(key, value),
-                        status: if enabled_packages.contains(key) {
-                                MultiSelectPlusStatus::CHECKED
-                            } else if is_transitive_dependency(key, packages, enabled_packages) {
-                                DEPENDENCY
-                            } else {
-                                MultiSelectPlusStatus::UNCHECKED
-                            },
-                        summary_text: key.clone(),
-                    }
+                .map(|(key, value)| MultiSelectPlusItem {
+                    name: format_package(key, value),
+                    status: if enabled_packages.contains(key) {
+                        MultiSelectPlusStatus::CHECKED
+                    } else if is_transitive_dependency(key, packages, enabled_packages) {
+                        DEPENDENCY
+                    } else {
+                        MultiSelectPlusStatus::UNCHECKED
+                    },
+                    summary_text: key.clone(),
                 })
                 .collect::<Vec<_>>(),
         )
@@ -243,6 +248,5 @@ fn modify_and_save(
         .map(|i| items_in_order[*i].clone())
         .collect::<Vec<String>>();
 
-    filesystem::save_file(config_path, local_config)
-        .context("Writing local config to file")
+    filesystem::save_file(config_path, local_config).context("Writing local config to file")
 }
