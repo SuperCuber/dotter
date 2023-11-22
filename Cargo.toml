@@ -21,12 +21,12 @@ hostname = "0.3.*"
 log = "0.4.*"
 maplit = "1.*"
 meval = "0.2.*"
-serde = {version = "1.*", features = ["derive"]}
+serde = { version = "1.*", features = ["derive"] }
 shellexpand = "2.*"
 simplelog = "0.12.*"
 tokio = "1.*"
 toml = "0.4.*"
-watchexec = {version="=2.0.0-pre.14", optional = true}
+watchexec = { version = "=2.0.0-pre.14", optional = true }
 
 [features]
 default = ["scripting", "watch"]
@@ -48,3 +48,10 @@ dunce = "1.*"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.137"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
