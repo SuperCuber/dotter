@@ -9,37 +9,50 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_name:
+          [linux-x64-musl, linux-arm64-musl, macos-arm64, windows-x64-msvc]
         include:
-          - os: ubuntu-latest
+          - build_name: linux-x64-musl
+            os: ubuntu-latest
             exe_suffix: ""
             name_suffix: ""
             target: x86_64-unknown-linux-musl
-          - os: macos-latest
+          - build_name: linux-arm64-musl
+            os: ubuntu-latest
+            exe_suffix: ""
+            name_suffix: ""
+            target: aarch64-unknown-linux-musl
+          - build_name: macos-arm64
+            os: macos-latest
             exe_suffix: ""
             name_suffix: ".arm"
             target: aarch64-apple-darwin
-          - os: windows-latest
+          - build_name: windows-x64-msvc
+            os: windows-latest
             exe_suffix: ".exe"
             name_suffix: ".exe"
             target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v3
-      - name: Update rust
-        run: rustup update
-      - name: Add target
-        run: rustup target add ${{ matrix.target }}
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
       - name: Build
-        run: "cargo build --release --locked --verbose --target ${{ matrix.target }}"
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: ${{ matrix.os != 'windows-latest' }}
+          command: build
+          args: --release --locked --verbose --target ${{ matrix.target }}
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           asset_path: target/${{ matrix.target }}/release/dotter${{ matrix.exe_suffix }}
-          asset_name: dotter${{ matrix.name_suffix }}
+          asset_name: dotter-${{ matrix.build_name}}${{ matrix.name_suffix }}
           asset_content_type: application/octet-stream
           upload_url: ${{ github.event.release.upload_url }}
   build-completions:
