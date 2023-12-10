@@ -38,6 +38,8 @@ jobs:
         run: rustup update
       - name: Add target
         run: rustup target add ${{ matrix.target }}
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
       - name: Build
         shell: bash
         run: |
