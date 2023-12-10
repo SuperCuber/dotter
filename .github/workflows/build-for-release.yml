@@ -41,7 +41,7 @@ jobs:
       - name: Build
         uses: actions-rs/cargo@v1
         with:
-          use-cross: ${{ matrix.os != 'windows-latest' }}
+          use-cross: ${{ matrix.build_name == 'linux-arm64-musl' }}
           command: build
           args: --release --locked --verbose --target ${{ matrix.target }}
       - name: Upload asset
