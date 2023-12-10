@@ -39,11 +39,14 @@ jobs:
       - name: Add target
         run: rustup target add ${{ matrix.target }}
       - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: ${{ matrix.build_name == 'linux-arm64-musl' }}
-          command: build
-          args: --release --locked --verbose --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          _cargo="cargo"
+          if [ "${{ matrix.build_name }}" = "linux-arm64-musl" ]; then
+            cargo install cross
+            _cargo="cross"
+          fi
+          $_cargo build --release --locked --verbose --target ${{ matrix.target }}
       - name: Upload asset
         uses: actions/upload-release-asset@v1.0.2
         env:
