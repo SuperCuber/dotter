@@ -34,10 +34,10 @@ jobs:
             target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v3
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - name: Update Rust
+        run: rustup update
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
       - name: Build
         uses: actions-rs/cargo@v1
         with:
