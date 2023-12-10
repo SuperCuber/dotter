@@ -26,7 +26,8 @@ shellexpand = "2.*"
 simplelog = "0.12.*"
 tokio = "1.*"
 toml = "0.4.*"
-watchexec = { version = "=2.0.0-pre.14", optional = true }
+watchexec = { version = "3", optional = true }
+watchexec-events = "2.0.1"
 
 [features]
 default = ["scripting", "watch"]

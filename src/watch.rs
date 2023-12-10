@@ -1,90 +1,80 @@
-use std::convert::Infallible;
-use std::sync::Arc;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use log::Level;
-use watchexec::action::{Action, Outcome};
-use watchexec::config::{InitConfig, RuntimeConfig};
-use watchexec::filter::tagged::{Filter, Matcher, Op, Pattern, TaggedFilterer};
-use watchexec::fs::Watcher;
-use watchexec::handler::SyncFnHandler;
-use watchexec::Watchexec;
+use watchexec::filter::Filterer;
+use watchexec::{Config, Watchexec};
 
 use super::display_error;
 use crate::args::Options;
 use crate::deploy;
 
+#[derive(Debug)]
+struct MyFilterer {
+    cache_directory: PathBuf,
+    cache_file: PathBuf,
+}
+
+impl Filterer for MyFilterer {
+    fn check_event(
+        &self,
+        event: &watchexec_events::Event,
+        _priority: watchexec_events::Priority,
+    ) -> Result<bool, watchexec::error::RuntimeError> {
+        let path = 'block: {
+            for tag in &event.tags {
+                match tag {
+                    watchexec_events::Tag::Path { path, .. } => break 'block Some(path),
+                    _ => {}
+                }
+            }
+            break 'block None;
+        };
+        let Some(path) = path else { return Ok(false) };
+
+        let ans = !path.starts_with(&self.cache_directory.canonicalize().unwrap())
+            && path != &self.cache_file.canonicalize().unwrap()
+            && path != &PathBuf::from(".").canonicalize().unwrap().join(".git")
+            && path
+                .file_name()
+                .map(|s| s != "DOTTER_SYMLINK_TEST")
+                .unwrap_or(true);
+
+        if ans {
+            dbg!(path);
+        }
+
+        Ok(ans)
+    }
+}
+
 pub(crate) async fn watch(opt: Options) -> Result<()> {
-    let mut init = InitConfig::default();
-    let mut errors = false;
-    init.on_error(SyncFnHandler::from(move |e| {
-        if !errors && !log::log_enabled!(Level::Debug) {
-            log::warn!("Watcher produced errors. Re-run with -vv to see them.");
-            errors = true;
-        }
-        log::debug!("Watcher error: {e:#?}");
-        Ok::<(), Infallible>(())
-    }));
+    let config = Config::default();
+    config.filterer(MyFilterer {
+        cache_directory: opt.cache_directory.clone(),
+        cache_file: opt.cache_file.clone(),
+    });
+    config.pathset(["."]);
 
-    let mut runtime = RuntimeConfig::default();
-    runtime.file_watcher(Watcher::Native);
-    runtime.pathset(["."]);
-
-    let filter = TaggedFilterer::new(".", std::env::current_dir()?).unwrap();
-    filter
-        .add_filters(&[
-            Filter {
-                in_path: None,
-                on: Matcher::Path,
-                op: Op::NotGlob,
-                pat: Pattern::Glob(format!("{}/", opt.cache_directory.display())),
-                negate: false,
-            },
-            Filter {
-                in_path: None,
-                on: Matcher::Path,
-                op: Op::NotGlob,
-                pat: Pattern::Glob(opt.cache_file.to_string_lossy().into()),
-                negate: false,
-            },
-            Filter {
-                in_path: None,
-                on: Matcher::Path,
-                op: Op::NotGlob,
-                pat: Pattern::Glob(".git/".into()),
-                negate: false,
-            },
-            Filter {
-                in_path: None,
-                on: Matcher::Path,
-                op: Op::NotEqual,
-                pat: Pattern::Exact("DOTTER_SYMLINK_TEST".into()),
-                negate: false,
-            },
-        ])
-        .await?;
-    runtime.filterer(Arc::new(filter));
-
-    runtime.on_action(move |action: Action| {
+    config.on_action(move |mut action| {
         let opt = opt.clone();
-        async move {
-            if action.events.iter().any(|e| e.signals().next().is_some()) {
-                action.outcome(Outcome::Exit);
-                return Ok(());
-            }
-
-            println!("[Dotter] Deploying...");
-            if let Err(e) = deploy::deploy(&opt) {
-                display_error(e);
-            }
-
-            action.outcome(Outcome::if_running(Outcome::DoNothing, Outcome::Start));
-
-            Ok::<(), Infallible>(())
+        if action.signals().next().is_some() {
+            action.quit();
+            return action;
         }
+
+        println!("[Dotter] Deploying...");
+        if let Err(e) = deploy::deploy(&opt) {
+            display_error(e);
+        }
+
+        action
     });
 
-    let we = Watchexec::new(init, runtime.clone())?;
+    config.on_error(move |e| {
+        log::error!("Watcher error: {e:#?}");
+    });
+
+    let we = Watchexec::with_config(config)?;
     we.main().await.context("run watchexec main loop")??;
     Ok(())
 }
