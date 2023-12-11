@@ -13,7 +13,9 @@ pub(crate) async fn watch(opt: Options) -> Result<()> {
     config.file_watcher(Watcher::Native);
     config.pathset(["."]);
 
-    let filter = TaggedFilterer::new(".".into(), std::env::current_dir()?).await.unwrap();
+    let filter = TaggedFilterer::new(".".into(), std::env::current_dir()?)
+        .await
+        .unwrap();
     filter
         .add_filters(&[
             Filter {
