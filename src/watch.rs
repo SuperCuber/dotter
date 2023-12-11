@@ -1,59 +1,52 @@
-use std::path::PathBuf;
-
 use anyhow::{Context, Result};
-use watchexec::filter::Filterer;
+use watchexec::sources::fs::Watcher;
 use watchexec::{Config, Watchexec};
+use watchexec_filterer_tagged::{Filter, Matcher, Op, Pattern, TaggedFilterer};
 
 use super::display_error;
 use crate::args::Options;
 use crate::deploy;
 
-#[derive(Debug)]
-struct MyFilterer {
-    cache_directory: PathBuf,
-    cache_file: PathBuf,
-}
-
-impl Filterer for MyFilterer {
-    fn check_event(
-        &self,
-        event: &watchexec_events::Event,
-        _priority: watchexec_events::Priority,
-    ) -> Result<bool, watchexec::error::RuntimeError> {
-        let path = 'block: {
-            for tag in &event.tags {
-                match tag {
-                    watchexec_events::Tag::Path { path, .. } => break 'block Some(path),
-                    _ => {}
-                }
-            }
-            break 'block None;
-        };
-        let Some(path) = path else { return Ok(false) };
-
-        let ans = !path.starts_with(&self.cache_directory.canonicalize().unwrap())
-            && path != &self.cache_file.canonicalize().unwrap()
-            && path != &PathBuf::from(".").canonicalize().unwrap().join(".git")
-            && path
-                .file_name()
-                .map(|s| s != "DOTTER_SYMLINK_TEST")
-                .unwrap_or(true);
-
-        if ans {
-            dbg!(path);
-        }
-
-        Ok(ans)
-    }
-}
-
 pub(crate) async fn watch(opt: Options) -> Result<()> {
     let config = Config::default();
-    config.filterer(MyFilterer {
-        cache_directory: opt.cache_directory.clone(),
-        cache_file: opt.cache_file.clone(),
-    });
+
+    config.file_watcher(Watcher::Native);
     config.pathset(["."]);
+
+    let filter = TaggedFilterer::new(".".into(), std::env::current_dir()?).await.unwrap();
+    filter
+        .add_filters(&[
+            Filter {
+                in_path: None,
+                on: Matcher::Path,
+                op: Op::NotGlob,
+                pat: Pattern::Glob(format!("{}/", opt.cache_directory.display())),
+                negate: false,
+            },
+            Filter {
+                in_path: None,
+                on: Matcher::Path,
+                op: Op::NotGlob,
+                pat: Pattern::Glob(opt.cache_file.to_string_lossy().into()),
+                negate: false,
+            },
+            Filter {
+                in_path: None,
+                on: Matcher::Path,
+                op: Op::NotGlob,
+                pat: Pattern::Glob(".git/".into()),
+                negate: false,
+            },
+            Filter {
+                in_path: None,
+                on: Matcher::Path,
+                op: Op::NotEqual,
+                pat: Pattern::Exact("DOTTER_SYMLINK_TEST".into()),
+                negate: false,
+            },
+        ])
+        .await?;
+    config.filterer(filter);
 
     config.on_action(move |mut action| {
         let opt = opt.clone();
