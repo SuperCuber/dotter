@@ -78,16 +78,8 @@ fn math_helper(
         .collect::<Vec<String>>();
     let expression = params.join(" ");
 
-    let parsed = expression.parse::<meval::Expr>().map_err(|e| {
-        RenderError::new(format!(
-            "Cannot parse math expression {} because {}",
-            expression, e
-        ))
-    })?;
-
     out.write(
-        &parsed
-            .eval()
+        &evalexpr::eval(&expression)
             .map_err(|e| {
                 RenderError::new(format!(
                     "Cannot evaluate expression {} because {}",
