@@ -257,7 +257,7 @@ impl RealFilesystem {
         Command::new("sudo")
     }
 
-    fn is_owned_by_user(&self, path: &Path) -> Result<bool> {
+    fn is_owned_by_user(path: &Path) -> Result<bool> {
         use std::os::unix::fs::MetadataExt;
         let file_uid = path.metadata().context("get file metadata")?.uid();
         let process_uid = unsafe { libc::geteuid() };
@@ -460,9 +460,7 @@ impl Filesystem for RealFilesystem {
     }
 
     fn set_owner(&mut self, file: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if self
-            .is_owned_by_user(file)
-            .context("detect if file is owned by the current user")?
+        if Self::is_owned_by_user(file).context("detect if file is owned by the current user")?
             && owner.is_none()
         {
             // Nothing to do, no need to elevate
