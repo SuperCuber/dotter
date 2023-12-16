@@ -72,8 +72,8 @@ pub trait Filesystem {
     /// Target file will be owned by the selected user. Privileges elevated as needed.
     fn copy_file(&mut self, source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()>;
 
-    /// If owner.is_some, elevates privileges and sets file to that owner
-    /// If owner.is_none, ensures file is owned by the current user (elevating privileges if needed)
+    /// If `owner.is_some`, elevates privileges and sets file to that owner
+    /// If `owner.is_none`, ensures file is owned by the current user (elevating privileges if needed)
     fn set_owner(&mut self, file: &Path, owner: &Option<UnixUser>) -> Result<()>;
 
     /// Copy file mode, elevating privileges as needed. (Does not change owner)
