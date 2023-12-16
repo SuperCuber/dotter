@@ -157,7 +157,7 @@ Proceeding by copying instead of symlinking."
     Ok(error_occurred)
 }
 
-pub fn undeploy(opt: Options) -> Result<bool> {
+pub fn undeploy(opt: &Options) -> Result<bool> {
     // === Load configuration ===
     let mut config = config::load_configuration(&opt.local_config, &opt.global_config, None)
         .context("get a configuration")?;

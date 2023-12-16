@@ -100,7 +100,7 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
         }
         args::Action::Undeploy => {
             debug!("Un-Deploying...");
-            if deploy::undeploy(opt).context("undeploy")? {
+            if deploy::undeploy(&opt).context("undeploy")? {
                 // An error occurred
                 return Ok(false);
             }
