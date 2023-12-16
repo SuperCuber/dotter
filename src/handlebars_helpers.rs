@@ -16,7 +16,7 @@ use crate::config::{Configuration, Files, Variables};
 pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebars<'b>> {
     debug!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
+    handlebars.register_escape_fn(str::to_string); // Disable html-escaping
     handlebars.set_strict_mode(true); // Report missing variables as errors
     register_rust_helpers(&mut handlebars);
 
