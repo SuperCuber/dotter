@@ -412,8 +412,8 @@ impl FileTarget {
     pub fn condition(&self) -> Option<&String> {
         match self {
             FileTarget::Automatic(_) => None,
-            FileTarget::Symbolic(SymbolicTarget { condition, .. }) => condition.as_ref(),
-            FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
+            FileTarget::Symbolic(SymbolicTarget { condition, .. })
+            | FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
         }
     }
 }
