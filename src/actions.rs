@@ -544,7 +544,7 @@ pub fn update_template(
                 );
                 if log_enabled!(log::Level::Info) {
                     info!("Refusing because of the following changes in target location: ");
-                    print_diff(diff, diff_context_lines);
+                    print_diff(&diff, diff_context_lines);
                 }
                 Ok(false)
             } else {

@@ -28,7 +28,7 @@ pub fn print_template_diff(
                         source,
                         target.target
                     );
-                    print_diff(diff, diff_context_lines);
+                    print_diff(&diff, diff_context_lines);
                 }
             }
             Err(e) => {
@@ -86,7 +86,7 @@ pub fn diff_nonempty(diff: &[diff::Result<String>]) -> bool {
     false
 }
 
-fn hunkify_diff(diff: Diff, extra_lines: usize) -> HunkDiff {
+fn hunkify_diff(diff: &[diff::Result<String>], extra_lines: usize) -> HunkDiff {
     let mut hunks = vec![];
 
     let mut left_line_number: usize = 1;
@@ -191,7 +191,7 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
     }
 }
 
-pub fn print_diff(diff: Diff, extra_lines: usize) {
+pub fn print_diff(diff: &[diff::Result<String>], extra_lines: usize) {
     let mut diff = hunkify_diff(diff, extra_lines);
 
     let last_hunk = diff.pop().expect("at least one hunk");
