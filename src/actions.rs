@@ -40,7 +40,7 @@ pub struct RealActionRunner<'a> {
 impl<'a> RealActionRunner<'a> {
     pub fn new(
         fs: &'a mut dyn Filesystem,
-        handlebars: &'a Handlebars,
+        handlebars: &'a Handlebars<'_>,
         variables: &'a Variables,
         force: bool,
         diff_context_lines: usize,
