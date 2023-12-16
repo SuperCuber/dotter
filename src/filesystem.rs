@@ -670,7 +670,7 @@ impl Filesystem for DryRunFilesystem {
                 }
                 Ok(())
             }
-            s @ FileState::SymbolicLink(_) | s @ FileState::Directory | s @ FileState::Missing => {
+            s @ (FileState::SymbolicLink(_) | FileState::Directory | FileState::Missing) => {
                 anyhow::bail!("file is not regular file but is a {:?}", s);
             }
         }
