@@ -10,7 +10,7 @@ use crate::filesystem::{Filesystem, RealFilesystem};
 pub(crate) fn run_hook(
     location: &Path,
     cache_dir: &Path,
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &crate::config::Variables,
 ) -> Result<()> {
     if !location.exists() {

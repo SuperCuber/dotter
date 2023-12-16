@@ -31,7 +31,7 @@ pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebar
 }
 
 fn filter_files_condition(
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
     files: &mut Files,
 ) -> Result<()> {
@@ -57,7 +57,11 @@ fn filter_files_condition(
     Ok(())
 }
 
-fn eval_condition(handlebars: &Handlebars, variables: &Variables, condition: &str) -> Result<bool> {
+fn eval_condition(
+    handlebars: &Handlebars<'_>,
+    variables: &Variables,
+    condition: &str,
+) -> Result<bool> {
     // extra { for format!()
     let condition = format!("{{{{#if {} }}}}true{{{{/if}}}}", condition);
     let rendered = handlebars
