@@ -9,6 +9,7 @@ readme = "README.md"
 keywords = ["dotter", "dotfiles", "manager"]
 categories = ["command-line-utilities"]
 license = "Unlicense"
+rust-version = "1.70"
 
 [dependencies]
 anyhow = "1.*"
