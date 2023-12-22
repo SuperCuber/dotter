@@ -20,6 +20,9 @@ The following AUR packages are available:
 
 All of those are maintained by [orhun](https://github.com/orhun/) - huge thanks to him!
 
+## macOS
+Dotter is available on [Homebrew](https://brew.sh). Run `brew install dotter` to install the latest release.
+
 ## Windows
 Dotter is available on [Scoop](https://scoop.sh). Run `scoop install dotter` to install the latest release.
 
