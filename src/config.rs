@@ -18,8 +18,8 @@ pub enum UnixUser {
 impl fmt::Display for UnixUser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UnixUser::Uid(uid) => write!(f, "{}", uid),
-            UnixUser::Name(name) => write!(f, "{}", name),
+            UnixUser::Uid(uid) => write!(f, "{uid}"),
+            UnixUser::Name(name) => write!(f, "{name}"),
         }
     }
 }
@@ -133,7 +133,7 @@ pub fn load_configuration(
 ) -> Result<Configuration> {
     let global: GlobalConfig = filesystem::load_file(global_config)
         .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
-        .with_context(|| format!("load global config {:?}", global_config))?;
+        .with_context(|| format!("load global config {global_config:?}"))?;
     trace!("Global config: {:#?}", global);
 
     // If local.toml can't be found, look for a file named <hostname>.toml instead
@@ -147,12 +147,12 @@ pub fn load_configuration(
             "{:?} not found, using {}.toml instead (based on hostname)",
             local_config, hostname
         );
-        local_config_buf.set_file_name(&format!("{}.toml", hostname));
+        local_config_buf.set_file_name(&format!("{hostname}.toml"));
     }
 
     let local: LocalConfig = filesystem::load_file(local_config_buf.as_path())
         .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
-        .with_context(|| format!("load local config {:?}", local_config))?;
+        .with_context(|| format!("load local config {local_config:?}"))?;
     trace!("Local config: {:#?}", local);
 
     let mut merged_config =
@@ -290,7 +290,7 @@ fn merge_configuration_files(
 
             Ok(())
         }()
-        .with_context(|| format!("including file {:?}", included_path))?;
+        .with_context(|| format!("including file {included_path:?}"))?;
     }
 
     // Enable depended packages
@@ -305,7 +305,7 @@ fn merge_configuration_files(
                 global
                     .packages
                     .get(package)
-                    .with_context(|| format!("get info of package {}", package))?
+                    .with_context(|| format!("get info of package {package}"))?
                     .depends
                     .clone(),
             );
@@ -369,7 +369,7 @@ fn merge_configuration_files(
 
             Ok(())
         }()
-        .with_context(|| format!("merge package {:?}", package_name))?;
+        .with_context(|| format!("merge package {package_name:?}"))?;
     }
     output.files = first_package.files;
     output.variables = first_package.variables;
@@ -500,7 +500,7 @@ fn expand_directories(config: &Configuration) -> Result<Files> {
         .files
         .iter()
         .map(|(source, target)| {
-            expand_directory(source, target, config).context(format!("expand file {:?}", source))
+            expand_directory(source, target, config).context(format!("expand file {source:?}"))
         })
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
@@ -539,7 +539,7 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
                 let mut child_target = target.clone();
                 child_target.set_path(child_target.path().join(&child));
                 expand_directory(&child_source, &child_target, config)
-                    .context(format!("expand file {:?}", child_source))
+                    .context(format!("expand file {child_source:?}"))
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
@@ -551,14 +551,14 @@ impl UnixUser {
     pub fn as_sudo_arg(&self) -> String {
         match self {
             UnixUser::Name(n) => n.clone(),
-            UnixUser::Uid(id) => format!("#{}", id),
+            UnixUser::Uid(id) => format!("#{id}"),
         }
     }
 
     pub fn as_chown_arg(&self) -> String {
         match self {
             UnixUser::Name(n) => n.clone(),
-            UnixUser::Uid(id) => format!("{}", id),
+            UnixUser::Uid(id) => format!("{id}"),
         }
     }
 }

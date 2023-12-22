@@ -292,7 +292,7 @@ impl Filesystem for RealFilesystem {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                 let success = self
-                    .sudo(format!("removing file {:?} as root", path))
+                    .sudo(format!("removing file {path:?} as root"))
                     .arg("rm")
                     .arg("-r")
                     .arg(path)
@@ -328,15 +328,14 @@ impl Filesystem for RealFilesystem {
         {
             if (self.noconfirm || no_ask)
                 || ask_boolean(&format!(
-                    "Directory at {:?} is now empty. Delete [y/N]? ",
-                    path
+                    "Directory at {path:?} is now empty. Delete [y/N]? "
                 ))
             {
                 match std::fs::remove_dir(path) {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                         let success = self
-                            .sudo(format!("removing directory {:?}", path))
+                            .sudo(format!("removing directory {path:?}"))
                             .arg("rmdir")
                             .arg(path)
                             .spawn()
@@ -352,7 +351,7 @@ impl Filesystem for RealFilesystem {
                     }
                 }
             }
-            path = path.parent().context(format!("get parent of {:?}", path))?;
+            path = path.parent().context(format!("get parent of {path:?}"))?;
         }
         Ok(())
     }
@@ -363,8 +362,7 @@ impl Filesystem for RealFilesystem {
         if let Some(owner) = owner {
             let success = self
                 .sudo(format!(
-                    "creating symlink {:?} -> {:?} from user {:?}",
-                    link, target, owner
+                    "creating symlink {link:?} -> {target:?} from user {owner:?}"
                 ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
@@ -397,8 +395,7 @@ impl Filesystem for RealFilesystem {
         if let Some(owner) = owner {
             let success = self
                 .sudo(format!(
-                    "Creating directory {:?} from user {:?}...",
-                    path, owner
+                    "Creating directory {path:?} from user {owner:?}..."
                 ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
@@ -427,8 +424,7 @@ impl Filesystem for RealFilesystem {
                 .context("read source file contents as current user")?;
             let mut child = self
                 .sudo(format!(
-                    "Copying {:?} -> {:?} as user {:?}",
-                    source, target, owner
+                    "Copying {source:?} -> {target:?} as user {owner:?}"
                 ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
@@ -472,7 +468,7 @@ impl Filesystem for RealFilesystem {
         ));
 
         let success = self
-            .sudo(format!("setting owner of {:?} to user \"{}\"", file, owner))
+            .sudo(format!("setting owner of {file:?} to user \"{owner}\""))
             .arg("chown")
             .arg(owner.as_chown_arg())
             .arg("-h") // no-dereference
@@ -496,8 +492,7 @@ impl Filesystem for RealFilesystem {
         if let Some(owner) = owner {
             let success = self
                 .sudo(format!(
-                    "Copying permissions {:?} -> {:?} as user {:?}",
-                    source, target, owner
+                    "Copying permissions {source:?} -> {target:?} as user {owner:?}"
                 ))
                 .arg("chmod")
                 .arg("--reference")
@@ -811,7 +806,7 @@ pub fn ask_boolean(prompt: &str) -> bool {
         || buf.to_lowercase().starts_with('n')
         || buf.is_empty())
     {
-        eprintln!("{}", prompt);
+        eprintln!("{prompt}");
         buf.clear();
         io::stdin()
             .read_line(&mut buf)
