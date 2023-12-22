@@ -61,7 +61,7 @@ fn eval_condition(
     condition: &str,
 ) -> Result<bool> {
     // extra { for format!()
-    let condition = format!("{{{{#if {} }}}}true{{{{/if}}}}", condition);
+    let condition = format!("{{{{#if {condition} }}}}true{{{{/if}}}}");
     let rendered = handlebars
         .render_template(&condition, variables)
         .context("")?;
@@ -86,8 +86,7 @@ fn math_helper(
         &evalexpr::eval(&expression)
             .map_err(|e| {
                 RenderError::new(format!(
-                    "Cannot evaluate expression {} because {}",
-                    expression, e
+                    "Cannot evaluate expression {expression} because {e}"
                 ))
             })?
             .to_string(),

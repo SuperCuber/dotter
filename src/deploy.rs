@@ -85,7 +85,7 @@ Proceeding by copying instead of symlinking."
             match target {
                 FileTarget::Automatic(target) => {
                     if filesystem::is_template(&source)
-                        .context(format!("check whether {:?} is a template", source))?
+                        .context(format!("check whether {source:?} is a template"))?
                     {
                         desired_templates.insert(source, target.into());
                     } else {
@@ -198,7 +198,7 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
         execute_action(
             actions::delete_symlink(&deleted_symlink, &target, fs, opt.force),
             || cache.symlinks.remove(&deleted_symlink),
-            || format!("delete symlink {:?} -> {:?}", deleted_symlink, target),
+            || format!("delete symlink {deleted_symlink:?} -> {target:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -214,7 +214,7 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
                 opt.force,
             ),
             || cache.templates.remove(&deleted_template),
-            || format!("delete template {:?} -> {:?}", deleted_template, target),
+            || format!("delete template {deleted_template:?} -> {target:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -287,7 +287,7 @@ fn run_deploy<A: ActionRunner>(
         execute_action(
             runner.delete_symlink(source, target),
             || resulting_cache.symlinks.remove(source),
-            || format!("delete symlink {:?} -> {:?}", source, target),
+            || format!("delete symlink {source:?} -> {target:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -299,7 +299,7 @@ fn run_deploy<A: ActionRunner>(
         execute_action(
             runner.delete_template(source, &opt.cache_directory.join(source), target),
             || resulting_cache.templates.remove(source),
-            || format!("delete template {:?} -> {:?}", source, target),
+            || format!("delete template {source:?} -> {target:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -321,7 +321,7 @@ fn run_deploy<A: ActionRunner>(
                     .symlinks
                     .insert(source.clone(), target_path.clone())
             },
-            || format!("create symlink {:?} -> {:?}", source, target_path),
+            || format!("create symlink {source:?} -> {target_path:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -343,7 +343,7 @@ fn run_deploy<A: ActionRunner>(
                     .templates
                     .insert(source.clone(), target_path.clone())
             },
-            || format!("create template {:?} -> {:?}", source, target_path),
+            || format!("create template {source:?} -> {target_path:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -358,7 +358,7 @@ fn run_deploy<A: ActionRunner>(
         execute_action(
             runner.update_symlink(source, target),
             || (),
-            || format!("update symlink {:?} -> {:?}", source, target_path),
+            || format!("update symlink {source:?} -> {target_path:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -373,7 +373,7 @@ fn run_deploy<A: ActionRunner>(
         execute_action(
             runner.update_template(source, &opt.cache_directory.join(source), target),
             || (),
-            || format!("update template {:?} -> {:?}", source, target_path),
+            || format!("update template {source:?} -> {target_path:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
