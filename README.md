@@ -12,6 +12,9 @@ However, there are several issues with that barebones approach:
 Dotter aims to solve all those problems by providing a flexible configuration and automatic templating or symlinking to the target locations.
 
 # Installation
+## Mac (Homebrew)
+Dotter is available on homebrew using `brew install dotter`
+
 ## Arch Linux
 The following AUR packages are available:
 - [dotter-rs-bin](https://aur.archlinux.org/packages/dotter-rs-bin) for a precompiled version of the latest release
