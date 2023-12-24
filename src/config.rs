@@ -31,7 +31,7 @@ pub struct SymbolicTarget {
     /// If supplied it replaces the source file deduced from the TOML section header/given as key.
     /// ```toml
     /// [sway.files.fish]
-    /// file = "fish/conf.d/sway.fish"
+    /// source = "fish/conf.d/sway.fish"
     /// target = "~/.config/fish/conf.d/sway.fish"
     /// type = "symbolic"
     /// ````
@@ -50,7 +50,7 @@ pub struct TemplateTarget {
     /// If supplied it replaces the source file deduced from the TOML section header/given as key.
     /// ```toml
     /// [sway.files.fish]
-    /// file = "fish/conf.d/sway.fish"
+    /// source = "fish/conf.d/sway.fish"
     /// target = "~/.config/fish/conf.d/sway.fish"
     /// type = "symbolic"
     /// ````
