@@ -14,7 +14,7 @@ use crate::config::{Configuration, Files, Variables};
 pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebars<'b>> {
     debug!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
+    handlebars.register_escape_fn(str::to_string); // Disable html-escaping
     handlebars.set_strict_mode(true); // Report missing variables as errors
     register_rust_helpers(&mut handlebars);
 
@@ -29,7 +29,7 @@ pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebar
 }
 
 fn filter_files_condition(
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
     files: &mut Files,
 ) -> Result<()> {
@@ -55,9 +55,13 @@ fn filter_files_condition(
     Ok(())
 }
 
-fn eval_condition(handlebars: &Handlebars, variables: &Variables, condition: &str) -> Result<bool> {
+fn eval_condition(
+    handlebars: &Handlebars<'_>,
+    variables: &Variables,
+    condition: &str,
+) -> Result<bool> {
     // extra { for format!()
-    let condition = format!("{{{{#if {} }}}}true{{{{/if}}}}", condition);
+    let condition = format!("{{{{#if {condition} }}}}true{{{{/if}}}}");
     let rendered = handlebars
         .render_template(&condition, variables)
         .context("")?;
@@ -82,8 +86,7 @@ fn math_helper(
         &evalexpr::eval(&expression)
             .map_err(|e| {
                 RenderError::new(format!(
-                    "Cannot evaluate expression {} because {}",
-                    expression, e
+                    "Cannot evaluate expression {expression} because {e}"
                 ))
             })?
             .to_string(),

@@ -36,7 +36,7 @@ pub(crate) fn display_error(error: anyhow::Error) {
     let mut error_message = format!("Failed to {}\nCaused by:\n", chain.next().unwrap());
 
     for e in chain {
-        writeln!(error_message, "    {}", e).unwrap();
+        writeln!(error_message, "    {e}").unwrap();
     }
     // Remove last \n
     error_message.pop();
@@ -100,7 +100,7 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
         }
         args::Action::Undeploy => {
             debug!("Un-Deploying...");
-            if deploy::undeploy(opt).context("undeploy")? {
+            if deploy::undeploy(&opt).context("undeploy")? {
                 // An error occurred
                 return Ok(false);
             }

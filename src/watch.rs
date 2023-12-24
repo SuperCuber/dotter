@@ -51,7 +51,6 @@ pub(crate) async fn watch(opt: Options) -> Result<()> {
     config.filterer(filter);
 
     config.on_action(move |mut action| {
-        let opt = opt.clone();
         if action.signals().next().is_some() {
             action.quit();
             return action;
