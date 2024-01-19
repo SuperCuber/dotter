@@ -17,7 +17,7 @@ clap = { version = "4.0.26", features = ["derive"] }
 clap_complete = "4.0.5"
 crossterm = "0.25.0"
 diff = "0.1.*"
-handlebars = "4.*"
+handlebars = "5.*"
 hostname = "0.3.*"
 log = "0.4.*"
 maplit = "1.*"
@@ -37,7 +37,7 @@ scripting = ["handlebars/script_helper"]
 watch = ["watchexec", "watchexec-events", "watchexec-filterer-tagged"]
 
 [dependencies.handlebars_misc_helpers]
-version = "0.13.*"
+version = "0.15.*"
 default-features = false
 features = ["string", "json"]
 
