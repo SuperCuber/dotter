@@ -574,7 +574,7 @@ mod tests {
             file: FileTarget,
         }
 
-        let parse = |s| toml::from_str::<Helper>(s);
+        let parse = toml::from_str::<Helper>;
 
         assert_eq!(
             parse(
@@ -623,17 +623,14 @@ mod tests {
             .file,
             FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
         );
-        assert_eq!(
-            parse(
-                r#"
+        assert!(parse(
+            r#"
                     [file]
                     target = '~/.QuarticCat'
                     type = 'symbolic'
                     append = 'whatever'
                 "#,
-            )
-            .is_err(),
-            true
-        );
+        )
+        .is_err());
     }
 }

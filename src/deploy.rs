@@ -468,8 +468,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert!(cache.symlinks.contains_key(&PathBuf::from("a_in")));
         assert!(cache.templates.contains_key(&PathBuf::from("b_in")));
@@ -525,8 +525,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, true);
-        assert_eq!(error_occurred, true);
+        assert!(suggest_force);
+        assert!(error_occurred);
 
         assert_eq!(cache.symlinks.len(), 0);
         assert_eq!(cache.templates.len(), 0);
@@ -577,8 +577,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);
@@ -633,8 +633,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);
@@ -682,8 +682,8 @@ mod test {
             },
         );
 
-        assert_eq!(suggest_force, false);
-        assert_eq!(error_occurred, false);
+        assert!(!suggest_force);
+        assert!(!error_occurred);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);
