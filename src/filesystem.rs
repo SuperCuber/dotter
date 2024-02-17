@@ -731,8 +731,8 @@ impl std::fmt::Display for SymlinkComparison {
             Identical => "target points at source",
             OnlySourceExists => "target missing",
             OnlyTargetExists => "source is missing",
-            TargetNotSymlink => "target isn't a symlink",
-            Changed => "target exists and doesn't point at source",
+            TargetNotSymlink => "target already exists and isn't a symlink",
+            Changed => "target already exists and doesn't point at source",
             BothMissing => "source and target are missing",
         }
         .fmt(f)
@@ -777,7 +777,7 @@ impl std::fmt::Display for TemplateComparison {
             OnlyCacheExists => "target doesn't exist",
             OnlyTargetExists => "cache doesn't exist",
             Changed => "target contents were changed",
-            TargetNotRegularFile => "target is a symbolic link or directory",
+            TargetNotRegularFile => "target already exists and isn't a regular file",
             BothMissing => "cache and target are missing",
         }
         .fmt(f)
