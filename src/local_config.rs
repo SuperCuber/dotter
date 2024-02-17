@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
+use std::iter::FromIterator;
 use std::path::Path;
 
 use anyhow::Result;
@@ -19,18 +20,21 @@ const DEPENDENCY: MultiSelectPlusStatus = MultiSelectPlusStatus {
 pub fn config(opt: &Options) -> Result<bool> {
     let global_config: GlobalConfig = load_global_config(&opt.global_config)?;
 
-    let mut visited = HashSet::new();
-    let mut packages = vec![];
-    for package in global_config.packages.values() {
-        let dependency_names =
-            get_package_dependencies(&global_config.packages, package, &mut visited, 0, 6);
-        debug!("Generated dependency names: {:#?}", dependency_names);
-        packages.extend(dependency_names);
-        visited.clear();
-    }
+    let packages = global_config
+        .packages
+        .iter()
+        .map(|(name, package)| {
+            let mut visited = BTreeSet::new();
+            let dependencies =
+                get_package_dependencies(&global_config.packages, name, package, &mut visited);
+            (name.clone(), dependencies)
+        })
+        .collect::<BTreeMap<String, Vec<String>>>();
 
     trace!("Available packages: {:?}", packages);
 
+    // TODO: this check will fail if the local config is from <hostname>.toml
+    // The solution is to add better error type to load_local_config and match on it here
     let enabled_packages = if opt.local_config.exists() {
         debug!(
             "Local configuration file found at {}",
@@ -39,26 +43,27 @@ pub fn config(opt: &Options) -> Result<bool> {
 
         let local_config: LocalConfig = load_local_config(&opt.local_config)?;
         trace!("Local configuration: {:?}", local_config);
-        local_config.packages
+        BTreeSet::from_iter(local_config.packages)
     } else {
         debug!(
             "No local configuration file found at {}",
             opt.local_config.display()
         );
         // no local config => no packages are enabled
-        Vec::new()
+        BTreeSet::new()
     };
 
     let multi_select = MultiSelectPlus::new().with_select_callback(select_callback(&packages));
 
     let selected_items = prompt(multi_select, &packages, &enabled_packages)?;
     trace!("Selected elements: {:?}", selected_items);
+    // TODO: "write_empty" is always false, do we want a flag for it? Or should we always write
     write_selected_elements(&opt.local_config, selected_items, &packages, false)?;
 
     Ok(false)
 }
 
-fn select_callback(packages: &[PackageNames]) -> Box<SelectCallback> {
+fn select_callback(packages: &BTreeMap<String, Vec<String>>) -> Box<SelectCallback> {
     Box::new(move |_, items| {
         // update the status of the items, making ones that were enabled through a transitive
         // dependency set to unchecked
@@ -71,35 +76,35 @@ fn select_callback(packages: &[PackageNames]) -> Box<SelectCallback> {
                     None
                 }
             })
-            .collect::<Vec<_>>();
+            .collect::<BTreeSet<_>>();
 
         let new_items = items
             .iter()
             .map(|item| {
-                if let Some(package) = packages.iter().find(|(key, _)| key == &item.summary_text) {
-                    if is_transitive_dependency(&item.summary_text, packages, &enabled_packages)
-                        && item.status != MultiSelectPlusStatus::CHECKED
-                    {
-                        // items that are enabled due to a transitive dependency
-                        // CHECKED is excluded because it means the user explicitly enabled it
-                        MultiSelectPlusItem {
-                            name: format_package(&package.0, &package.1),
-                            status: DEPENDENCY,
-                            summary_text: item.summary_text.clone(),
-                        }
-                    } else if item.status.symbol == "-" {
-                        // previous transitive dependencies that are now unchecked
-                        MultiSelectPlusItem {
-                            name: format_package(&package.0, &package.1),
-                            status: MultiSelectPlusStatus::UNCHECKED,
-                            summary_text: item.summary_text.clone(),
-                        }
-                    } else {
-                        // checked or unchecked items are just cloned as that
-                        item.clone()
+                let Some(package) = packages.get_key_value(&item.summary_text) else {
+                    // items that are not in the package list are just cloned as that
+                    return item.clone();
+                };
+
+                if is_transitive_dependency(&item.summary_text, packages, &enabled_packages)
+                    && item.status != MultiSelectPlusStatus::CHECKED
+                {
+                    // items that are enabled due to a transitive dependency
+                    // CHECKED is excluded because it means the user explicitly enabled it
+                    MultiSelectPlusItem {
+                        name: format_package(package.0, package.1),
+                        status: DEPENDENCY,
+                        summary_text: item.summary_text.clone(),
+                    }
+                } else if item.status.symbol == "-" {
+                    // previous transitive dependencies that are now unchecked
+                    MultiSelectPlusItem {
+                        name: format_package(package.0, package.1),
+                        status: MultiSelectPlusStatus::UNCHECKED,
+                        summary_text: item.summary_text.clone(),
                     }
                 } else {
-                    // items that are not in the package list are just cloned as that
+                    // checked or unchecked items are just cloned as that
                     item.clone()
                 }
             })
@@ -110,10 +115,10 @@ fn select_callback(packages: &[PackageNames]) -> Box<SelectCallback> {
 
 fn prompt(
     multi_select: MultiSelectPlus,
-    packages: &[PackageNames],
-    enabled_packages: &[String],
+    packages: &BTreeMap<String, Vec<String>>,
+    enabled_packages: &BTreeSet<String>,
 ) -> dialoguer::Result<Option<Vec<usize>>> {
-    return multi_select
+    multi_select
         .with_prompt("Select packages to install")
         .items(
             packages
@@ -131,36 +136,38 @@ fn prompt(
                 })
                 .collect::<Vec<_>>(),
         )
-        .interact_opt();
+        .interact_opt()
 }
 
 /// checks if a package is a transitive dependency of an enabled package
 fn is_transitive_dependency(
     package_name: &String,
-    packages: &[PackageNames],
-    enabled_packages: &[String],
+    packages: &BTreeMap<String, Vec<String>>,
+    enabled_packages: &BTreeSet<String>,
 ) -> bool {
     packages
         .iter()
-        .filter(|(key, _)| enabled_packages.contains(key))
+        .filter(|(key, _)| enabled_packages.contains(*key))
         .any(|(_, dependencies)| dependencies.contains(package_name))
 }
 
 fn write_selected_elements(
     config_path: &Path,
     selected_elements: Option<Vec<usize>>,
-    packages: &[PackageNames],
+    packages: &BTreeMap<String, Vec<String>>,
     write_empty: bool,
 ) -> Result<(), Error> {
-    return match selected_elements {
+    match selected_elements {
+        // TODO: In both of these cases, we should load the current local config and modify it,
+        // since there are other options there. Maybe there shouldn't be a separate `if empty` case
         Some(selected_elements) if selected_elements.is_empty() && write_empty => {
             println!("No packages selected, writing empty configuration");
-            filesystem::save_file(config_path, LocalConfig::empty_config())
+            filesystem::save_file(config_path, LocalConfig::default())
                 .context("Writing empty configuration")
         }
         Some(selected_elements) => modify_and_save(
             config_path,
-            &mut LocalConfig::empty_config(),
+            &mut LocalConfig::default(),
             packages
                 .iter()
                 .map(|(key, _)| key)
@@ -172,10 +179,10 @@ fn write_selected_elements(
             println!("Aborting.");
             Ok(())
         }
-    };
+    }
 }
 
-fn format_package(package_name: &String, dependencies: &Vec<String>) -> String {
+fn format_package(package_name: &String, dependencies: &[String]) -> String {
     let dependencies_string = if !dependencies.is_empty() {
         style(format!(" # (will enable {})", dependencies.join(", ")))
             // fallback for terms not supporting 8-bit ANSI
@@ -188,45 +195,27 @@ fn format_package(package_name: &String, dependencies: &Vec<String>) -> String {
     format!("{package_name}{dependencies_string}")
 }
 
-/// (package_name, dependencies) - includes transitive dependencies
-type PackageNames = (String, Vec<String>);
-
-fn get_package_dependencies<'a>(
-    package_map: &'a BTreeMap<String, Package>,
-    package: &'a Package,
-    visited: &mut HashSet<&'a Package>,
-    depth: usize,
-    max_depth: usize,
-) -> Vec<PackageNames> {
-    if depth > max_depth {
-        return Vec::new();
+fn get_package_dependencies(
+    package_map: &BTreeMap<String, Package>,
+    package_name: &str,
+    package: &Package,
+    visited: &mut BTreeSet<String>,
+) -> Vec<String> {
+    if visited.contains(package_name) {
+        // Avoid infinite recursion caused by circular dependencies
+        return vec![];
     }
+    visited.insert(package_name.to_string());
 
     let mut result = Vec::new();
-    if visited.contains(&package) {
-        // Avoid infinite recursion caused by circular dependencies
-        return result;
-    }
-    visited.insert(package);
-
-    let package_name = package_map.iter().find(|(_, p)| *p == package).unwrap().0;
-
-    let mut dependencies = Vec::new();
     for dep_name in &package.depends {
-        if let Some(dep_package) = package_map.get(dep_name) {
-            let dep_desc =
-                get_package_dependencies(package_map, dep_package, visited, depth + 1, max_depth);
-            for (dep_name, dep_deps) in dep_desc {
-                dependencies.push(dep_name);
-                dependencies.extend(dep_deps);
-            }
+        if let Some(package) = package_map.get(dep_name) {
+            let recursive_dependencies =
+                get_package_dependencies(package_map, dep_name, package, visited);
+            result.extend(recursive_dependencies);
         }
     }
 
-    let package_names = (package_name.to_owned(), dependencies);
-    result.push(package_names);
-
-    visited.remove(&package);
     result
 }
 
@@ -244,8 +233,8 @@ fn modify_and_save(
     );
 
     local_config.packages = selected_items
-        .iter()
-        .map(|i| items_in_order[*i].clone())
+        .into_iter()
+        .map(|i| items_in_order[i].clone())
         .collect::<Vec<String>>();
 
     filesystem::save_file(config_path, local_config).context("Writing local config to file")

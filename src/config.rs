@@ -6,7 +6,6 @@ use crate::filesystem;
 use core::fmt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,7 +92,7 @@ pub struct Configuration {
     pub recurse: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Package {
     #[serde(default)]
@@ -104,7 +103,7 @@ pub struct Package {
     variables: Variables,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct GlobalConfig {
     #[serde(default)]
     #[cfg(feature = "scripting")]
@@ -115,7 +114,7 @@ pub struct GlobalConfig {
 
 type IncludedConfig = BTreeMap<String, Package>;
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct LocalConfig {
     #[serde(default)]
@@ -125,17 +124,6 @@ pub struct LocalConfig {
     files: Files,
     #[serde(default)]
     variables: Variables,
-}
-
-impl LocalConfig {
-    pub fn empty_config() -> Self {
-        Self {
-            includes: Vec::new(),
-            packages: Vec::new(),
-            files: Files::new(),
-            variables: Variables::new(),
-        }
-    }
 }
 
 pub fn load_configuration(
@@ -659,19 +647,5 @@ mod tests {
             .is_err(),
             true
         );
-    }
-}
-
-impl Eq for Package {}
-
-impl PartialEq for Package {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self, other)
-    }
-}
-
-impl Hash for Package {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        std::ptr::hash(self, state);
     }
 }
