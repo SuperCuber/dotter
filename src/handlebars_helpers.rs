@@ -1,6 +1,8 @@
 use anyhow::{Context as AnyhowContext, Result};
 
-use handlebars::{Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderError};
+use handlebars::{
+    Context, Handlebars, Helper, HelperResult, Output, RenderContext, RenderErrorReason,
+};
 use toml::value::{Table, Value};
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -65,7 +67,7 @@ fn eval_condition(handlebars: &Handlebars, variables: &Variables, condition: &st
 }
 
 fn math_helper(
-    h: &Helper<'_, '_>,
+    h: &Helper<'_>,
     _: &Handlebars<'_>,
     _: &Context,
     _: &mut RenderContext<'_, '_>,
@@ -78,18 +80,10 @@ fn math_helper(
         .collect::<Vec<String>>();
     let expression = params.join(" ");
 
-    let parsed = expression.parse::<meval::Expr>().map_err(|e| {
-        RenderError::new(format!(
-            "Cannot parse math expression {} because {}",
-            expression, e
-        ))
-    })?;
-
     out.write(
-        &parsed
-            .eval()
+        &evalexpr::eval(&expression)
             .map_err(|e| {
-                RenderError::new(format!(
+                RenderErrorReason::Other(format!(
                     "Cannot evaluate expression {} because {}",
                     expression, e
                 ))
@@ -100,7 +94,7 @@ fn math_helper(
 }
 
 fn include_template_helper(
-    h: &Helper<'_, '_>,
+    h: &Helper<'_>,
     handlebars: &Handlebars<'_>,
     ctx: &Context,
     rc: &mut RenderContext<'_, '_>,
@@ -109,19 +103,23 @@ fn include_template_helper(
     let mut params = h.params().iter();
     let path = params
         .next()
-        .ok_or_else(|| RenderError::new("include_template: No path given"))?
+        .ok_or(RenderErrorReason::ParamNotFoundForIndex(
+            "include_template",
+            0,
+        ))?
         .render();
     if params.next().is_some() {
-        return Err(RenderError::new(
-            "include_template: More than one parameter given",
-        ));
+        return Err(RenderErrorReason::Other(
+            "include_template: More than one parameter given".to_owned(),
+        )
+        .into());
     }
 
-    let included_file = std::fs::read_to_string(path)
-        .map_err(|e| RenderError::from_error("include_template", e))?;
+    let included_file =
+        std::fs::read_to_string(path).map_err(|e| RenderErrorReason::NestedError(Box::new(e)))?;
     let rendered_file = handlebars
         .render_template_with_context(&included_file, rc.context().as_deref().unwrap_or(ctx))
-        .map_err(|e| RenderError::from_error("include_template", e))?;
+        .map_err(|e| RenderErrorReason::NestedError(Box::new(e)))?;
 
     out.write(&rendered_file)?;
 
@@ -129,7 +127,7 @@ fn include_template_helper(
 }
 
 fn is_executable_helper(
-    h: &Helper<'_, '_>,
+    h: &Helper<'_>,
     _: &Handlebars<'_>,
     _: &Context,
     _: &mut RenderContext<'_, '_>,
@@ -138,16 +136,17 @@ fn is_executable_helper(
     let mut params = h.params().iter();
     let executable = params
         .next()
-        .ok_or_else(|| RenderError::new("is_executable: No executable name given"))?
+        .ok_or(RenderErrorReason::ParamNotFoundForIndex("is_executable", 0))?
         .render();
     if params.next().is_some() {
-        return Err(RenderError::new(
-            "is_executable: More than one parameter given",
-        ));
+        return Err(RenderErrorReason::Other(
+            "is_executable: More than one parameter given".to_owned(),
+        )
+        .into());
     }
 
     let status =
-        is_executable(&executable).map_err(|e| RenderError::from_error("is_executable", e))?;
+        is_executable(&executable).map_err(|e| RenderErrorReason::NestedError(Box::new(e)))?;
     if status {
         out.write("true")?;
     }
@@ -157,7 +156,7 @@ fn is_executable_helper(
 }
 
 fn command_success_helper(
-    h: &Helper<'_, '_>,
+    h: &Helper<'_>,
     _: &Handlebars<'_>,
     _: &Context,
     _: &mut RenderContext<'_, '_>,
@@ -166,12 +165,16 @@ fn command_success_helper(
     let mut params = h.params().iter();
     let command = params
         .next()
-        .ok_or_else(|| RenderError::new("command_success: No executable name given"))?
+        .ok_or(RenderErrorReason::ParamNotFoundForIndex(
+            "command_success",
+            0,
+        ))?
         .render();
     if params.next().is_some() {
-        return Err(RenderError::new(
-            "command_success: More than one parameter given",
-        ));
+        return Err(RenderErrorReason::Other(
+            "command_success: More than one parameter given".to_owned(),
+        )
+        .into());
     }
 
     let status = os_shell()
@@ -190,7 +193,7 @@ fn command_success_helper(
 }
 
 fn command_output_helper(
-    h: &Helper<'_, '_>,
+    h: &Helper<'_>,
     _: &Handlebars<'_>,
     _: &Context,
     _: &mut RenderContext<'_, '_>,
@@ -199,12 +202,16 @@ fn command_output_helper(
     let mut params = h.params().iter();
     let command = params
         .next()
-        .ok_or_else(|| RenderError::new("command_success: No executable name given"))?
+        .ok_or(RenderErrorReason::ParamNotFoundForIndex(
+            "command_success",
+            0,
+        ))?
         .render();
     if params.next().is_some() {
-        return Err(RenderError::new(
-            "command_success: More than one parameter given",
-        ));
+        return Err(RenderErrorReason::Other(
+            "command_success: More than one parameter given".to_owned(),
+        )
+        .into());
     }
 
     let output = os_shell()

@@ -408,8 +408,6 @@ pub fn update_symlink(
     match comparison {
         SymlinkComparison::Identical => {
             debug!("Performing update");
-            fs.set_owner(&target.target, &target.owner)
-                .context("set target symlink owner")?;
             Ok(true)
         }
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
