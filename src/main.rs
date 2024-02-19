@@ -10,6 +10,7 @@ mod filesystem;
 mod handlebars_helpers;
 mod hooks;
 mod init;
+mod local_config;
 #[cfg(feature = "watch")]
 mod watch;
 
@@ -94,6 +95,13 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
         args::Action::Deploy => {
             debug!("Deploying...");
             if deploy::deploy(&opt).context("deploy")? {
+                // An error occurred
+                return Ok(false);
+            }
+        }
+        args::Action::Config => {
+            debug!("Configuring...");
+            if local_config::config(&opt).context("config")? {
                 // An error occurred
                 return Ok(false);
             }

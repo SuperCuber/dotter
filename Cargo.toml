@@ -16,6 +16,7 @@ anyhow = "1.*"
 clap = { version = "4.0.26", features = ["derive"] }
 clap_complete = "4.0.5"
 crossterm = "0.25.0"
+dialoguer = { git = "https://github.com/SIMULATAN/dialoguer", features = [] }
 diff = "0.1.*"
 handlebars = "5.*"
 hostname = "0.3.*"
