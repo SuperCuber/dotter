@@ -131,9 +131,9 @@ pub fn load_configuration(
     global_config_path: &Path,
     patch: Option<Package>,
 ) -> Result<Configuration> {
-    let global: GlobalConfig = load_global_config(global_config_path)?;
+    let global = load_global_config(global_config_path)?;
 
-    let local: LocalConfig = load_local_config(local_config_path)?;
+    let local = load_local_config(local_config_path)?.context("local config not found")?;
 
     let mut merged_config =
         merge_configuration_files(global, local, patch).context("merge configuration files")?;
@@ -174,7 +174,7 @@ pub fn load_global_config(global_config: &Path) -> Result<GlobalConfig> {
     Ok(global)
 }
 
-pub fn load_local_config(local_config: &Path) -> Result<LocalConfig> {
+pub fn load_local_config(local_config: &Path) -> Result<Option<LocalConfig>> {
     // If local.toml can't be found, look for a file named <hostname>.toml instead
     let mut local_config_buf = local_config.to_path_buf();
     if !local_config_buf.exists() {
@@ -189,8 +189,7 @@ pub fn load_local_config(local_config: &Path) -> Result<LocalConfig> {
         local_config_buf.set_file_name(&format!("{}.toml", hostname));
     }
 
-    let local: LocalConfig = filesystem::load_file(local_config_buf.as_path())
-        .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
+    let local: Option<LocalConfig> = filesystem::load_file(local_config_buf.as_path())
         .with_context(|| format!("load local config {:?}", local_config))?;
     trace!("Local config: {:#?}", local);
 
