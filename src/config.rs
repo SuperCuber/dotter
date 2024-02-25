@@ -282,10 +282,8 @@ fn merge_configuration_files(
             }
 
             if !included.is_empty() {
-                anyhow::bail!(
-                    "unknown packages: {:?}",
-                    included.keys().cloned().collect::<Vec<_>>()
-                );
+                debug!("append unknown packages: {:?}", included.keys());
+                global.packages.append(&mut included);
             }
 
             Ok(())
