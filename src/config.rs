@@ -573,7 +573,7 @@ mod tests {
             file: FileTarget,
         }
 
-        let parse = |s| toml::from_str::<Helper>(s);
+        let parse = toml::from_str::<Helper>;
 
         assert_eq!(
             parse(
