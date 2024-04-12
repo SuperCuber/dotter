@@ -403,7 +403,7 @@ impl FileTarget {
             FileTarget::Automatic(ref mut path) => *path = new_path.into(),
             FileTarget::Symbolic(SymbolicTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => {
-                *target = new_path.into()
+                *target = new_path.into();
             }
         }
     }
