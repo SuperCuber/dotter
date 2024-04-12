@@ -358,6 +358,7 @@ mod test {
         let mut config = Configuration {
             files: Files::new(),
             variables: maplit::btreemap! { "foo".into() => 2.into() },
+            #[cfg(feature = "scripting")]
             helpers: Helpers::new(),
             packages: maplit::btreemap! { "default".into() => true, "disabled".into() => false },
             recurse: true,
@@ -383,6 +384,7 @@ mod test {
         let mut config = Configuration {
             files: Files::new(),
             variables: Variables::new(),
+            #[cfg(feature = "scripting")]
             helpers: Helpers::new(),
             packages: BTreeMap::new(),
             recurse: true,
