@@ -622,17 +622,14 @@ mod tests {
             .file,
             FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
         );
-        assert_eq!(
-            parse(
-                r#"
-                    [file]
-                    target = '~/.QuarticCat'
-                    type = 'symbolic'
-                    append = 'whatever'
-                "#,
-            )
-            .is_err(),
-            true
-        );
+        assert!(parse(
+            r#"
+                [file]
+                target = '~/.QuarticCat'
+                type = 'symbolic'
+                append = 'whatever'
+            "#,
+        )
+        .is_err());
     }
 }
