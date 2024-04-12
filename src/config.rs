@@ -343,9 +343,8 @@ fn merge_configuration_files(
             for (file_name, file_target) in package.files {
                 if first_package.files.contains_key(&file_name) {
                     anyhow::bail!("file {:?} already encountered", file_name);
-                } else {
-                    first_package.files.insert(file_name, file_target);
                 }
+                first_package.files.insert(file_name, file_target);
             }
 
             for (variable_name, variable_value) in package.variables {
