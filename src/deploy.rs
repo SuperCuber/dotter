@@ -697,7 +697,7 @@ mod test {
 
         let opt = Options::default();
         let handlebars = handlebars::Handlebars::new();
-        let variables = Default::default();
+        let variables = BTreeMap::new();
 
         // Expectation:
         // create_symlink
@@ -800,7 +800,7 @@ mod test {
 
         let opt = Options::default();
         let handlebars = handlebars::Handlebars::new();
-        let variables = Default::default();
+        let variables = BTreeMap::new();
 
         // Expectation:
         // create_symlink
