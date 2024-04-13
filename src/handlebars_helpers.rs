@@ -16,7 +16,7 @@ use crate::config::{Configuration, Files, Variables};
 pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebars<'b>> {
     debug!("Creating Handlebars instance...");
     let mut handlebars = Handlebars::new();
-    handlebars.register_escape_fn(|s| s.to_string()); // Disable html-escaping
+    handlebars.register_escape_fn(str::to_string); // Disable html-escaping
     handlebars.set_strict_mode(true); // Report missing variables as errors
     register_rust_helpers(&mut handlebars);
 
@@ -31,7 +31,7 @@ pub fn create_new_handlebars<'b>(config: &mut Configuration) -> Result<Handlebar
 }
 
 fn filter_files_condition(
-    handlebars: &Handlebars,
+    handlebars: &Handlebars<'_>,
     variables: &Variables,
     files: &mut Files,
 ) -> Result<()> {
@@ -57,9 +57,13 @@ fn filter_files_condition(
     Ok(())
 }
 
-fn eval_condition(handlebars: &Handlebars, variables: &Variables, condition: &str) -> Result<bool> {
+fn eval_condition(
+    handlebars: &Handlebars<'_>,
+    variables: &Variables,
+    condition: &str,
+) -> Result<bool> {
     // extra { for format!()
-    let condition = format!("{{{{#if {} }}}}true{{{{/if}}}}", condition);
+    let condition = format!("{{{{#if {condition} }}}}true{{{{/if}}}}");
     let rendered = handlebars
         .render_template(&condition, variables)
         .context("")?;
@@ -84,8 +88,7 @@ fn math_helper(
         &evalexpr::eval(&expression)
             .map_err(|e| {
                 RenderErrorReason::Other(format!(
-                    "Cannot evaluate expression {} because {}",
-                    expression, e
+                    "Cannot evaluate expression {expression} because {e}"
                 ))
             })?
             .to_string(),
@@ -355,37 +358,25 @@ mod test {
         let mut config = Configuration {
             files: Files::new(),
             variables: maplit::btreemap! { "foo".into() => 2.into() },
+            #[cfg(feature = "scripting")]
             helpers: Helpers::new(),
             packages: maplit::btreemap! { "default".into() => true, "disabled".into() => false },
             recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "foo").unwrap(),
-            true
+        assert!(eval_condition(&handlebars, &config.variables, "foo").unwrap());
+        assert!(!eval_condition(&handlebars, &config.variables, "bar").unwrap());
+        assert!(eval_condition(&handlebars, &config.variables, "dotter.packages.default").unwrap());
+        assert!(
+            !eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap()
         );
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "bar").unwrap(),
-            false
-        );
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "dotter.packages.default").unwrap(),
-            true
-        );
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap(),
-            false
-        );
-        assert_eq!(
-            eval_condition(
-                &handlebars,
-                &config.variables,
-                "(and true dotter.packages.disabled)"
-            )
-            .unwrap(),
-            false
-        );
+        assert!(!eval_condition(
+            &handlebars,
+            &config.variables,
+            "(and true dotter.packages.disabled)"
+        )
+        .unwrap());
     }
 
     #[test]
@@ -393,24 +384,21 @@ mod test {
         let mut config = Configuration {
             files: Files::new(),
             variables: Variables::new(),
+            #[cfg(feature = "scripting")]
             helpers: Helpers::new(),
             packages: BTreeMap::new(),
             recurse: true,
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
-        assert_eq!(
-            eval_condition(
-                &handlebars,
-                &config.variables,
-                "(is_executable \"no_such_executable_please\")"
-            )
-            .unwrap(),
-            false
-        );
-        assert_eq!(
-            eval_condition(&handlebars, &config.variables, "(eq (math \"5+5\") \"10\")").unwrap(),
-            true
+        assert!(!eval_condition(
+            &handlebars,
+            &config.variables,
+            "(is_executable \"no_such_executable_please\")"
+        )
+        .unwrap());
+        assert!(
+            eval_condition(&handlebars, &config.variables, "(eq (math \"5+5\") \"10\")").unwrap()
         );
     }
 }

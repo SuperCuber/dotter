@@ -18,8 +18,8 @@ pub enum UnixUser {
 impl fmt::Display for UnixUser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UnixUser::Uid(uid) => write!(f, "{}", uid),
-            UnixUser::Name(name) => write!(f, "{}", name),
+            UnixUser::Uid(uid) => write!(f, "{uid}"),
+            UnixUser::Name(name) => write!(f, "{name}"),
         }
     }
 }
@@ -133,7 +133,7 @@ pub fn load_configuration(
 ) -> Result<Configuration> {
     let global: GlobalConfig = filesystem::load_file(global_config)
         .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
-        .with_context(|| format!("load global config {:?}", global_config))?;
+        .with_context(|| format!("load global config {global_config:?}"))?;
     trace!("Global config: {:#?}", global);
 
     // If local.toml can't be found, look for a file named <hostname>.toml instead
@@ -147,12 +147,12 @@ pub fn load_configuration(
             "{:?} not found, using {}.toml instead (based on hostname)",
             local_config, hostname
         );
-        local_config_buf.set_file_name(&format!("{}.toml", hostname));
+        local_config_buf.set_file_name(&format!("{hostname}.toml"));
     }
 
     let local: LocalConfig = filesystem::load_file(local_config_buf.as_path())
         .and_then(|c| c.ok_or_else(|| anyhow::anyhow!("file not found")))
-        .with_context(|| format!("load local config {:?}", local_config))?;
+        .with_context(|| format!("load local config {local_config:?}"))?;
     trace!("Local config: {:#?}", local);
 
     let mut merged_config =
@@ -290,7 +290,7 @@ fn merge_configuration_files(
 
             Ok(())
         }()
-        .with_context(|| format!("including file {:?}", included_path))?;
+        .with_context(|| format!("including file {included_path:?}"))?;
     }
 
     // Enable depended packages
@@ -305,7 +305,7 @@ fn merge_configuration_files(
                 global
                     .packages
                     .get(package)
-                    .with_context(|| format!("get info of package {}", package))?
+                    .with_context(|| format!("get info of package {package}"))?
                     .depends
                     .clone(),
             );
@@ -343,9 +343,8 @@ fn merge_configuration_files(
             for (file_name, file_target) in package.files {
                 if first_package.files.contains_key(&file_name) {
                     anyhow::bail!("file {:?} already encountered", file_name);
-                } else {
-                    first_package.files.insert(file_name, file_target);
                 }
+                first_package.files.insert(file_name, file_target);
             }
 
             for (variable_name, variable_value) in package.variables {
@@ -369,7 +368,7 @@ fn merge_configuration_files(
 
             Ok(())
         }()
-        .with_context(|| format!("merge package {:?}", package_name))?;
+        .with_context(|| format!("merge package {package_name:?}"))?;
     }
     output.files = first_package.files;
     output.variables = first_package.variables;
@@ -404,7 +403,7 @@ impl FileTarget {
             FileTarget::Automatic(ref mut path) => *path = new_path.into(),
             FileTarget::Symbolic(SymbolicTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => {
-                *target = new_path.into()
+                *target = new_path.into();
             }
         }
     }
@@ -412,8 +411,8 @@ impl FileTarget {
     pub fn condition(&self) -> Option<&String> {
         match self {
             FileTarget::Automatic(_) => None,
-            FileTarget::Symbolic(SymbolicTarget { condition, .. }) => condition.as_ref(),
-            FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
+            FileTarget::Symbolic(SymbolicTarget { condition, .. })
+            | FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
         }
     }
 }
@@ -500,7 +499,7 @@ fn expand_directories(config: &Configuration) -> Result<Files> {
         .files
         .iter()
         .map(|(source, target)| {
-            expand_directory(source, target, config).context(format!("expand file {:?}", source))
+            expand_directory(source, target, config).context(format!("expand file {source:?}"))
         })
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
@@ -539,7 +538,7 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
                 let mut child_target = target.clone();
                 child_target.set_path(child_target.path().join(&child));
                 expand_directory(&child_source, &child_target, config)
-                    .context(format!("expand file {:?}", child_source))
+                    .context(format!("expand file {child_source:?}"))
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
@@ -551,30 +550,30 @@ impl UnixUser {
     pub fn as_sudo_arg(&self) -> String {
         match self {
             UnixUser::Name(n) => n.clone(),
-            UnixUser::Uid(id) => format!("#{}", id),
+            UnixUser::Uid(id) => format!("#{id}"),
         }
     }
 
     pub fn as_chown_arg(&self) -> String {
         match self {
             UnixUser::Name(n) => n.clone(),
-            UnixUser::Uid(id) => format!("{}", id),
+            UnixUser::Uid(id) => format!("{id}"),
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
 
     #[test]
     fn deserialize_file_target() {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Helper {
             file: FileTarget,
         }
 
-        let parse = |s| toml::from_str::<Helper>(s);
+        let parse = toml::from_str::<Helper>;
 
         assert_eq!(
             parse(
@@ -623,17 +622,14 @@ mod tests {
             .file,
             FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
         );
-        assert_eq!(
-            parse(
-                r#"
-                    [file]
-                    target = '~/.QuarticCat'
-                    type = 'symbolic'
-                    append = 'whatever'
-                "#,
-            )
-            .is_err(),
-            true
-        );
+        parse(
+            r#"
+                [file]
+                target = '~/.QuarticCat'
+                type = 'symbolic'
+                append = 'whatever'
+            "#,
+        )
+        .unwrap_err();
     }
 }

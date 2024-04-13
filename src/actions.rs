@@ -40,7 +40,7 @@ pub struct RealActionRunner<'a> {
 impl<'a> RealActionRunner<'a> {
     pub fn new(
         fs: &'a mut dyn Filesystem,
-        handlebars: &'a Handlebars,
+        handlebars: &'a Handlebars<'_>,
         variables: &'a Variables,
         force: bool,
         diff_context_lines: usize,
@@ -544,7 +544,7 @@ pub fn update_template(
                 );
                 if log_enabled!(log::Level::Info) {
                     info!("Refusing because of the following changes in target location: ");
-                    print_diff(diff, diff_context_lines);
+                    print_diff(&diff, diff_context_lines);
                 }
                 Ok(false)
             } else {

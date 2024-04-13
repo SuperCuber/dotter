@@ -72,8 +72,8 @@ pub trait Filesystem {
     /// Target file will be owned by the selected user. Privileges elevated as needed.
     fn copy_file(&mut self, source: &Path, target: &Path, owner: &Option<UnixUser>) -> Result<()>;
 
-    /// If owner.is_some, elevates privileges and sets file to that owner
-    /// If owner.is_none, ensures file is owned by the current user (elevating privileges if needed)
+    /// If `owner.is_some`, elevates privileges and sets file to that owner
+    /// If `owner.is_none`, ensures file is owned by the current user (elevating privileges if needed)
     fn set_owner(&mut self, file: &Path, owner: &Option<UnixUser>) -> Result<()>;
 
     /// Copy file mode, elevating privileges as needed. (Does not change owner)
@@ -257,7 +257,7 @@ impl RealFilesystem {
         Command::new("sudo")
     }
 
-    fn is_owned_by_user(&self, path: &Path) -> Result<bool> {
+    fn is_owned_by_user(path: &Path) -> Result<bool> {
         use std::os::unix::fs::MetadataExt;
         let file_uid = path.metadata().context("get file metadata")?.uid();
         let process_uid = unsafe { libc::geteuid() };
@@ -292,7 +292,7 @@ impl Filesystem for RealFilesystem {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                 let success = self
-                    .sudo(format!("removing file {:?} as root", path))
+                    .sudo(format!("removing file {path:?} as root"))
                     .arg("rm")
                     .arg("-r")
                     .arg(path)
@@ -328,15 +328,14 @@ impl Filesystem for RealFilesystem {
         {
             if (self.noconfirm || no_ask)
                 || ask_boolean(&format!(
-                    "Directory at {:?} is now empty. Delete [y/N]? ",
-                    path
+                    "Directory at {path:?} is now empty. Delete [y/N]? "
                 ))
             {
                 match std::fs::remove_dir(path) {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                         let success = self
-                            .sudo(format!("removing directory {:?}", path))
+                            .sudo(format!("removing directory {path:?}"))
                             .arg("rmdir")
                             .arg(path)
                             .spawn()
@@ -352,7 +351,7 @@ impl Filesystem for RealFilesystem {
                     }
                 }
             }
-            path = path.parent().context(format!("get parent of {:?}", path))?;
+            path = path.parent().context(format!("get parent of {path:?}"))?;
         }
         Ok(())
     }
@@ -363,8 +362,7 @@ impl Filesystem for RealFilesystem {
         if let Some(owner) = owner {
             let success = self
                 .sudo(format!(
-                    "creating symlink {:?} -> {:?} from user {:?}",
-                    link, target, owner
+                    "creating symlink {link:?} -> {target:?} from user {owner:?}"
                 ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
@@ -397,8 +395,7 @@ impl Filesystem for RealFilesystem {
         if let Some(owner) = owner {
             let success = self
                 .sudo(format!(
-                    "Creating directory {:?} from user {:?}...",
-                    path, owner
+                    "Creating directory {path:?} from user {owner:?}..."
                 ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
@@ -427,8 +424,7 @@ impl Filesystem for RealFilesystem {
                 .context("read source file contents as current user")?;
             let mut child = self
                 .sudo(format!(
-                    "Copying {:?} -> {:?} as user {:?}",
-                    source, target, owner
+                    "Copying {source:?} -> {target:?} as user {owner:?}"
                 ))
                 .arg("-u")
                 .arg(owner.as_sudo_arg())
@@ -460,9 +456,7 @@ impl Filesystem for RealFilesystem {
     }
 
     fn set_owner(&mut self, file: &Path, owner: &Option<UnixUser>) -> Result<()> {
-        if self
-            .is_owned_by_user(file)
-            .context("detect if file is owned by the current user")?
+        if Self::is_owned_by_user(file).context("detect if file is owned by the current user")?
             && owner.is_none()
         {
             // Nothing to do, no need to elevate
@@ -474,7 +468,7 @@ impl Filesystem for RealFilesystem {
         ));
 
         let success = self
-            .sudo(format!("setting owner of {:?} to user \"{}\"", file, owner))
+            .sudo(format!("setting owner of {file:?} to user \"{owner}\""))
             .arg("chown")
             .arg(owner.as_chown_arg())
             .arg("-h") // no-dereference
@@ -498,8 +492,7 @@ impl Filesystem for RealFilesystem {
         if let Some(owner) = owner {
             let success = self
                 .sudo(format!(
-                    "Copying permissions {:?} -> {:?} as user {:?}",
-                    source, target, owner
+                    "Copying permissions {source:?} -> {target:?} as user {owner:?}"
                 ))
                 .arg("chmod")
                 .arg("--reference")
@@ -670,7 +663,7 @@ impl Filesystem for DryRunFilesystem {
                 }
                 Ok(())
             }
-            s @ FileState::SymbolicLink(_) | s @ FileState::Directory | s @ FileState::Missing => {
+            s @ (FileState::SymbolicLink(_) | FileState::Directory | FileState::Missing) => {
                 anyhow::bail!("file is not regular file but is a {:?}", s);
             }
         }
@@ -813,7 +806,7 @@ pub fn ask_boolean(prompt: &str) -> bool {
         || buf.to_lowercase().starts_with('n')
         || buf.is_empty())
     {
-        eprintln!("{}", prompt);
+        eprintln!("{prompt}");
         buf.clear();
         io::stdin()
             .read_line(&mut buf)
