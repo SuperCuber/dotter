@@ -568,7 +568,7 @@ mod tests {
 
     #[test]
     fn deserialize_file_target() {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Helper {
             file: FileTarget,
         }
@@ -622,7 +622,7 @@ mod tests {
             .file,
             FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into()),
         );
-        assert!(parse(
+        parse(
             r#"
                 [file]
                 target = '~/.QuarticCat'
@@ -630,6 +630,6 @@ mod tests {
                 append = 'whatever'
             "#,
         )
-        .is_err());
+        .unwrap_err();
     }
 }
