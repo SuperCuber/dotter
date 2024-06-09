@@ -110,6 +110,7 @@ struct GlobalConfig {
     helpers: Helpers,
     #[serde(flatten)]
     packages: BTreeMap<String, Package>,
+    variables: Option<Variables>,
 }
 
 type IncludedConfig = BTreeMap<String, Package>;
@@ -211,6 +212,7 @@ pub fn save_dummy_config(
         #[cfg(feature = "scripting")]
         helpers: Helpers::new(),
         packages,
+        variables: None,
     };
     debug!("Saving global config...");
     // Assume default args so all parents are the same
@@ -372,6 +374,36 @@ fn merge_configuration_files(
     }
     output.files = first_package.files;
     output.variables = first_package.variables;
+
+    // Defaults package target type to symlink if
+    // enable_symlink_by_default = true and
+    // package is not explicitly set as template
+    if let Some(variables) = global.variables {
+        if let Some(enable_symlink_by_default) =
+            variables
+                .get("enable_symlink_by_default")
+                .and_then(toml::Value::as_bool) {
+                    if enable_symlink_by_default {
+                        output.files = output
+                            .files
+                            .into_iter()
+                            .map(|(name, target)| -> Result<_, anyhow::Error> {
+                                let t: FileTarget;
+
+                                match target {
+                                    FileTarget::Automatic(target) => {
+                                        t = FileTarget::Symbolic(
+                                            SymbolicTarget::from(target)
+                                        );
+                                    },
+                                    _ => t = target,
+                                }
+                                Ok((name, t))
+                            })
+                        .collect::<Result<_, _>>()?;
+                    }
+            }
+    }
 
     // Add local.toml's patches
     output.files.extend(local.files);
@@ -631,5 +663,65 @@ mod test {
             "#,
         )
         .unwrap_err();
+    }
+
+    #[test]
+    fn enable_symlink_by_default() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [variables]
+                enable_symlink_by_default = true
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+
+                [derby]
+                depends = []
+
+                [derby.files]
+                derby = { target = '~/.DerbyLantern', type = 'template' }
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config =
+            merge_configuration_files(global, local, None);
+
+        let config = merged_config.unwrap();
+
+        let cat = config
+            .files
+            .get(&PathBuf::from("cat"))
+            .unwrap();
+
+        let derby = config
+            .files
+            .get(&PathBuf::from("derby"))
+            .unwrap();
+
+        assert_eq!(
+            cat,
+            &FileTarget::Symbolic(PathBuf::from("~/.QuarticCat").into())
+        );
+
+        assert_ne!(
+            derby,
+            &FileTarget::Symbolic(PathBuf::from("~/.DerbyLantern").into())
+        );
+
+        assert_eq!(
+            derby,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
     }
 }
