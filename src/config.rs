@@ -76,6 +76,21 @@ pub type Variables = toml::value::Table;
 #[cfg(feature = "scripting")]
 pub type Helpers = BTreeMap<String, PathBuf>;
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DefaultTargetType {
+    Symbolic,
+    Template,
+    #[default]
+    Automatic,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Settings {
+    #[serde(default)]
+    default_target_type: DefaultTargetType,
+}
+
 #[derive(Debug, Clone)]
 pub struct Configuration {
     pub files: Files,
@@ -90,6 +105,8 @@ pub struct Configuration {
     /// turned into a list of all the files inside the structure that
     /// are readable.
     pub recurse: bool,
+
+    pub settings: Settings,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -110,7 +127,8 @@ struct GlobalConfig {
     helpers: Helpers,
     #[serde(flatten)]
     packages: BTreeMap<String, Package>,
-    variables: Option<Variables>,
+    #[serde(default)]
+    settings: Settings,
 }
 
 type IncludedConfig = BTreeMap<String, Package>;
@@ -212,7 +230,7 @@ pub fn save_dummy_config(
         #[cfg(feature = "scripting")]
         helpers: Helpers::new(),
         packages,
-        variables: None,
+        settings: Settings::default(),
     };
     debug!("Saving global config...");
     // Assume default args so all parents are the same
@@ -332,6 +350,7 @@ fn merge_configuration_files(
         variables: Variables::default(),
         packages: packages_map,
         recurse: true,
+        settings: Settings::default(),
     };
 
     // Merge all the packages
@@ -375,34 +394,10 @@ fn merge_configuration_files(
     output.files = first_package.files;
     output.variables = first_package.variables;
 
-    // Defaults package target type to symlink if
-    // enable_symlink_by_default = true and
-    // package is not explicitly set as template
-    if let Some(variables) = global.variables {
-        if let Some(enable_symlink_by_default) =
-            variables
-                .get("enable_symlink_by_default")
-                .and_then(toml::Value::as_bool) {
-                    if enable_symlink_by_default {
-                        output.files = output
-                            .files
-                            .into_iter()
-                            .map(|(name, target)| -> Result<_, anyhow::Error> {
-                                let t: FileTarget;
-
-                                match target {
-                                    FileTarget::Automatic(target) => {
-                                        t = FileTarget::Symbolic(
-                                            SymbolicTarget::from(target)
-                                        );
-                                    },
-                                    _ => t = target,
-                                }
-                                Ok((name, t))
-                            })
-                        .collect::<Result<_, _>>()?;
-                    }
-            }
+    if let DefaultTargetType::Symbolic = global.settings.default_target_type {
+        output.files = transform_file_targets(output.files, FileTargetTransform::Symbolic);
+    } else if let DefaultTargetType::Template = global.settings.default_target_type {
+        output.files = transform_file_targets(output.files, FileTargetTransform::Template);
     }
 
     // Add local.toml's patches
@@ -594,6 +589,34 @@ impl UnixUser {
     }
 }
 
+enum FileTargetTransform {
+    Symbolic,
+    Template,
+}
+
+fn transform_file_targets(
+    files: Files,
+    transform_target: FileTargetTransform,
+) -> Files {
+    files
+        .into_iter()
+        .map(|(name, target)| -> _ {
+            let t = match target {
+                FileTarget::Automatic(target) => match transform_target {
+                    FileTargetTransform::Symbolic => {
+                        FileTarget::Symbolic(SymbolicTarget::from(target))
+                    },
+                    FileTargetTransform::Template => {
+                        FileTarget::ComplexTemplate(TemplateTarget::from(target))
+                    }
+                },
+                _ => target,
+            };
+            (name, t)
+        })
+    .collect::<Files>()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -666,11 +689,11 @@ mod test {
     }
 
     #[test]
-    fn enable_symlink_by_default() {
+    fn settting_default_target_type_symbolic() {
         let global: GlobalConfig = toml::from_str(
             r#"
-                [variables]
-                enable_symlink_by_default = true
+                [settings]
+                default_target_type = "symbolic"
 
                 [cat]
                 depends = []
@@ -722,6 +745,134 @@ mod test {
         assert_eq!(
             derby,
             &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
+    }
+
+    #[test]
+    fn setting_default_target_type_template() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [settings]
+                default_target_type = "template"
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+
+                [derby]
+                depends = []
+
+                [derby.files]
+                derby = { target = '~/.DerbyLantern', type = 'symbolic' }
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config =
+            merge_configuration_files(global, local, None);
+
+        let config = merged_config.unwrap();
+
+        let cat = config
+            .files
+            .get(&PathBuf::from("cat"))
+            .unwrap();
+
+        let derby = config
+            .files
+            .get(&PathBuf::from("derby"))
+            .unwrap();
+
+        assert_eq!(
+            cat,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into())
+        );
+
+        assert_ne!(
+            derby,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
+
+        assert_eq!(
+            derby,
+            &FileTarget::Symbolic(PathBuf::from("~/.DerbyLantern").into())
+        );
+    }
+
+    #[test]
+    fn setting_default_target_type_automatic() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+
+                [derby]
+                depends = []
+
+                [derby.files]
+                derby = { target = '~/.DerbyLantern', type = 'template' }
+
+                [sliver]
+                depends = []
+
+                [sliver.files]
+                sliver = { target = '~/.SliverBodacious', type = 'symbolic' }
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby', 'sliver']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config =
+            merge_configuration_files(global, local, None);
+
+        let config = merged_config.unwrap();
+
+        let cat = config
+            .files
+            .get(&PathBuf::from("cat"))
+            .unwrap();
+
+        let derby = config
+            .files
+            .get(&PathBuf::from("derby"))
+            .unwrap();
+
+        let sliver = config
+            .files
+            .get(&PathBuf::from("sliver"))
+            .unwrap();
+
+        assert_eq!(
+            cat,
+            &FileTarget::Automatic(PathBuf::from("~/.QuarticCat").into())
+        );
+
+        assert_eq!(
+            derby,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
+
+        assert_eq!(
+            sliver,
+            &FileTarget::Symbolic(PathBuf::from("~/.SliverBodacious").into())
         );
     }
 }

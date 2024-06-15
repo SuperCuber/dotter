@@ -351,6 +351,8 @@ fn add_dotter_variable(
 
 #[cfg(test)]
 mod test {
+    use crate::config::Settings;
+
     use super::*;
 
     #[test]
@@ -362,6 +364,7 @@ mod test {
             helpers: Helpers::new(),
             packages: maplit::btreemap! { "default".into() => true, "disabled".into() => false },
             recurse: true,
+            settings: Settings::default(),
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
@@ -388,6 +391,7 @@ mod test {
             helpers: Helpers::new(),
             packages: BTreeMap::new(),
             recurse: true,
+            settings: Settings::default(),
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
