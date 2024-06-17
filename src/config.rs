@@ -697,20 +697,13 @@ mod test {
         )
         .unwrap();
 
-        let merged_config =
-            merge_configuration_files(global, local, None);
+        let merged_config = merge_configuration_files(global, local, None);
 
         let config = merged_config.unwrap();
 
-        let cat = config
-            .files
-            .get(&PathBuf::from("cat"))
-            .unwrap();
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
 
-        let derby = config
-            .files
-            .get(&PathBuf::from("derby"))
-            .unwrap();
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
 
         assert_eq!(
             cat,
@@ -757,20 +750,13 @@ mod test {
         )
         .unwrap();
 
-        let merged_config =
-            merge_configuration_files(global, local, None);
+        let merged_config = merge_configuration_files(global, local, None);
 
         let config = merged_config.unwrap();
 
-        let cat = config
-            .files
-            .get(&PathBuf::from("cat"))
-            .unwrap();
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
 
-        let derby = config
-            .files
-            .get(&PathBuf::from("derby"))
-            .unwrap();
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
 
         assert_eq!(
             cat,
@@ -820,25 +806,15 @@ mod test {
         )
         .unwrap();
 
-        let merged_config =
-            merge_configuration_files(global, local, None);
+        let merged_config = merge_configuration_files(global, local, None);
 
         let config = merged_config.unwrap();
 
-        let cat = config
-            .files
-            .get(&PathBuf::from("cat"))
-            .unwrap();
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
 
-        let derby = config
-            .files
-            .get(&PathBuf::from("derby"))
-            .unwrap();
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
 
-        let sliver = config
-            .files
-            .get(&PathBuf::from("sliver"))
-            .unwrap();
+        let sliver = config.files.get(&PathBuf::from("sliver")).unwrap();
 
         assert_eq!(
             cat,
