@@ -394,10 +394,18 @@ fn merge_configuration_files(
     output.files = first_package.files;
     output.variables = first_package.variables;
 
-    if let DefaultTargetType::Symbolic = global.settings.default_target_type {
-        output.files = transform_file_targets(output.files, FileTargetTransform::Symbolic);
-    } else if let DefaultTargetType::Template = global.settings.default_target_type {
-        output.files = transform_file_targets(output.files, FileTargetTransform::Template);
+    for value in output.files.values_mut() {
+        if let FileTarget::Automatic(target) = value {
+            *value = match global.settings.default_target_type {
+                DefaultTargetType::Symbolic => {
+                    FileTarget::Symbolic(SymbolicTarget::from(target.clone()))
+                }
+                DefaultTargetType::Template => {
+                    FileTarget::ComplexTemplate(TemplateTarget::from(target.clone()))
+                }
+                _ => continue,
+            };
+        }
     }
 
     // Add local.toml's patches
@@ -587,34 +595,6 @@ impl UnixUser {
             UnixUser::Uid(id) => format!("{id}"),
         }
     }
-}
-
-enum FileTargetTransform {
-    Symbolic,
-    Template,
-}
-
-fn transform_file_targets(
-    files: Files,
-    transform_target: FileTargetTransform,
-) -> Files {
-    files
-        .into_iter()
-        .map(|(name, target)| -> _ {
-            let t = match target {
-                FileTarget::Automatic(target) => match transform_target {
-                    FileTargetTransform::Symbolic => {
-                        FileTarget::Symbolic(SymbolicTarget::from(target))
-                    },
-                    FileTargetTransform::Template => {
-                        FileTarget::ComplexTemplate(TemplateTarget::from(target))
-                    }
-                },
-                _ => target,
-            };
-            (name, t)
-        })
-    .collect::<Files>()
 }
 
 #[cfg(test)]
