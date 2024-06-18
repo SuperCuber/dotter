@@ -106,6 +106,7 @@ pub struct Configuration {
     /// are readable.
     pub recurse: bool,
 
+    #[allow(dead_code)]
     pub settings: Settings,
 }
 
