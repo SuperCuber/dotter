@@ -76,6 +76,21 @@ pub type Variables = toml::value::Table;
 #[cfg(feature = "scripting")]
 pub type Helpers = BTreeMap<String, PathBuf>;
 
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DefaultTargetType {
+    Symbolic,
+    Template,
+    #[default]
+    Automatic,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct Settings {
+    #[serde(default)]
+    default_target_type: DefaultTargetType,
+}
+
 #[derive(Debug, Clone)]
 pub struct Configuration {
     pub files: Files,
@@ -90,6 +105,9 @@ pub struct Configuration {
     /// turned into a list of all the files inside the structure that
     /// are readable.
     pub recurse: bool,
+
+    #[allow(dead_code)]
+    pub settings: Settings,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -110,6 +128,8 @@ struct GlobalConfig {
     helpers: Helpers,
     #[serde(flatten)]
     packages: BTreeMap<String, Package>,
+    #[serde(default)]
+    settings: Settings,
 }
 
 type IncludedConfig = BTreeMap<String, Package>;
@@ -211,6 +231,7 @@ pub fn save_dummy_config(
         #[cfg(feature = "scripting")]
         helpers: Helpers::new(),
         packages,
+        settings: Settings::default(),
     };
     debug!("Saving global config...");
     // Assume default args so all parents are the same
@@ -328,6 +349,7 @@ fn merge_configuration_files(
         variables: Variables::default(),
         packages: packages_map,
         recurse: true,
+        settings: Settings::default(),
     };
 
     // Merge all the packages
@@ -370,6 +392,20 @@ fn merge_configuration_files(
     }
     output.files = first_package.files;
     output.variables = first_package.variables;
+
+    for value in output.files.values_mut() {
+        if let FileTarget::Automatic(target) = value {
+            *value = match global.settings.default_target_type {
+                DefaultTargetType::Symbolic => {
+                    FileTarget::Symbolic(SymbolicTarget::from(target.clone()))
+                }
+                DefaultTargetType::Template => {
+                    FileTarget::ComplexTemplate(TemplateTarget::from(target.clone()))
+                }
+                _ => continue,
+            };
+        }
+    }
 
     // Add local.toml's patches
     output.files.extend(local.files);
@@ -629,5 +665,169 @@ mod test {
             "#,
         )
         .unwrap_err();
+    }
+
+    #[test]
+    fn settting_default_target_type_symbolic() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [settings]
+                default_target_type = "symbolic"
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+
+                [derby]
+                depends = []
+
+                [derby.files]
+                derby = { target = '~/.DerbyLantern', type = 'template' }
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config = merge_configuration_files(global, local, None);
+
+        let config = merged_config.unwrap();
+
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
+
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
+
+        assert_eq!(
+            cat,
+            &FileTarget::Symbolic(PathBuf::from("~/.QuarticCat").into())
+        );
+
+        assert_ne!(
+            derby,
+            &FileTarget::Symbolic(PathBuf::from("~/.DerbyLantern").into())
+        );
+
+        assert_eq!(
+            derby,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
+    }
+
+    #[test]
+    fn setting_default_target_type_template() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [settings]
+                default_target_type = "template"
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+
+                [derby]
+                depends = []
+
+                [derby.files]
+                derby = { target = '~/.DerbyLantern', type = 'symbolic' }
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config = merge_configuration_files(global, local, None);
+
+        let config = merged_config.unwrap();
+
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
+
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
+
+        assert_eq!(
+            cat,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.QuarticCat").into())
+        );
+
+        assert_ne!(
+            derby,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
+
+        assert_eq!(
+            derby,
+            &FileTarget::Symbolic(PathBuf::from("~/.DerbyLantern").into())
+        );
+    }
+
+    #[test]
+    fn setting_default_target_type_automatic() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+
+                [derby]
+                depends = []
+
+                [derby.files]
+                derby = { target = '~/.DerbyLantern', type = 'template' }
+
+                [sliver]
+                depends = []
+
+                [sliver.files]
+                sliver = { target = '~/.SliverBodacious', type = 'symbolic' }
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby', 'sliver']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config = merge_configuration_files(global, local, None);
+
+        let config = merged_config.unwrap();
+
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
+
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
+
+        let sliver = config.files.get(&PathBuf::from("sliver")).unwrap();
+
+        assert_eq!(
+            cat,
+            &FileTarget::Automatic(PathBuf::from("~/.QuarticCat").into())
+        );
+
+        assert_eq!(
+            derby,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
+
+        assert_eq!(
+            sliver,
+            &FileTarget::Symbolic(PathBuf::from("~/.SliverBodacious").into())
+        );
     }
 }
