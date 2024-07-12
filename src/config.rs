@@ -89,6 +89,22 @@ pub enum DefaultTargetType {
 pub struct Settings {
     #[serde(default)]
     default_target_type: DefaultTargetType,
+
+    /// If the source is a directory, or a symlink to a directory,
+    /// and this option is true, the source will be recursed and
+    /// turned into a list of all the files inside the structure that
+    /// are readable.
+    ///
+    /// Default: `recurse = false`
+    ///
+    /// Configure from `global.toml`:
+    /// ```toml
+    /// [settings]
+    /// recurse = true
+    /// ```
+
+    #[serde{default}]
+    pub recurse: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -99,12 +115,6 @@ pub struct Configuration {
 
     #[cfg(feature = "scripting")]
     pub helpers: Helpers,
-
-    /// If the source is a directory, or a symlink to a directory,
-    /// and this option is true, the source will be recursed and
-    /// turned into a list of all the files inside the structure that
-    /// are readable.
-    pub recurse: bool,
 
     #[allow(dead_code)]
     pub settings: Settings,
@@ -348,7 +358,6 @@ fn merge_configuration_files(
         files: Files::default(),
         variables: Variables::default(),
         packages: packages_map,
-        recurse: true,
         settings: Settings::default(),
     };
 
@@ -554,7 +563,7 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
             condition: _,
             recurse: Some(rec),
         }) => *rec,
-        _ => config.recurse,
+        _ => config.settings.recurse,
     };
 
     trace!("expanding '{source:?}', recurse: {recurse}");
@@ -815,10 +824,7 @@ mod test {
 
         let sliver = config.files.get(&PathBuf::from("sliver")).unwrap();
 
-        assert_eq!(
-            cat,
-            &FileTarget::Automatic(PathBuf::from("~/.QuarticCat").into())
-        );
+        assert_eq!(cat, &FileTarget::Automatic(PathBuf::from("~/.QuarticCat")));
 
         assert_eq!(
             derby,
