@@ -85,10 +85,25 @@ pub enum DefaultTargetType {
     Automatic,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Settings {
     #[serde(default)]
     default_target_type: DefaultTargetType,
+    #[serde(default = "default_true")]
+    recurse: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            default_target_type: DefaultTargetType::default(),
+            recurse: true,
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone)]
@@ -100,13 +115,6 @@ pub struct Configuration {
     #[cfg(feature = "scripting")]
     pub helpers: Helpers,
 
-    /// If the source is a directory, or a symlink to a directory,
-    /// and this option is true, the source will be recursed and
-    /// turned into a list of all the files inside the structure that
-    /// are readable.
-    pub recurse: bool,
-
-    #[allow(dead_code)]
     pub settings: Settings,
 }
 
@@ -348,8 +356,7 @@ fn merge_configuration_files(
         files: Files::default(),
         variables: Variables::default(),
         packages: packages_map,
-        recurse: true,
-        settings: Settings::default(),
+        settings: global.settings,
     };
 
     // Merge all the packages
@@ -395,7 +402,7 @@ fn merge_configuration_files(
 
     for value in output.files.values_mut() {
         if let FileTarget::Automatic(target) = value {
-            *value = match global.settings.default_target_type {
+            *value = match output.settings.default_target_type {
                 DefaultTargetType::Symbolic => {
                     FileTarget::Symbolic(SymbolicTarget::from(target.clone()))
                 }
@@ -554,16 +561,12 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
             condition: _,
             recurse: Some(rec),
         }) => *rec,
-        _ => config.recurse,
+        _ => config.settings.recurse,
     };
 
     trace!("expanding '{source:?}', recurse: {recurse}");
 
-    if !recurse || !metadata.is_dir() {
-        let mut map = Files::new();
-        map.insert(source.into(), target.clone());
-        Ok(map)
-    } else {
+    if recurse && metadata.is_dir() {
         let expanded = fs::read_dir(source)
             .context("read contents of directory")?
             .map(|child| -> Result<Files> {
@@ -576,6 +579,10 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
+    } else {
+        let mut map = Files::new();
+        map.insert(source.into(), target.clone());
+        Ok(map)
     }
 }
 
