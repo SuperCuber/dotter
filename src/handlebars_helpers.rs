@@ -148,8 +148,8 @@ fn is_executable_helper(
         .into());
     }
 
-    let status =
-        is_executable(&executable).map_err(|e| RenderErrorReason::NestedError(Box::new(e)))?;
+    let status = is_executable(&executable)
+        .map_err(|e| RenderErrorReason::Other(format!("failed to run is_executable: {e}")))?;
     if status {
         out.write("true")?;
     }
@@ -230,7 +230,7 @@ fn command_output_helper(
 }
 
 #[cfg(windows)]
-fn is_executable(name: &str) -> Result<bool, std::io::Error> {
+fn is_executable(name: &str) -> Result<bool> {
     let name = if name.ends_with(".exe") {
         name.to_string()
     } else {
@@ -244,6 +244,7 @@ fn is_executable(name: &str) -> Result<bool, std::io::Error> {
         .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
+        .context("run `where` command")
 }
 
 #[cfg(unix)]
@@ -255,6 +256,7 @@ fn is_executable(name: &str) -> Result<bool, std::io::Error> {
         .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
+        .context("run `which` command")
 }
 
 #[cfg(windows)]
