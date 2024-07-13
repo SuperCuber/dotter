@@ -248,7 +248,7 @@ fn is_executable(name: &str) -> Result<bool> {
 }
 
 #[cfg(unix)]
-fn is_executable(name: &str) -> Result<bool, std::io::Error> {
+fn is_executable(name: &str) -> Result<bool> {
     Command::new("which")
         .arg(name)
         .stdin(Stdio::null())
