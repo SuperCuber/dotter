@@ -363,7 +363,6 @@ mod test {
             #[cfg(feature = "scripting")]
             helpers: Helpers::new(),
             packages: maplit::btreemap! { "default".into() => true, "disabled".into() => false },
-            recurse: true,
             settings: Settings::default(),
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
@@ -390,7 +389,6 @@ mod test {
             #[cfg(feature = "scripting")]
             helpers: Helpers::new(),
             packages: BTreeMap::new(),
-            recurse: true,
             settings: Settings::default(),
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
