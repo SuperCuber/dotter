@@ -817,7 +817,7 @@ mod test {
 
         assert_eq!(
             cat,
-            &FileTarget::Automatic(PathBuf::from("~/.QuarticCat").into())
+            &FileTarget::Automatic(PathBuf::from("~/.QuarticCat"))
         );
 
         assert_eq!(
