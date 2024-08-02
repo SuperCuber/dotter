@@ -815,10 +815,7 @@ mod test {
 
         let sliver = config.files.get(&PathBuf::from("sliver")).unwrap();
 
-        assert_eq!(
-            cat,
-            &FileTarget::Automatic(PathBuf::from("~/.QuarticCat").into())
-        );
+        assert_eq!(cat, &FileTarget::Automatic(PathBuf::from("~/.QuarticCat")));
 
         assert_eq!(
             derby,
