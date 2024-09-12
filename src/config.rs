@@ -167,7 +167,7 @@ pub fn load_configuration(
             "{:?} not found, using {}.toml instead (based on hostname)",
             local_config, hostname
         );
-        local_config_buf.set_file_name(&format!("{hostname}.toml"));
+        local_config_buf.set_file_name(format!("{hostname}.toml"));
     }
 
     let local: LocalConfig = filesystem::load_file(local_config_buf.as_path())
