@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::filesystem;
 
 use core::fmt;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -183,19 +184,8 @@ pub fn load_configuration(
     merged_config.files =
         expand_directories(&merged_config).context("expand files that are directories")?;
 
-    debug!("Expanding tildes to home directory...");
-    merged_config.files = merged_config
-        .files
-        .into_iter()
-        .map(|(k, mut v)| -> Result<_, anyhow::Error> {
-            let path = v.path();
-            let path = shellexpand::full(&path.to_string_lossy())
-                .context("failed to expand file path")?
-                .to_string();
-            v.set_path(path);
-            Ok((k, v))
-        })
-        .collect::<Result<_, _>>()?;
+    debug!("Expanding tildes and variables in target paths...");
+    merged_config.files = expand_target_paths(merged_config.files, &merged_config.variables)?;
 
     trace!("Final files: {:#?}", merged_config.files);
     trace!("Final variables: {:#?}", merged_config.variables);
@@ -579,6 +569,44 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
     }
 }
 
+fn expand_target_paths(mut files: Files, variables: &Variables) -> Result<Files> {
+    for (_, target) in files.iter_mut() {
+        let path = target.path().to_string_lossy();
+        let path = expand_config_variables(&path, variables);
+        let path = shellexpand::full(&path)
+            .context("expand tilde and environment variables in file path")?
+            .to_string();
+
+        target.set_path(path);
+    }
+
+    Ok(files)
+}
+
+fn expand_config_variables<'a>(target: &'a str, variables: &Variables) -> Cow<'a, str> {
+    // get value with dotted key
+    fn get_variable<'a>(table: &'a Variables, key: &str) -> Option<&'a toml::Value> {
+        match key.split_once(".") {
+            Some((field, rest)) => {
+                let subtable = table.get(field)?.as_table()?;
+                get_variable(subtable, rest)
+            }
+            None => table.get(key),
+        }
+    }
+
+    shellexpand::env_with_context_no_errors(target, |name| {
+        get_variable(variables, name).and_then(|value| match value {
+            toml::Value::String(v) => Some(v.clone()),
+            toml::Value::Integer(v) => Some(v.to_string()),
+            toml::Value::Float(v) => Some(v.to_string()),
+            toml::Value::Boolean(v) => Some(v.to_string()),
+            toml::Value::Datetime(v) => Some(v.to_string()),
+            _ => None,
+        })
+    })
+}
+
 #[cfg(unix)]
 impl UnixUser {
     pub fn as_sudo_arg(&self) -> String {
@@ -825,6 +853,71 @@ mod test {
         assert_eq!(
             sliver,
             &FileTarget::Symbolic(PathBuf::from("~/.SliverBodacious").into())
+        );
+    }
+
+    #[test]
+    fn expand_config_variables_in_path() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [vars.variables]
+                config = "~/.config"
+
+                [cat]
+                depends = ['vars']
+
+                [cat.variables]
+                cat_name = 'QuarticCat'
+
+                [cat.files]
+                cat = '$config/$cat_name.not_a_part_of_var'
+
+                [derby]
+                depends = ['vars']
+
+                [derby.variables.derby]
+                name = 'DerbyLantern'
+                number = 123
+
+                [derby.variables.derby.deeply.nested]
+                ext = 'conf'
+
+                [derby.files]
+                derby = '$config/${derby.name}-${derby.number}.${derby.deeply.nested.ext}'
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config = merge_configuration_files(global, local, None).map(|mut config| {
+            for (_, target) in config.files.iter_mut() {
+                let path = target.path().to_string_lossy();
+                let path = expand_config_variables(&path, &config.variables);
+                target.set_path(path.to_string());
+            }
+            config
+        });
+
+        let config = merged_config.unwrap();
+
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
+
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
+
+        assert_eq!(
+            cat,
+            &FileTarget::Automatic(PathBuf::from("~/.config/QuarticCat.not_a_part_of_var"))
+        );
+
+        assert_eq!(
+            derby,
+            &FileTarget::Automatic(PathBuf::from("~/.config/DerbyLantern-123.conf"))
         );
     }
 }
