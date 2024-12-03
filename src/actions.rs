@@ -55,7 +55,7 @@ impl<'a> RealActionRunner<'a> {
     }
 }
 
-impl<'a> ActionRunner for RealActionRunner<'a> {
+impl ActionRunner for RealActionRunner<'_> {
     fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool> {
         delete_symlink(source, target, self.fs, self.force)
     }

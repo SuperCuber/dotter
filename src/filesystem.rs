@@ -793,8 +793,7 @@ fn compare_template(target_state: FileState, cache_state: FileState) -> Template
     }
 }
 
-/// === Utility functions ===
-
+// === Utility functions ===
 pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
     let path = std::fs::canonicalize(path)?;
     Ok(platform_dunce(&path))
