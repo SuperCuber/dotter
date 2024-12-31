@@ -28,6 +28,15 @@ impl fmt::Display for UnixUser {
 #[serde(deny_unknown_fields)]
 pub struct SymbolicTarget {
     pub target: PathBuf,
+    /// If supplied it replaces the source file deduced from the TOML section header/given as key.
+    /// ```toml
+    /// [sway.files.fish]
+    /// source = "fish/conf.d/sway.fish"
+    /// target = "~/.config/fish/conf.d/sway.fish"
+    /// type = "symbolic"
+    /// ````
+    #[serde(rename = "source")]
+    pub file: Option<PathBuf>,
     pub owner: Option<UnixUser>,
     pub recurse: Option<bool>,
     #[serde(rename = "if")]
@@ -38,6 +47,15 @@ pub struct SymbolicTarget {
 #[serde(deny_unknown_fields)]
 pub struct TemplateTarget {
     pub target: PathBuf,
+    /// If supplied it replaces the source file deduced from the TOML section header/given as key.
+    /// ```toml
+    /// [sway.files.fish]
+    /// source = "fish/conf.d/sway.fish"
+    /// target = "~/.config/fish/conf.d/sway.fish"
+    /// type = "symbolic"
+    /// ````
+    #[serde(rename = "source")]
+    pub file: Option<PathBuf>,
     pub owner: Option<UnixUser>,
     pub append: Option<String>,
     pub prepend: Option<String>,
@@ -178,6 +196,10 @@ pub fn load_configuration(
     let mut merged_config =
         merge_configuration_files(global, local, patch).context("merge configuration files")?;
     trace!("Merged config: {:#?}", merged_config);
+
+    debug!("Replacing source by the file key indicated in complex targets");
+    merged_config.files =
+        replace_source(&merged_config).context("replace source for complex targets")?;
 
     debug!("Expanding files which are directories...");
     merged_config.files =
@@ -484,6 +506,7 @@ impl<T: Into<PathBuf>> From<T> for SymbolicTarget {
     fn from(input: T) -> Self {
         SymbolicTarget {
             target: input.into(),
+            file: None,
             owner: None,
             condition: None,
             recurse: None,
@@ -495,6 +518,7 @@ impl<T: Into<PathBuf>> From<T> for TemplateTarget {
     fn from(input: T) -> Self {
         TemplateTarget {
             target: input.into(),
+            file: None,
             owner: None,
             append: None,
             prepend: None,
@@ -509,6 +533,7 @@ impl SymbolicTarget {
             target: self.target,
             owner: self.owner,
             condition: self.condition,
+            file: self.file,
             prepend: None,
             append: None,
         }
@@ -550,6 +575,7 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
     let recurse = match target {
         FileTarget::Symbolic(SymbolicTarget {
             target: _,
+            file: _,
             owner: _,
             condition: _,
             recurse: Some(rec),
@@ -577,6 +603,36 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
         Ok(expanded.into_iter().flatten().collect())
     }
+}
+
+fn replace_source(config: &Configuration) -> Result<Files> {
+    let expanded = config
+        .files
+        .iter()
+        .map(|(source, target)| {
+            let mut map = Files::new();
+
+            match target {
+                FileTarget::Symbolic(t) => {
+                    map.insert(
+                        t.file.clone().unwrap_or(source.clone()).into(),
+                        target.clone(),
+                    );
+                }
+                FileTarget::ComplexTemplate(t) => {
+                    map.insert(
+                        t.file.clone().unwrap_or(source.clone()).into(),
+                        target.clone(),
+                    );
+                }
+                FileTarget::Automatic(_) => {
+                    map.insert(source.clone(), target.clone());
+                }
+            };
+            Ok(map)
+        })
+        .collect::<Result<Vec<Files>>>()?;
+    Ok(expanded.into_iter().flatten().collect::<Files>())
 }
 
 #[cfg(unix)]
