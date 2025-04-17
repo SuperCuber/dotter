@@ -256,25 +256,24 @@ pub fn save_dummy_config(
 }
 
 fn recursive_extend_map(
-    original: &mut BTreeMap<String, toml::Value>,
-    new: BTreeMap<String, toml::Value>,
+    original: &mut toml::map::Map<String, toml::Value>,
+    new: toml::map::Map<String, toml::Value>,
 ) {
     for (key, new_value) in new {
-        original
-            .entry(key)
-            .and_modify(|original_value| {
-                match (
-                    original_value.as_table().cloned(),
-                    new_value.as_table().cloned(),
-                ) {
-                    (Some(mut original_table), Some(new_table)) => {
-                        recursive_extend_map(&mut original_table, new_table);
-                        *original_value = original_table.into();
-                    }
-                    _ => *original_value = new_value.clone(),
+        if let Some(original_value) = original.get_mut(&key) {
+            match (
+                original_value.as_table().cloned(),
+                new_value.as_table().cloned(),
+            ) {
+                (Some(mut original_table), Some(new_table)) => {
+                    recursive_extend_map(&mut original_table, new_table);
+                    *original_value = toml::Value::Table(original_table);
                 }
-            })
-            .or_insert(new_value);
+                _ => *original_value = new_value.clone(),
+            }
+        } else {
+            original.insert(key, new_value);
+        }
     }
 }
 
@@ -368,8 +367,7 @@ fn merge_configuration_files(
             }
 
             for (variable_name, variable_value) in package.variables {
-                if let Some(first_value) = first_package.variables.get_mut(&variable_name).as_mut()
-                {
+                if let Some(first_value) = first_package.variables.get_mut(&variable_name) {
                     match (first_value, variable_value) {
                         (toml::Value::Table(first_value), toml::Value::Table(variable_value)) => {
                             trace!("Merging {:?} tables", variable_name);
