@@ -256,25 +256,21 @@ pub fn save_dummy_config(
 }
 
 fn recursive_extend_map(
-    original: &mut BTreeMap<String, toml::Value>,
-    new: BTreeMap<String, toml::Value>,
+    original: &mut toml::map::Map<String, toml::Value>,
+    new: toml::map::Map<String, toml::Value>,
 ) {
     for (key, new_value) in new {
-        original
-            .entry(key)
-            .and_modify(|original_value| {
-                match (
-                    original_value.as_table().cloned(),
-                    new_value.as_table().cloned(),
-                ) {
-                    (Some(mut original_table), Some(new_table)) => {
-                        recursive_extend_map(&mut original_table, new_table);
-                        *original_value = original_table.into();
-                    }
-                    _ => *original_value = new_value.clone(),
+        if let Some(v) = original.get_mut(&key) {
+            match (v.as_table().cloned(), v.as_table().cloned()) {
+                (Some(mut original_table), Some(new_table)) => {
+                    recursive_extend_map(&mut original_table, new_table);
+                    *v = original_table.into();
                 }
-            })
-            .or_insert(new_value);
+                _ => *v = new_value.clone(),
+            }
+        } else {
+            original.insert(key.clone(), new_value);
+        }
     }
 }
 
@@ -434,7 +430,7 @@ impl FileTarget {
 
     pub fn set_path(&mut self, new_path: impl Into<PathBuf>) {
         match self {
-            FileTarget::Automatic(ref mut path) => *path = new_path.into(),
+            FileTarget::Automatic(path) => *path = new_path.into(),
             FileTarget::Symbolic(SymbolicTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => {
                 *target = new_path.into();

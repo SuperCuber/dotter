@@ -3,33 +3,33 @@ name = "dotter"
 version = "0.13.5"
 authors = ["SuperCuber <amit.gold01@gmail.com>"]
 description = "A dotfile manager and templater written in rust"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/SuperCuber/dotter"
 readme = "README.md"
 keywords = ["dotter", "dotfiles", "manager"]
 categories = ["command-line-utilities"]
 license = "Unlicense"
-rust-version = "1.70"
+rust-version = "1.85"
 
 [dependencies]
 anyhow = "1.*"
 clap = { version = "4.0.26", features = ["derive"] }
-clap_complete = "4.0.5"
-crossterm = "0.25.0"
+clap_complete = "4.5.48"
+crossterm = "0.29.0"
 diff = "0.1.*"
 handlebars = "6.*"
-hostname = "0.3.*"
+hostname = "0.4.*"
 log = "0.4.*"
 maplit = "1.*"
-evalexpr = "11"
+evalexpr = "12.0.2"
 serde = { version = "1.*", features = ["derive"] }
-shellexpand = "2.*"
+shellexpand = "3.*"
 simplelog = "0.12.*"
 tokio = "1.*"
-toml = "0.4.*"
+toml = "0.9.*"
 watchexec = { version = "3", optional = true }
 watchexec-events = { version = "2.0.1", optional = true }
-watchexec-filterer-tagged = { version = "1.0.0", optional = true }
+watchexec-filterer-tagged = { version = "2.0.0", optional = true }
 
 [features]
 default = ["scripting", "watch"]
@@ -42,7 +42,7 @@ default-features = false
 features = ["string", "json"]
 
 [dev-dependencies]
-mockall = "0.11.3"
+mockall = "0.13.1"
 # Enable this instead for better failure messages (on nightly only)
 # mockall = { version = "0.9.*", features = ["nightly"] }
 
