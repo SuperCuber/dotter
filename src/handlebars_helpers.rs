@@ -364,6 +364,7 @@ fn add_dotter_variable(
 #[cfg(test)]
 mod test {
     use crate::config::Settings;
+    use toml::map::Map;
 
     use super::*;
 
@@ -371,7 +372,7 @@ mod test {
     fn eval_condition_simple() {
         let mut config = Configuration {
             files: Files::new(),
-            variables: maplit::btreemap! { "foo".into() => 2.into() },
+            variables: Map::from_iter([("foo".into(), 2.into())]),
             #[cfg(feature = "scripting")]
             helpers: Helpers::new(),
             packages: maplit::btreemap! { "default".into() => true, "disabled".into() => false },
@@ -386,12 +387,14 @@ mod test {
         assert!(
             !eval_condition(&handlebars, &config.variables, "dotter.packages.nonexist").unwrap()
         );
-        assert!(!eval_condition(
-            &handlebars,
-            &config.variables,
-            "(and true dotter.packages.disabled)"
-        )
-        .unwrap());
+        assert!(
+            !eval_condition(
+                &handlebars,
+                &config.variables,
+                "(and true dotter.packages.disabled)"
+            )
+            .unwrap()
+        );
     }
 
     #[test]
@@ -407,12 +410,14 @@ mod test {
         };
         let handlebars = create_new_handlebars(&mut config).unwrap();
 
-        assert!(!eval_condition(
-            &handlebars,
-            &config.variables,
-            "(is_executable \"no_such_executable_please\")"
-        )
-        .unwrap());
+        assert!(
+            !eval_condition(
+                &handlebars,
+                &config.variables,
+                "(is_executable \"no_such_executable_please\")"
+            )
+            .unwrap()
+        );
         assert!(
             eval_condition(&handlebars, &config.variables, "(eq (math \"5+5\") \"10\")").unwrap()
         );

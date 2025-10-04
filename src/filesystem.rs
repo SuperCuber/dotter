@@ -248,7 +248,9 @@ impl RealFilesystem {
         if !self.sudo_occurred {
             warn!("Elevating permissions ({})", goal.as_ref());
             if !log_enabled!(log::Level::Debug) {
-                warn!("To see more than the first time elevated permissions are used, use verbosity 2 or more (-vv)");
+                warn!(
+                    "To see more than the first time elevated permissions are used, use verbosity 2 or more (-vv)"
+                );
             }
             self.sudo_occurred = true;
         } else {
@@ -825,7 +827,10 @@ pub fn is_template(source: &Path) -> Result<bool> {
     let mut buf = String::new();
 
     if file.read_to_string(&mut buf).is_err() {
-        warn!("File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.", source);
+        warn!(
+            "File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.",
+            source
+        );
         Ok(false)
     } else {
         Ok(buf.contains("{{"))

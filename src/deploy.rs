@@ -4,12 +4,13 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::io::{self, Read};
 use std::path::PathBuf;
+use toml::map::Map;
 
 use crate::actions::{self, ActionRunner, RealActionRunner};
 use crate::args::Options;
 use crate::config::{self, Cache, FileTarget, SymbolicTarget, TemplateTarget};
 use crate::display_error;
-use crate::filesystem::{self, load_file, Filesystem};
+use crate::filesystem::{self, Filesystem, load_file};
 use crate::handlebars_helpers::create_new_handlebars;
 use crate::hooks;
 
@@ -77,8 +78,8 @@ Proceeding by copying instead of symlinking."
         false
     };
 
-    let mut desired_symlinks = BTreeMap::<PathBuf, SymbolicTarget>::new();
-    let mut desired_templates = BTreeMap::<PathBuf, TemplateTarget>::new();
+    let mut desired_symlinks = Map::<PathBuf, SymbolicTarget>::new();
+    let mut desired_templates = Map::<PathBuf, TemplateTarget>::new();
 
     for (source, target) in config.files {
         if symlinks_enabled {
@@ -135,7 +136,9 @@ Proceeding by copying instead of symlinking."
     // === Post-deploy ===
 
     if suggest_force {
-        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error!(
+            "Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag."
+        );
         error_occurred = true;
     }
 
@@ -223,7 +226,9 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
     // === Post-undeploy ===
 
     if suggest_force {
-        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error!(
+            "Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag."
+        );
         error_occurred = true;
     }
 
@@ -249,8 +254,8 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
 
 fn run_deploy<A: ActionRunner>(
     runner: &mut A,
-    desired_symlinks: &BTreeMap<PathBuf, SymbolicTarget>,
-    desired_templates: &BTreeMap<PathBuf, TemplateTarget>,
+    desired_symlinks: &Map<PathBuf, SymbolicTarget>,
+    desired_templates: &Map<PathBuf, TemplateTarget>,
     cache: &mut Cache,
     opt: &Options,
 ) -> (bool, bool) {
@@ -427,12 +432,8 @@ mod test {
         let a_out: SymbolicTarget = "a_out".into();
         let b_out: TemplateTarget = "b_out".into();
 
-        let desired_symlinks = maplit::btreemap! {
-            PathBuf::from("a_in") => a_out.clone()
-        };
-        let desired_templates = maplit::btreemap! {
-            PathBuf::from("b_in") => b_out.clone()
-        };
+        let desired_symlinks = Map::from_iter([(PathBuf::from("a_in"), a_out.clone())]);
+        let desired_templates = Map::from_iter([(PathBuf::from("b_in"), b_out.clone())]);
 
         // Test high level
         let mut runner = actions::MockActionRunner::new();
@@ -483,12 +484,8 @@ mod test {
         let a_out: SymbolicTarget = "a_out".into();
         let b_out: TemplateTarget = "b_out".into();
 
-        let desired_symlinks = maplit::btreemap! {
-            PathBuf::from("a_in") => a_out.clone()
-        };
-        let desired_templates = maplit::btreemap! {
-            PathBuf::from("b_in") => b_out.clone()
-        };
+        let desired_symlinks = Map::from_iter([(PathBuf::from("a_in"), a_out.clone())]);
+        let desired_templates = Map::from_iter([(PathBuf::from("b_in"), b_out.clone())]);
 
         let mut runner = actions::MockActionRunner::new();
         let mut seq = mockall::Sequence::new();
@@ -537,9 +534,7 @@ mod test {
         // Setup
         let a_out_new: SymbolicTarget = "a_out_new".into();
 
-        let desired_symlinks = maplit::btreemap! {
-            PathBuf::from("a_in") => a_out_new.clone()
-        };
+        let desired_symlinks = Map::from_iter([(PathBuf::from("a_in"), a_out_new.clone())]);
 
         let mut runner = actions::MockActionRunner::new();
         let mut seq = mockall::Sequence::new();
@@ -568,7 +563,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
-            &BTreeMap::new(),
+            &Map::new(),
             &mut cache,
             &Options {
                 cache_directory: "cache".into(),
@@ -589,17 +584,13 @@ mod test {
         // Setup
         let a_out_new: SymbolicTarget = "a_out_new".into();
 
-        let desired_symlinks = maplit::btreemap! {
-            PathBuf::from("a_in") => a_out_new.clone()
-        };
+        let desired_symlinks = Map::from_iter([(PathBuf::from("a_in"), a_out_new.clone())]);
 
         let mut runner = actions::MockActionRunner::new();
         let mut seq = mockall::Sequence::new();
         let mut cache = Cache {
             symlinks: BTreeMap::new(),
-            templates: maplit::btreemap! {
-                PathBuf::from("a_in") => "a_out_old".into()
-            },
+            templates: maplit::btreemap! { PathBuf::from("a_in") => "a_out_old".into() },
         };
 
         // Expectation
@@ -624,7 +615,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
-            &BTreeMap::new(),
+            &Map::new(),
             &mut cache,
             &Options {
                 cache_directory: "cache".into(),
@@ -644,9 +635,8 @@ mod test {
     #[ignore] // This is desired, but not implemented: see issue #22
     fn high_level_skip_change_type() {
         // Setup
-        let desired_symlinks = maplit::btreemap! {
-            PathBuf::from("a_in") => "a_out_new".into()
-        };
+        let desired_symlinks: Map<PathBuf, _> =
+            Map::from_iter([(PathBuf::from("a_in"), "a_out_new".into())]);
 
         let mut runner = actions::MockActionRunner::new();
         let mut seq = mockall::Sequence::new();
@@ -673,7 +663,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
-            &BTreeMap::new(),
+            &Map::new(),
             &mut cache,
             &Options {
                 cache_directory: "cache".into(),
@@ -697,7 +687,7 @@ mod test {
 
         let opt = Options::default();
         let handlebars = handlebars::Handlebars::new();
-        let variables = BTreeMap::new();
+        let variables = Map::new();
 
         // Expectation:
         // create_symlink
@@ -780,16 +770,20 @@ mod test {
             opt.force,
             opt.diff_context_lines,
         );
-        assert!(runner
-            .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
-            .unwrap());
-        assert!(runner
-            .create_template(
-                &PathBuf::from("b_in"),
-                &PathBuf::from("cache/b_cache"),
-                &PathBuf::from("b_out").into(),
-            )
-            .unwrap());
+        assert!(
+            runner
+                .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
+                .unwrap()
+        );
+        assert!(
+            runner
+                .create_template(
+                    &PathBuf::from("b_in"),
+                    &PathBuf::from("cache/b_cache"),
+                    &PathBuf::from("b_out").into(),
+                )
+                .unwrap()
+        );
     }
 
     #[test]
@@ -800,7 +794,7 @@ mod test {
 
         let opt = Options::default();
         let handlebars = handlebars::Handlebars::new();
-        let variables = BTreeMap::new();
+        let variables = Map::new();
 
         // Expectation:
         // create_symlink
@@ -830,15 +824,19 @@ mod test {
         );
 
         // Both should skip
-        assert!(!runner
-            .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
-            .unwrap());
-        assert!(!runner
-            .create_template(
-                &PathBuf::from("b_in"),
-                &PathBuf::from("cache/b_cache"),
-                &PathBuf::from("b_out").into(),
-            )
-            .unwrap());
+        assert!(
+            !runner
+                .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
+                .unwrap()
+        );
+        assert!(
+            !runner
+                .create_template(
+                    &PathBuf::from("b_in"),
+                    &PathBuf::from("cache/b_cache"),
+                    &PathBuf::from("b_out").into(),
+                )
+                .unwrap()
+        );
     }
 }
