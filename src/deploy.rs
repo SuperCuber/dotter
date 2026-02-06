@@ -9,7 +9,7 @@ use crate::actions::{self, ActionRunner, RealActionRunner};
 use crate::args::Options;
 use crate::config::{self, Cache, FileTarget, SymbolicTarget, TemplateTarget};
 use crate::display_error;
-use crate::filesystem::{self, load_file, Filesystem};
+use crate::filesystem::{self, Filesystem, load_file};
 use crate::handlebars_helpers::create_new_handlebars;
 use crate::hooks;
 
@@ -135,7 +135,9 @@ Proceeding by copying instead of symlinking."
     // === Post-deploy ===
 
     if suggest_force {
-        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error!(
+            "Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag."
+        );
         error_occurred = true;
     }
 
@@ -223,7 +225,9 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
     // === Post-undeploy ===
 
     if suggest_force {
-        error!("Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag.");
+        error!(
+            "Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag."
+        );
         error_occurred = true;
     }
 
@@ -780,16 +784,20 @@ mod test {
             opt.force,
             opt.diff_context_lines,
         );
-        assert!(runner
-            .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
-            .unwrap());
-        assert!(runner
-            .create_template(
-                &PathBuf::from("b_in"),
-                &PathBuf::from("cache/b_cache"),
-                &PathBuf::from("b_out").into(),
-            )
-            .unwrap());
+        assert!(
+            runner
+                .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
+                .unwrap()
+        );
+        assert!(
+            runner
+                .create_template(
+                    &PathBuf::from("b_in"),
+                    &PathBuf::from("cache/b_cache"),
+                    &PathBuf::from("b_out").into(),
+                )
+                .unwrap()
+        );
     }
 
     #[test]
@@ -830,15 +838,19 @@ mod test {
         );
 
         // Both should skip
-        assert!(!runner
-            .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
-            .unwrap());
-        assert!(!runner
-            .create_template(
-                &PathBuf::from("b_in"),
-                &PathBuf::from("cache/b_cache"),
-                &PathBuf::from("b_out").into(),
-            )
-            .unwrap());
+        assert!(
+            !runner
+                .create_symlink(&PathBuf::from("a_in"), &PathBuf::from("a_out").into())
+                .unwrap()
+        );
+        assert!(
+            !runner
+                .create_template(
+                    &PathBuf::from("b_in"),
+                    &PathBuf::from("cache/b_cache"),
+                    &PathBuf::from("b_out").into(),
+                )
+                .unwrap()
+        );
     }
 }

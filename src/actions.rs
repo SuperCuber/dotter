@@ -269,7 +269,10 @@ pub fn create_symlink(
             Ok(true)
         }
         SymlinkComparison::Identical => {
-            warn!("Creating symlink {:?} -> {:?} but target already exists and points at source. Adding to cache anyways", source, target.target);
+            warn!(
+                "Creating symlink {:?} -> {:?} but target already exists and points at source. Adding to cache anyways",
+                source, target.target
+            );
             Ok(true)
         }
         SymlinkComparison::OnlyTargetExists | SymlinkComparison::BothMissing => {
