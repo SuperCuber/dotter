@@ -432,7 +432,7 @@ impl FileTarget {
 
     pub fn set_path(&mut self, new_path: impl Into<PathBuf>) {
         match self {
-            FileTarget::Automatic(ref mut path) => *path = new_path.into(),
+            FileTarget::Automatic(path) => *path = new_path.into(),
             FileTarget::Symbolic(SymbolicTarget { target, .. })
             | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => {
                 *target = new_path.into();

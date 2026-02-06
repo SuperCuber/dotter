@@ -3,13 +3,13 @@ name = "dotter"
 version = "0.13.5"
 authors = ["SuperCuber <amit.gold01@gmail.com>"]
 description = "A dotfile manager and templater written in rust"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/SuperCuber/dotter"
 readme = "README.md"
 keywords = ["dotter", "dotfiles", "manager"]
 categories = ["command-line-utilities"]
 license = "Unlicense"
-rust-version = "1.70"
+rust-version = "1.85"
 
 [dependencies]
 anyhow = "1.*"
