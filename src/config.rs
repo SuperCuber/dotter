@@ -772,6 +772,33 @@ mod test {
     }
 
     #[test]
+    fn inline_table_with_newlines() {
+        // TOML 1.1 allows inline tables to span multiple lines (trailing commas
+        // also permitted). This requires toml crate >= 0.10 which enables TOML
+        // 1.1 parsing by default.
+        let local: LocalConfig = toml::from_str(
+            r#"
+                packages = ['mypackage']
+
+                [variables]
+                myvar = {
+                    key = "value",
+                }
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            local.variables.get("myvar"),
+            Some(&toml::Value::Table(
+                [("key".to_string(), toml::Value::String("value".to_string()))]
+                    .into_iter()
+                    .collect()
+            ))
+        );
+    }
+
+    #[test]
     fn setting_default_target_type_automatic() {
         let global: GlobalConfig = toml::from_str(
             r#"
