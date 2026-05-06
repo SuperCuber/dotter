@@ -315,6 +315,41 @@ impl RealFilesystem {
         parse_sudo_file_state(output.stdout)
     }
 
+    fn resolve_symlink_destination(
+        &mut self,
+        link: &Path,
+        owner: &Option<UnixUser>,
+    ) -> Result<Option<PathBuf>> {
+        match real_path(link) {
+            Ok(path) => Ok(Some(path)),
+            Err(e) if e.kind() == ErrorKind::PermissionDenied && owner.is_some() => {
+                self.resolve_symlink_destination_as_root(link)
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e).context("get real path of existing symlink"),
+        }
+    }
+
+    fn resolve_symlink_destination_as_root(&mut self, path: &Path) -> Result<Option<PathBuf>> {
+        let output = self
+            .sudo(format!("resolving existing symlink {path:?} as root"))
+            .arg("sh")
+            .arg("-c")
+            .arg(
+                "if resolved=$(realpath -- \"$1\" 2>/dev/null); then printf 'resolved\\0%s' \"$resolved\"; elif [ -L \"$1\" ] && [ ! -e \"$1\" ]; then printf 'missing\\0'; else exit 1; fi",
+            )
+            .arg("sh")
+            .arg(path)
+            .output()
+            .context("run sudo symlink resolution probe")?;
+
+        anyhow::ensure!(
+            output.status.success(),
+            "sudo symlink resolution probe failed"
+        );
+        parse_sudo_resolved_path(output.stdout)
+    }
+
     fn read_to_string_as_root(&mut self, path: &Path) -> Result<String> {
         let output = self
             .sudo(format!("reading file {path:?} as root"))
@@ -341,7 +376,24 @@ impl Filesystem for RealFilesystem {
         let source_state = get_file_state(source).context("get source state")?;
         let link_state = self.get_file_state(link, owner).context("get link state")?;
 
-        compare_symlink(source, source_state, link_state)
+        Ok(match (source_state, link_state) {
+            (FileState::Missing, FileState::SymbolicLink(_)) => SymlinkComparison::OnlyTargetExists,
+            (_, FileState::SymbolicLink(_)) => {
+                let expected_target = real_path(source).context("get real path of source")?;
+                match self
+                    .resolve_symlink_destination(link, owner)
+                    .context("resolve symlink target")?
+                {
+                    Some(actual_target) if actual_target == expected_target => {
+                        SymlinkComparison::Identical
+                    }
+                    Some(_) | None => SymlinkComparison::Changed,
+                }
+            }
+            (FileState::Missing, FileState::Missing) => SymlinkComparison::BothMissing,
+            (_, FileState::Missing) => SymlinkComparison::OnlySourceExists,
+            _ => SymlinkComparison::TargetNotSymlink,
+        })
     }
 
     fn compare_template(
@@ -827,6 +879,24 @@ fn parse_sudo_file_state(output: Vec<u8>) -> Result<FileState> {
     }
 }
 
+#[cfg(unix)]
+fn parse_sudo_resolved_path(output: Vec<u8>) -> Result<Option<PathBuf>> {
+    let separator = output
+        .iter()
+        .position(|byte| *byte == b'\0')
+        .context("parse sudo symlink resolution probe output")?;
+    let (kind, payload) = output.split_at(separator);
+    let payload = &payload[1..];
+
+    match kind {
+        b"resolved" => Ok(Some(PathBuf::from(std::ffi::OsString::from_vec(
+            payload.to_vec(),
+        )))),
+        b"missing" => Ok(None),
+        _ => anyhow::bail!("unexpected sudo symlink resolution probe output"),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum SymlinkComparison {
     Identical,
@@ -998,6 +1068,17 @@ pub fn platform_dunce(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod test {
     use super::*;
+    #[cfg(unix)]
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[cfg(unix)]
+    fn unique_test_path(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("dotter-{name}-{}-{unique}", std::process::id()))
+    }
 
     #[test]
     fn simple_remove() {
@@ -1129,5 +1210,25 @@ mod test {
             .unwrap();
         fs.copy_file(&PathBuf::from("link"), &PathBuf::from("link2"), &None)
             .unwrap_err();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn compare_symlink_accepts_relative_target_to_same_file() {
+        let root = unique_test_path("relative-symlink");
+        let source_dir = root.join("source");
+        let link_dir = root.join("links");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::create_dir_all(&link_dir).unwrap();
+
+        let source = source_dir.join("file.txt");
+        let link = link_dir.join("file.txt");
+        std::fs::write(&source, "hello").unwrap();
+        std::os::unix::fs::symlink(PathBuf::from("../source/file.txt"), &link).unwrap();
+
+        let result = RealFilesystem::new(true).compare_symlink(&source, &link, &None);
+        std::fs::remove_dir_all(&root).unwrap();
+
+        assert_eq!(result.unwrap(), SymlinkComparison::Identical);
     }
 }
