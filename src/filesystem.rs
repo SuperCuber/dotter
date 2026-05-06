@@ -6,6 +6,8 @@ use serde::ser::Serialize;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read};
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Command;
@@ -44,16 +46,26 @@ where
 #[cfg_attr(test, mockall::automock)]
 pub trait Filesystem {
     /// Check state of expected symlink on disk
-    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison>;
+    fn compare_symlink(
+        &mut self,
+        source: &Path,
+        link: &Path,
+        owner: &Option<UnixUser>,
+    ) -> Result<SymlinkComparison>;
 
     /// Check state of expected symbolic link on disk
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison>;
+    fn compare_template(
+        &mut self,
+        target: &Path,
+        cache: &Path,
+        owner: &Option<UnixUser>,
+    ) -> Result<TemplateComparison>;
 
     /// Removes a file or folder, elevating privileges if needed
     fn remove_file(&mut self, path: &Path) -> Result<()>;
 
     /// Read contents of file into a string
-    fn read_to_string(&mut self, path: &Path) -> Result<String>;
+    fn read_to_string(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<String>;
 
     /// Write string to file, without elevating privileges
     fn write(&mut self, path: &Path, content: String) -> Result<()>;
@@ -101,7 +113,12 @@ impl RealFilesystem {
 
 #[cfg(windows)]
 impl Filesystem for RealFilesystem {
-    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
+    fn compare_symlink(
+        &mut self,
+        source: &Path,
+        link: &Path,
+        _owner: &Option<UnixUser>,
+    ) -> Result<SymlinkComparison> {
         let source_state = get_file_state(source).context("get source state")?;
         trace!("Source state: {:#?}", source_state);
         let link_state = get_file_state(link).context("get link state")?;
@@ -110,7 +127,12 @@ impl Filesystem for RealFilesystem {
         compare_symlink(source, source_state, link_state)
     }
 
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+    fn compare_template(
+        &mut self,
+        target: &Path,
+        cache: &Path,
+        _owner: &Option<UnixUser>,
+    ) -> Result<TemplateComparison> {
         let target_state = get_file_state(target).context("get state of target")?;
         trace!("Target state: {:#?}", target_state);
         let cache_state = get_file_state(cache).context("get state of cache")?;
@@ -128,7 +150,7 @@ impl Filesystem for RealFilesystem {
         }
     }
 
-    fn read_to_string(&mut self, path: &Path) -> Result<String> {
+    fn read_to_string(&mut self, path: &Path, _owner: &Option<UnixUser>) -> Result<String> {
         fs::read_to_string(path).context("read from file")
     }
 
@@ -265,19 +287,72 @@ impl RealFilesystem {
         let process_uid = unsafe { libc::geteuid() };
         Ok(file_uid == process_uid)
     }
+
+    fn get_file_state(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<FileState> {
+        match try_get_file_state(path) {
+            Ok(state) => Ok(state),
+            Err(e) if e.kind() == ErrorKind::PermissionDenied && owner.is_some() => {
+                self.get_file_state_as_root(path)
+            }
+            Err(e) => Err(e).context("read contents of file that isn't symbolic or directory"),
+        }
+    }
+
+    fn get_file_state_as_root(&mut self, path: &Path) -> Result<FileState> {
+        let output = self
+            .sudo(format!("detecting file state for {path:?} as root"))
+            .arg("sh")
+            .arg("-c")
+            .arg(
+                "if [ -L \"$1\" ]; then printf 'symlink\\0'; readlink -- \"$1\"; elif [ -d \"$1\" ]; then printf 'directory\\0'; elif [ -e \"$1\" ]; then printf 'file\\0'; cat -- \"$1\"; else printf 'missing\\0'; fi",
+            )
+            .arg("sh")
+            .arg(path)
+            .output()
+            .context("run sudo file state probe")?;
+
+        anyhow::ensure!(output.status.success(), "sudo file state probe failed");
+        parse_sudo_file_state(output.stdout)
+    }
+
+    fn read_to_string_as_root(&mut self, path: &Path) -> Result<String> {
+        let output = self
+            .sudo(format!("reading file {path:?} as root"))
+            .arg("cat")
+            .arg(path)
+            .output()
+            .context("run sudo cat")?;
+
+        anyhow::ensure!(output.status.success(), "sudo cat failed");
+        String::from_utf8(output.stdout)
+            .map_err(|e| io::Error::new(ErrorKind::InvalidData, e))
+            .context("read from file as root")
+    }
 }
 
 #[cfg(unix)]
 impl Filesystem for RealFilesystem {
-    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
+    fn compare_symlink(
+        &mut self,
+        source: &Path,
+        link: &Path,
+        owner: &Option<UnixUser>,
+    ) -> Result<SymlinkComparison> {
         let source_state = get_file_state(source).context("get source state")?;
-        let link_state = get_file_state(link).context("get link state")?;
+        let link_state = self.get_file_state(link, owner).context("get link state")?;
 
         compare_symlink(source, source_state, link_state)
     }
 
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
-        let target_state = get_file_state(target).context("get state of target")?;
+    fn compare_template(
+        &mut self,
+        target: &Path,
+        cache: &Path,
+        owner: &Option<UnixUser>,
+    ) -> Result<TemplateComparison> {
+        let target_state = self
+            .get_file_state(target, owner)
+            .context("get state of target")?;
         let cache_state = get_file_state(cache).context("get state of cache")?;
 
         Ok(compare_template(target_state, cache_state))
@@ -311,8 +386,14 @@ impl Filesystem for RealFilesystem {
         }
     }
 
-    fn read_to_string(&mut self, path: &Path) -> Result<String> {
-        fs::read_to_string(path).context("read from file")
+    fn read_to_string(&mut self, path: &Path, owner: &Option<UnixUser>) -> Result<String> {
+        match fs::read_to_string(path) {
+            Ok(contents) => Ok(contents),
+            Err(e) if e.kind() == ErrorKind::PermissionDenied && owner.is_some() => {
+                self.read_to_string_as_root(path)
+            }
+            Err(e) => Err(e).context("read from file"),
+        }
     }
 
     fn write(&mut self, path: &Path, content: String) -> Result<()> {
@@ -555,7 +636,12 @@ impl DryRunFilesystem {
 }
 
 impl Filesystem for DryRunFilesystem {
-    fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
+    fn compare_symlink(
+        &mut self,
+        source: &Path,
+        link: &Path,
+        _owner: &Option<UnixUser>,
+    ) -> Result<SymlinkComparison> {
         let source_state = if let Some(state) = self.file_states.get(source) {
             debug!("Cached (probably not actual) source state: {:?}", state);
             state.clone()
@@ -576,7 +662,12 @@ impl Filesystem for DryRunFilesystem {
         compare_symlink(source, source_state, link_state)
     }
 
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+    fn compare_template(
+        &mut self,
+        target: &Path,
+        cache: &Path,
+        _owner: &Option<UnixUser>,
+    ) -> Result<TemplateComparison> {
         let target_state = if let Some(state) = self.file_states.get(target) {
             debug!("Cached (probably not actual) target state: {:?}", state);
             state.clone()
@@ -603,7 +694,7 @@ impl Filesystem for DryRunFilesystem {
         Ok(())
     }
 
-    fn read_to_string(&mut self, path: &Path) -> Result<String> {
+    fn read_to_string(&mut self, path: &Path, _owner: &Option<UnixUser>) -> Result<String> {
         debug!("Reading contents of file {:?}", path);
         match self.get_state(path).context("get file state")? {
             FileState::File(s) => Ok(s.context("invalid utf-8 in template source")?),
@@ -692,7 +783,7 @@ impl Filesystem for DryRunFilesystem {
 
 // === Comparisons ===
 
-fn get_file_state(path: &Path) -> Result<FileState> {
+fn try_get_file_state(path: &Path) -> io::Result<FileState> {
     if let Ok(target) = fs::read_link(path) {
         return Ok(FileState::SymbolicLink(target));
     }
@@ -705,7 +796,34 @@ fn get_file_state(path: &Path) -> Result<FileState> {
         Ok(f) => Ok(FileState::File(Some(f))),
         Err(e) if e.kind() == ErrorKind::InvalidData => Ok(FileState::File(None)),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(FileState::Missing),
-        Err(e) => Err(e).context("read contents of file that isn't symbolic or directory")?,
+        Err(e) => Err(e),
+    }
+}
+
+fn get_file_state(path: &Path) -> Result<FileState> {
+    try_get_file_state(path).context("read contents of file that isn't symbolic or directory")
+}
+
+#[cfg(unix)]
+fn parse_sudo_file_state(output: Vec<u8>) -> Result<FileState> {
+    let separator = output
+        .iter()
+        .position(|byte| *byte == b'\0')
+        .context("parse sudo file state probe output")?;
+    let (kind, payload) = output.split_at(separator);
+    let payload = &payload[1..];
+
+    match kind {
+        b"symlink" => Ok(FileState::SymbolicLink(PathBuf::from(
+            std::ffi::OsString::from_vec(payload.to_vec()),
+        ))),
+        b"directory" => Ok(FileState::Directory),
+        b"file" => match String::from_utf8(payload.to_vec()) {
+            Ok(contents) => Ok(FileState::File(Some(contents))),
+            Err(_) => Ok(FileState::File(None)),
+        },
+        b"missing" => Ok(FileState::Missing),
+        _ => anyhow::bail!("unexpected sudo file state probe output"),
     }
 }
 
@@ -897,7 +1015,7 @@ mod test {
         fs.write(&PathBuf::from("test"), "hello world!".into())
             .unwrap();
         assert_eq!(
-            fs.read_to_string(&PathBuf::from("test")).unwrap(),
+            fs.read_to_string(&PathBuf::from("test"), &None).unwrap(),
             "hello world!"
         );
     }
@@ -932,7 +1050,8 @@ mod test {
         assert_eq!(
             fs.compare_template(
                 &PathBuf::from("target_dir/target"),
-                &PathBuf::from("cache_dir/cache")
+                &PathBuf::from("cache_dir/cache"),
+                &None,
             )
             .unwrap(),
             TemplateComparison::BothMissing
@@ -943,7 +1062,7 @@ mod test {
 
         // perform_template_deploy
         assert_eq!(
-            fs.read_to_string(&PathBuf::from("source")).unwrap(),
+            fs.read_to_string(&PathBuf::from("source"), &None).unwrap(),
             "{{name}}"
         );
         let rendered = String::from("John");

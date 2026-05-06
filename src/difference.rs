@@ -3,10 +3,10 @@ use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
 use std::cmp::{max, min};
-use std::fs;
 use std::path::Path;
 
 use crate::config::{TemplateTarget, Variables};
+use crate::filesystem::Filesystem;
 
 pub type Diff = Vec<diff::Result<String>>;
 pub type HunkDiff = Vec<(usize, usize, Diff)>;
@@ -14,12 +14,13 @@ pub type HunkDiff = Vec<(usize, usize, Diff)>;
 pub fn print_template_diff(
     source: &Path,
     target: &TemplateTarget,
+    filesystem: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
     diff_context_lines: usize,
 ) {
     if log_enabled!(log::Level::Info) {
-        match generate_template_diff(source, target, handlebars, variables, true) {
+        match generate_template_diff(source, target, filesystem, handlebars, variables, true) {
             Ok(diff) => {
                 if diff_nonempty(&diff) {
                     info!(
@@ -44,18 +45,22 @@ pub fn print_template_diff(
 pub fn generate_template_diff(
     source: &Path,
     target: &TemplateTarget,
+    filesystem: &mut dyn Filesystem,
     handlebars: &Handlebars<'_>,
     variables: &Variables,
     source_to_target: bool,
 ) -> Result<Diff> {
-    let file_contents = fs::read_to_string(source).context("read template source file")?;
+    let file_contents = filesystem
+        .read_to_string(source, &None)
+        .context("read template source file")?;
     let file_contents = target.apply_actions(file_contents);
     let rendered = handlebars
         .render_template(&file_contents, variables)
         .context("render template")?;
 
-    let target_contents =
-        fs::read_to_string(&target.target).context("read template target file")?;
+    let target_contents = filesystem
+        .read_to_string(&target.target, &target.owner)
+        .context("read template target file")?;
 
     let diff_result = if source_to_target {
         diff::lines(&target_contents, &rendered)

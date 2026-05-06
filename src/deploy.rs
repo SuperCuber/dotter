@@ -707,9 +707,13 @@ mod test {
         // create_symlink
         fs.expect_compare_symlink()
             .times(1)
-            .with(function(path_eq("a_in")), function(path_eq("a_out")))
+            .with(
+                function(path_eq("a_in")),
+                function(path_eq("a_out")),
+                eq(None),
+            )
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(SymlinkComparison::OnlySourceExists));
+            .returning(|_, _, _| Ok(SymlinkComparison::OnlySourceExists));
         fs.expect_create_dir_all()
             .times(1)
             .with(function(path_eq("")), eq(None)) // parent of a_out
@@ -731,9 +735,10 @@ mod test {
             .with(
                 function(path_eq("b_out")),
                 function(path_eq("cache/b_cache")),
+                eq(None),
             )
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(TemplateComparison::BothMissing));
+            .returning(|_, _, _| Ok(TemplateComparison::BothMissing));
         fs.expect_create_dir_all()
             .times(1)
             .with(function(path_eq("")), eq(None)) // parent of b_out
@@ -741,9 +746,9 @@ mod test {
             .returning(|_, _| Ok(()));
         fs.expect_read_to_string()
             .times(1)
-            .with(function(path_eq("b_in")))
+            .with(function(path_eq("b_in")), eq(None))
             .in_sequence(&mut seq)
-            .returning(|_| Ok("Hello!".into()));
+            .returning(|_, _| Ok("Hello!".into()));
         fs.expect_create_dir_all()
             .times(1)
             .with(function(path_eq("cache")), eq(None))
@@ -814,9 +819,13 @@ mod test {
         // create_symlink
         fs.expect_compare_symlink()
             .times(1)
-            .with(function(path_eq("a_in")), function(path_eq("a_out")))
+            .with(
+                function(path_eq("a_in")),
+                function(path_eq("a_out")),
+                eq(None),
+            )
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(SymlinkComparison::Changed));
+            .returning(|_, _, _| Ok(SymlinkComparison::Changed));
 
         // create_template
         fs.expect_compare_template()
@@ -824,9 +833,10 @@ mod test {
             .with(
                 function(path_eq("b_out")),
                 function(path_eq("cache/b_cache")),
+                eq(None),
             )
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(TemplateComparison::Changed));
+            .returning(|_, _, _| Ok(TemplateComparison::Changed));
 
         // Reality
         let mut runner = actions::RealActionRunner::new(
@@ -849,6 +859,153 @@ mod test {
                     &PathBuf::from("b_in"),
                     &PathBuf::from("cache/b_cache"),
                     &PathBuf::from("b_out").into(),
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn low_level_symlink_owner_passes_owner_to_compare() {
+        let mut fs = crate::filesystem::MockFilesystem::new();
+        let mut seq = mockall::Sequence::new();
+
+        let opt = Options::default();
+        let handlebars = handlebars::Handlebars::new();
+        let variables = toml::map::Map::new();
+        let owner = Some(crate::config::UnixUser::Name("root".into()));
+        let target = SymbolicTarget {
+            target: PathBuf::from("owned_out"),
+            owner: owner.clone(),
+            recurse: None,
+            condition: None,
+        };
+
+        fs.expect_compare_symlink()
+            .times(1)
+            .with(
+                function(path_eq("owned_in")),
+                function(path_eq("owned_out")),
+                eq(owner.clone()),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(SymlinkComparison::OnlySourceExists));
+        fs.expect_create_dir_all()
+            .times(1)
+            .with(function(path_eq("")), eq(owner.clone()))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_make_symlink()
+            .times(1)
+            .with(
+                function(path_eq("owned_out")),
+                function(path_eq("owned_in")),
+                eq(owner.clone()),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+
+        let mut runner = actions::RealActionRunner::new(
+            &mut fs,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        );
+
+        assert!(
+            runner
+                .create_symlink(&PathBuf::from("owned_in"), &target)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn low_level_update_template_reads_owned_target_via_filesystem() {
+        let mut fs = crate::filesystem::MockFilesystem::new();
+        let mut seq = mockall::Sequence::new();
+
+        let opt = Options::default();
+        let handlebars = handlebars::Handlebars::new();
+        let variables = toml::map::Map::new();
+        let owner = Some(crate::config::UnixUser::Name("root".into()));
+        let target = TemplateTarget {
+            target: PathBuf::from("owned_out"),
+            owner: owner.clone(),
+            append: None,
+            prepend: None,
+            condition: None,
+        };
+
+        fs.expect_compare_template()
+            .times(1)
+            .with(
+                function(path_eq("owned_out")),
+                function(path_eq("cache/owned_cache")),
+                eq(owner.clone()),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(TemplateComparison::Changed));
+        fs.expect_read_to_string()
+            .times(1)
+            .with(function(path_eq("owned_in")), eq(None))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok("Hello!".into()));
+        fs.expect_read_to_string()
+            .times(1)
+            .with(function(path_eq("owned_out")), eq(owner.clone()))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok("Hello!".into()));
+        fs.expect_read_to_string()
+            .times(1)
+            .with(function(path_eq("owned_in")), eq(None))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok("Hello!".into()));
+        fs.expect_create_dir_all()
+            .times(1)
+            .with(function(path_eq("cache")), eq(None))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_write()
+            .times(1)
+            .with(
+                function(path_eq("cache/owned_cache")),
+                eq(String::from("Hello!")),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_copy_file()
+            .times(1)
+            .with(
+                function(path_eq("cache/owned_cache")),
+                function(path_eq("owned_out")),
+                eq(owner.clone()),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+        fs.expect_copy_permissions()
+            .times(1)
+            .with(
+                function(path_eq("owned_in")),
+                function(path_eq("owned_out")),
+                eq(owner),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+
+        let mut runner = actions::RealActionRunner::new(
+            &mut fs,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        );
+
+        assert!(
+            runner
+                .update_template(
+                    &PathBuf::from("owned_in"),
+                    &PathBuf::from("cache/owned_cache"),
+                    &target,
                 )
                 .unwrap()
         );
