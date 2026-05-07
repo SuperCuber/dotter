@@ -46,6 +46,27 @@ pub struct TemplateTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(from = "CachedSymlinkTargetRepr", into = "CachedSymlinkTargetRepr")]
+pub struct CachedSymlinkTarget {
+    pub target: PathBuf,
+    pub owner: Option<UnixUser>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(untagged)]
+enum CachedSymlinkTargetRepr {
+    Path(PathBuf),
+    Target(CachedSymlinkTargetInner),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+struct CachedSymlinkTargetInner {
+    target: PathBuf,
+    owner: Option<UnixUser>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(from = "FileTargetOuterRepr", into = "FileTargetOuterRepr")]
 pub enum FileTarget {
     Automatic(PathBuf),
@@ -208,7 +229,9 @@ pub fn load_configuration(
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Cache {
-    pub symlinks: BTreeMap<PathBuf, PathBuf>,
+    #[serde(default)]
+    pub symlinks: BTreeMap<PathBuf, CachedSymlinkTarget>,
+    #[serde(default)]
     pub templates: BTreeMap<PathBuf, PathBuf>,
 }
 
@@ -497,6 +520,52 @@ impl<T: Into<PathBuf>> From<T> for TemplateTarget {
             append: None,
             prepend: None,
             condition: None,
+        }
+    }
+}
+
+impl From<CachedSymlinkTargetRepr> for CachedSymlinkTarget {
+    fn from(input: CachedSymlinkTargetRepr) -> Self {
+        match input {
+            CachedSymlinkTargetRepr::Path(target) => Self {
+                target,
+                owner: None,
+            },
+            CachedSymlinkTargetRepr::Target(target) => Self {
+                target: target.target,
+                owner: target.owner,
+            },
+        }
+    }
+}
+
+impl From<CachedSymlinkTarget> for CachedSymlinkTargetRepr {
+    fn from(input: CachedSymlinkTarget) -> Self {
+        if input.owner.is_none() {
+            Self::Path(input.target)
+        } else {
+            Self::Target(CachedSymlinkTargetInner {
+                target: input.target,
+                owner: input.owner,
+            })
+        }
+    }
+}
+
+impl<T: Into<PathBuf>> From<T> for CachedSymlinkTarget {
+    fn from(input: T) -> Self {
+        Self {
+            target: input.into(),
+            owner: None,
+        }
+    }
+}
+
+impl From<&SymbolicTarget> for CachedSymlinkTarget {
+    fn from(input: &SymbolicTarget) -> Self {
+        Self {
+            target: input.target.clone(),
+            owner: input.owner.clone(),
         }
     }
 }
@@ -850,6 +919,41 @@ mod test {
         assert_eq!(
             sliver,
             &FileTarget::Symbolic(PathBuf::from("~/.SliverBodacious").into())
+        );
+    }
+
+    #[test]
+    fn deserialize_legacy_symlink_cache_entry() {
+        let cache: Cache = toml::from_str(
+            r#"
+                [symlinks]
+                source = "target"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            cache.symlinks.get(&PathBuf::from("source")),
+            Some(&CachedSymlinkTarget::from("target"))
+        );
+    }
+
+    #[test]
+    fn deserialize_symlink_cache_entry_with_owner() {
+        let cache: Cache = toml::from_str(
+            r#"
+                [symlinks]
+                source = { target = "target", owner = "root" }
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            cache.symlinks.get(&PathBuf::from("source")),
+            Some(&CachedSymlinkTarget {
+                target: PathBuf::from("target"),
+                owner: Some(UnixUser::Name("root".into())),
+            })
         );
     }
 }

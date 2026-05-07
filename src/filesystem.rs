@@ -336,7 +336,25 @@ impl Filesystem for RealFilesystem {
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
-        let metadata = path.symlink_metadata().context("get metadata")?;
+        let metadata = match path.symlink_metadata() {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                let success = self
+                    .sudo(format!("removing file {path:?} as root"))
+                    .arg("rm")
+                    .arg("-r")
+                    .arg(path)
+                    .spawn()
+                    .context("spawn sudo rm command")?
+                    .wait()
+                    .context("wait for sudo rm command")?
+                    .success();
+
+                anyhow::ensure!(success, "sudo rm command failed");
+                return Ok(());
+            }
+            Err(e) => return Err(e).context("get metadata"),
+        };
         let result = if metadata.is_dir() {
             std::fs::remove_dir_all(path)
         } else {

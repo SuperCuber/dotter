@@ -5,13 +5,13 @@ use anyhow::{Context, Result};
 use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
-use crate::config::{SymbolicTarget, TemplateTarget, Variables};
+use crate::config::{CachedSymlinkTarget, SymbolicTarget, TemplateTarget, Variables};
 use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool>;
+    fn delete_symlink(&mut self, source: &Path, target: &CachedSymlinkTarget) -> Result<bool>;
     fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool>;
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
     fn create_template(
@@ -56,7 +56,7 @@ impl<'a> RealActionRunner<'a> {
 }
 
 impl ActionRunner for RealActionRunner<'_> {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool> {
+    fn delete_symlink(&mut self, source: &Path, target: &CachedSymlinkTarget) -> Result<bool> {
         delete_symlink(source, target, self.fs, self.force)
     }
     fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool> {
@@ -108,44 +108,49 @@ impl ActionRunner for RealActionRunner<'_> {
 /// Returns true if symlink should be deleted from cache
 pub fn delete_symlink(
     source: &Path,
-    target: &Path,
+    target: &CachedSymlinkTarget,
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    info!("{} symlink {:?} -> {:?}", "[-]".red(), source, target);
+    info!(
+        "{} symlink {:?} -> {:?}",
+        "[-]".red(),
+        source,
+        target.target
+    );
 
     let comparison = fs
-        .compare_symlink(source, target, &None)
+        .compare_symlink(source, &target.target, &target.owner)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, &target.target)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
         SymlinkComparison::OnlySourceExists | SymlinkComparison::BothMissing => {
             warn!(
                 "Deleting symlink {:?} -> {:?} but target doesn't exist. Removing from cache anyways.",
-                source, target
+                source, target.target
             );
             Ok(true)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!(
                 "Deleting symlink {:?} -> {:?} but {}. Forcing.",
-                source, target, comparison
+                source, target.target, comparison
             );
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, &target.target)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
             error!(
                 "Deleting {:?} -> {:?} but {}. Skipping.",
-                source, target, comparison
+                source, target.target, comparison
             );
             Ok(false)
         }
