@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::filesystem;
@@ -32,6 +33,9 @@ pub struct SymbolicTarget {
     pub recurse: Option<bool>,
     #[serde(rename = "if")]
     pub condition: Option<String>,
+    /// Glob patterns to exclude during directory expansion for this target only.
+    #[serde(default)]
+    pub exclude: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -43,6 +47,9 @@ pub struct TemplateTarget {
     pub prepend: Option<String>,
     #[serde(rename = "if")]
     pub condition: Option<String>,
+    /// Glob patterns to exclude during directory expansion for this target only.
+    #[serde(default)]
+    pub exclude: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -89,6 +96,9 @@ pub enum DefaultTargetType {
 pub struct Settings {
     #[serde(default)]
     default_target_type: DefaultTargetType,
+    /// Glob patterns to exclude during directory expansion. Applies to all directories.
+    #[serde(default)]
+    pub exclude: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -447,6 +457,14 @@ impl FileTarget {
             | FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
         }
     }
+
+    pub fn exclude(&self) -> Option<&[String]> {
+        match self {
+            FileTarget::Automatic(_) => None,
+            FileTarget::Symbolic(SymbolicTarget { exclude, .. })
+            | FileTarget::ComplexTemplate(TemplateTarget { exclude, .. }) => exclude.as_deref(),
+        }
+    }
 }
 
 impl<T: Into<PathBuf>> From<T> for FileTarget {
@@ -485,6 +503,7 @@ impl<T: Into<PathBuf>> From<T> for SymbolicTarget {
             owner: None,
             condition: None,
             recurse: None,
+            exclude: None,
         }
     }
 }
@@ -497,6 +516,7 @@ impl<T: Into<PathBuf>> From<T> for TemplateTarget {
             append: None,
             prepend: None,
             condition: None,
+            exclude: None,
         }
     }
 }
@@ -509,6 +529,7 @@ impl SymbolicTarget {
             condition: self.condition,
             prepend: None,
             append: None,
+            exclude: self.exclude,
         }
     }
 }
@@ -531,16 +552,58 @@ fn expand_directories(config: &Configuration) -> Result<Files> {
         .files
         .iter()
         .map(|(source, target)| {
-            expand_directory(source, target, config).context(format!("expand file {source:?}"))
+            let exclude = build_exclude_globset(&config.settings.exclude, target.exclude())?;
+            expand_directory(source, target, config, exclude.as_ref())
+                .context(format!("expand file {source:?}"))
         })
         .collect::<Result<Vec<Files>>>()?;
     Ok(expanded.into_iter().flatten().collect::<Files>())
 }
 
+/// Build a combined GlobSet from global and per-target exclude patterns.
+/// Also returns a list of bare patterns (no glob characters) that should be
+/// matched against filenames only, for simpler config like `exclude = ["README.md"]`.
+fn build_exclude_globset(
+    global: &[String],
+    target: Option<&[String]>,
+) -> Result<Option<(GlobSet, Vec<String>)>> {
+    let patterns: Vec<&str> = global
+        .iter()
+        .map(|s| s.as_str())
+        .chain(target.into_iter().flatten().map(|s| s.as_str()))
+        .collect();
+    if patterns.is_empty() {
+        return Ok(None);
+    }
+
+    // Split into bare patterns (no glob chars) and real glob patterns
+    let is_glob = |p: &str| p.contains('*') || p.contains('?') || p.contains('[');
+    let bare: Vec<String> = patterns.iter().filter(|p| !is_glob(p)).map(|s| s.to_string()).collect();
+    let globs: Vec<&str> = patterns.iter().filter(|p| is_glob(p)).copied().collect();
+
+    if globs.is_empty() && bare.is_empty() {
+        return Ok(None);
+    }
+
+    let mut builder = GlobSetBuilder::new();
+    for pattern in &globs {
+        builder.add(Glob::new(pattern).with_context(|| format!("invalid glob pattern: {pattern}"))?);
+    }
+    let glob_set = builder
+        .build()
+        .context("failed to build exclude glob set")?;
+    Ok(Some((glob_set, bare)))
+}
+
 /// If a file is given, it will return a map of one element
 /// Otherwise, returns recursively all the children and their targets
 /// in relation to parent target
-fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) -> Result<Files> {
+fn expand_directory(
+    source: &Path,
+    target: &FileTarget,
+    config: &Configuration,
+    exclude: Option<&(GlobSet, Vec<String>)>,
+) -> Result<Files> {
     let metadata = fs::metadata(source).context("read file metadata")?;
 
     // if a target explicitly specifies a recurse option, this takes
@@ -551,6 +614,7 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
             owner: _,
             condition: _,
             recurse: Some(rec),
+            ..
         }) => *rec,
         _ => config.recurse,
     };
@@ -569,7 +633,23 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
                 let child_source = PathBuf::from(source).join(&child);
                 let mut child_target = target.clone();
                 child_target.set_path(child_target.path().join(&child));
-                expand_directory(&child_source, &child_target, config)
+
+                // Check if this child matches any exclude pattern
+                if let Some((glob_set, bare)) = exclude {
+                    // Bare patterns match filename only
+                    let filename = child.to_string_lossy();
+                    if bare.iter().any(|p| p == filename.as_ref()) {
+                        trace!("excluding '{child_source:?}' by bare pattern");
+                        return Ok(Files::new());
+                    }
+                    // Glob patterns match against the relative path from the source root
+                    if glob_set.is_match(&child_source) {
+                        trace!("excluding '{child_source:?}' by glob pattern");
+                        return Ok(Files::new());
+                    }
+                }
+
+                expand_directory(&child_source, &child_target, config, exclude)
                     .context(format!("expand file {child_source:?}"))
             })
             .collect::<Result<Vec<Files>>>()?; // Use transposition of Iterator<Result<T,E>> -> Result<Sequence<T>, E>
@@ -851,5 +931,226 @@ mod test {
             sliver,
             &FileTarget::Symbolic(PathBuf::from("~/.SliverBodacious").into())
         );
+    }
+
+    #[test]
+    fn deserialize_exclude_on_symbolic_target() {
+        #[derive(Debug, Deserialize)]
+        struct Helper {
+            file: FileTarget,
+        }
+
+        let parse = toml::from_str::<Helper>;
+
+        let result = parse(
+            r#"
+                [file]
+                target = '~/.config'
+                type = 'symbolic'
+                exclude = ['README.md', '*.bak']
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.file,
+            FileTarget::Symbolic(SymbolicTarget {
+                target: PathBuf::from("~/.config"),
+                owner: None,
+                condition: None,
+                recurse: None,
+                exclude: Some(vec!["README.md".into(), "*.bak".into()]),
+            }),
+        );
+    }
+
+    #[test]
+    fn deserialize_exclude_on_template_target() {
+        #[derive(Debug, Deserialize)]
+        struct Helper {
+            file: FileTarget,
+        }
+
+        let parse = toml::from_str::<Helper>;
+
+        let result = parse(
+            r#"
+                [file]
+                target = '~/.config'
+                type = 'template'
+                exclude = ['README.md']
+            "#,
+        )
+        .unwrap();
+
+        let FileTarget::ComplexTemplate(target) = result.file else {
+            panic!("expected ComplexTemplate");
+        };
+        assert_eq!(target.exclude, Some(vec!["README.md".into()]));
+    }
+
+    #[test]
+    fn deserialize_global_exclude_in_settings() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [settings]
+                exclude = ['README.md', '.gitkeep', '*.bak']
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            global.settings.exclude,
+            vec!["README.md", ".gitkeep", "*.bak"]
+        );
+    }
+
+    #[test]
+    fn build_exclude_globset_from_patterns() {
+        let result = build_exclude_globset(&["README.md".to_string(), "*.bak".to_string()], None);
+        let (set, bare) = result.unwrap().unwrap();
+        // Bare patterns match filename only
+        assert!(bare.contains(&"README.md".to_string()));
+        // Glob patterns match full path
+        assert!(set.is_match("foo.bak"));
+        assert!(set.is_match("some/path/foo.bak"));
+        assert!(!set.is_match("config.toml"));
+        assert!(!set.is_match("something.txt"));
+    }
+
+    #[test]
+    fn build_exclude_globset_empty() {
+        let result = build_exclude_globset(&[], None).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_exclude_globset_combined() {
+        let global = vec!["README.md".to_string()];
+        let target = vec!["*.log".to_string(), ".DS_Store".to_string()];
+        let (set, bare) = build_exclude_globset(&global, Some(&target)).unwrap().unwrap();
+        assert!(bare.contains(&"README.md".to_string()));
+        assert!(bare.contains(&".DS_Store".to_string()));
+        assert!(set.is_match("debug.log"));
+        assert!(!set.is_match("config.toml"));
+    }
+
+    #[test]
+    fn build_exclude_globset_invalid_pattern() {
+        let result = build_exclude_globset(&["[invalid".to_string()], None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn expand_directory_excludes_files() {
+        use std::fs::File;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+
+        // Create test files
+        File::create(dir.join("config.toml")).unwrap();
+        File::create(dir.join("README.md")).unwrap();
+        File::create(dir.join("notes.txt")).unwrap();
+        File::create(dir.join("backup.bak")).unwrap();
+
+        // Create a subdirectory with files
+        let subdir = dir.join("subdir");
+        fs::create_dir(&subdir).unwrap();
+        File::create(subdir.join("settings.toml")).unwrap();
+        File::create(subdir.join("README.md")).unwrap();
+
+        let target = FileTarget::Symbolic(SymbolicTarget {
+            target: PathBuf::from("~/.config"),
+            owner: None,
+            condition: None,
+            recurse: Some(true),
+            exclude: Some(vec!["README.md".into(), "*.bak".into()]),
+        });
+
+        let config = Configuration {
+            files: Files::new(),
+            variables: Variables::new(),
+            packages: BTreeMap::new(),
+            #[cfg(feature = "scripting")]
+            helpers: Helpers::new(),
+            recurse: true,
+            settings: Settings::default(),
+        };
+
+        let exclude = build_exclude_globset(
+            &config.settings.exclude,
+            target.exclude(),
+        )
+        .unwrap();
+
+        let result = expand_directory(dir, &target, &config, exclude.as_ref()).unwrap();
+
+        let sources: Vec<_> = result.keys().collect();
+        // README.md and *.bak should be excluded at root level
+        assert!(!sources.iter().any(|p| p.file_name().unwrap() == "README.md"));
+        assert!(!sources.iter().any(|p| p.extension().is_some_and(|e| e == "bak")));
+        // These should be present
+        assert!(sources.iter().any(|p| p.file_name().unwrap() == "config.toml"));
+        assert!(sources.iter().any(|p| p.file_name().unwrap() == "notes.txt"));
+        // Subdir files: settings.toml should be present, README.md excluded
+        assert!(sources.iter().any(|p| p.file_name().unwrap() == "settings.toml"));
+        assert!(!sources.iter().any(|p| {
+            p.file_name().unwrap() == "README.md" && p.parent().is_some_and(|pp| pp.ends_with("subdir"))
+        }));
+    }
+
+    #[test]
+    fn expand_directory_global_exclude() {
+        use std::fs::File;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+
+        File::create(dir.join("config.toml")).unwrap();
+        File::create(dir.join("README.md")).unwrap();
+        File::create(dir.join(".gitkeep")).unwrap();
+
+        let target = FileTarget::Symbolic(SymbolicTarget {
+            target: PathBuf::from("~/.config"),
+            owner: None,
+            condition: None,
+            recurse: Some(true),
+            exclude: None,
+        });
+
+        let settings = Settings {
+            default_target_type: DefaultTargetType::default(),
+            exclude: vec!["README.md".to_string(), ".gitkeep".to_string()],
+        };
+
+        let config = Configuration {
+            files: Files::new(),
+            variables: Variables::new(),
+            packages: BTreeMap::new(),
+            #[cfg(feature = "scripting")]
+            helpers: Helpers::new(),
+            recurse: true,
+            settings,
+        };
+
+        let exclude = build_exclude_globset(
+            &config.settings.exclude,
+            target.exclude(),
+        )
+        .unwrap();
+
+        let result = expand_directory(dir, &target, &config, exclude.as_ref()).unwrap();
+
+        let sources: Vec<_> = result.keys().collect();
+        assert!(!sources.iter().any(|p| p.file_name().unwrap() == "README.md"));
+        assert!(!sources.iter().any(|p| p.file_name().unwrap() == ".gitkeep"));
+        assert!(sources.iter().any(|p| p.file_name().unwrap() == "config.toml"));
     }
 }
