@@ -89,6 +89,8 @@ pub enum DefaultTargetType {
 pub struct Settings {
     #[serde(default)]
     default_target_type: DefaultTargetType,
+    #[serde(default)]
+    recurse: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -347,8 +349,8 @@ fn merge_configuration_files(
         files: Files::default(),
         variables: Variables::default(),
         packages: packages_map,
-        recurse: true,
-        settings: Settings::default(),
+        recurse: global.settings.recurse,
+        settings: global.settings.clone(),
     };
 
     // Merge all the packages
@@ -851,5 +853,60 @@ mod test {
             sliver,
             &FileTarget::Symbolic(PathBuf::from("~/.SliverBodacious").into())
         );
+    }
+
+    #[test]
+    fn setting_recurse_default() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [settings]
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config = merge_configuration_files(global, local, None).unwrap();
+
+        assert!(!merged_config.recurse);
+    }
+
+    #[test]
+    fn setting_recurse_true() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [settings]
+                recurse = true
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat']
+           "#,
+        )
+        .unwrap();
+
+        let merged_config = merge_configuration_files(global, local, None).unwrap();
+
+        assert!(merged_config.recurse);
     }
 }
