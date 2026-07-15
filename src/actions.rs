@@ -5,9 +5,9 @@ use anyhow::{Context, Result};
 use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
-use crate::config::{SymbolicTarget, TemplateTarget, Variables};
+use crate::config::{CopyEntry, CopyTarget, SymbolicTarget, TemplateTarget, Variables};
 use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
-use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
+use crate::filesystem::{FileHash, Filesystem, SymlinkComparison, TemplateComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
@@ -27,6 +27,14 @@ pub trait ActionRunner {
         cache: &Path,
         target: &TemplateTarget,
     ) -> Result<bool>;
+    fn delete_copy(&mut self, source: &Path, cached: &CopyEntry) -> Result<bool>;
+    fn create_copy(&mut self, source: &Path, target: &CopyTarget) -> Result<Option<CopyEntry>>;
+    fn update_copy(
+        &mut self,
+        source: &Path,
+        target: &CopyTarget,
+        cached: &CopyEntry,
+    ) -> Result<Option<CopyEntry>>;
 }
 
 pub struct RealActionRunner<'a> {
@@ -100,6 +108,20 @@ impl ActionRunner for RealActionRunner<'_> {
             self.force,
             self.diff_context_lines,
         )
+    }
+    fn delete_copy(&mut self, source: &Path, cached: &CopyEntry) -> Result<bool> {
+        delete_copy(source, cached, self.fs, self.force)
+    }
+    fn create_copy(&mut self, source: &Path, target: &CopyTarget) -> Result<Option<CopyEntry>> {
+        create_copy(source, target, self.fs, self.force)
+    }
+    fn update_copy(
+        &mut self,
+        source: &Path,
+        target: &CopyTarget,
+        cached: &CopyEntry,
+    ) -> Result<Option<CopyEntry>> {
+        update_copy(source, target, cached, self.fs, self.force)
     }
 }
 
@@ -212,6 +234,57 @@ pub fn delete_template(
             error!(
                 "Deleting template {:?} -> {:?} but {}. Skipping.",
                 source, target, comparison
+            );
+            Ok(false)
+        }
+    }
+}
+
+/// Returns true if the copy was deleted and should be removed from cache.
+pub fn delete_copy(
+    source: &Path,
+    cached: &CopyEntry,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<bool> {
+    info!("{} copy {:?} -> {:?}", "[-]".red(), source, cached.target);
+
+    let target_hash = fs
+        .checksum_file(&cached.target)
+        .context("checksum copy target")?;
+    debug!("Target hash: {}", target_hash);
+
+    match target_hash {
+        FileHash::NotPresent => {
+            warn!(
+                "Deleting copy {:?} -> {:?} but target doesn't exist. Removing from cache anyways.",
+                source, cached.target
+            );
+            Ok(true)
+        }
+        FileHash::Hash(h) if h == cached.target_checksum => {
+            debug!("Target unchanged, deleting");
+            fs.remove_file(&cached.target)
+                .context("remove copy target")?;
+            fs.delete_parents(&cached.target, false)
+                .context("delete parents of copy target")?;
+            Ok(true)
+        }
+        FileHash::Hash(_) | FileHash::NotRegularFile if force => {
+            warn!(
+                "Deleting copy {:?} -> {:?} but target was externally modified or is not a regular file. Forcing.",
+                source, cached.target
+            );
+            fs.remove_file(&cached.target)
+                .context("remove copy target")?;
+            fs.delete_parents(&cached.target, false)
+                .context("delete parents of copy target")?;
+            Ok(true)
+        }
+        FileHash::Hash(_) | FileHash::NotRegularFile => {
+            error!(
+                "Deleting copy {:?} -> {:?} but target was externally modified or is not a regular file. Skipping.",
+                source, cached.target
             );
             Ok(false)
         }
@@ -392,6 +465,100 @@ pub fn create_template(
     }
 }
 
+/// Returns `Some(entry)` if the copy was deployed and should be added to cache,
+/// or `None` if it was skipped.
+pub fn create_copy(
+    source: &Path,
+    target: &CopyTarget,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<Option<CopyEntry>> {
+    info!("{} copy {:?} -> {:?}", "[+]".green(), source, target.target);
+
+    let source_hash = fs.checksum_file(source).context("checksum source")?;
+    let source_hash = match source_hash {
+        FileHash::Hash(h) => h,
+        _ => {
+            error!(
+                "Creating copy {:?} -> {:?} but source is missing or not a regular file. Skipping.",
+                source, target.target
+            );
+            return Ok(None);
+        }
+    };
+
+    let target_hash = fs
+        .checksum_file(&target.target)
+        .context("checksum target")?;
+
+    match target_hash {
+        FileHash::NotPresent => {
+            debug!("Performing creation");
+            fs.create_dir_all(
+                target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &target.owner,
+            )
+            .context("create parent for target file")?;
+            fs.copy_file(source, &target.target, &target.owner)
+                .context("copy source to target")?;
+            fs.copy_permissions(source, &target.target, &target.owner)
+                .context("copy permissions from source to target")?;
+            // After copy, source and target are byte-identical
+            Ok(Some(CopyEntry {
+                target: target.target.clone(),
+                source_checksum: source_hash,
+                target_checksum: source_hash,
+            }))
+        }
+        FileHash::Hash(h) if h == source_hash => {
+            warn!(
+                "Creating copy {:?} -> {:?} but target already matches source. Adding to cache.",
+                source, target.target
+            );
+            Ok(Some(CopyEntry {
+                target: target.target.clone(),
+                source_checksum: source_hash,
+                target_checksum: h,
+            }))
+        }
+        FileHash::Hash(_) | FileHash::NotRegularFile if force => {
+            warn!(
+                "Creating copy {:?} -> {:?} but target exists with different content. Forcing.",
+                source, target.target
+            );
+            fs.remove_file(&target.target)
+                .context("remove existing target")?;
+            fs.create_dir_all(
+                target
+                    .target
+                    .parent()
+                    .context("get parent of target file")?,
+                &target.owner,
+            )
+            .context("create parent for target file")?;
+            fs.copy_file(source, &target.target, &target.owner)
+                .context("copy source to target")?;
+            fs.copy_permissions(source, &target.target, &target.owner)
+                .context("copy permissions from source to target")?;
+            Ok(Some(CopyEntry {
+                target: target.target.clone(),
+                source_checksum: source_hash,
+                target_checksum: source_hash,
+            }))
+        }
+        FileHash::Hash(_) | FileHash::NotRegularFile => {
+            error!(
+                "Creating copy {:?} -> {:?} but target exists with different content. Skipping.",
+                source, target.target
+            );
+            Ok(None)
+        }
+    }
+}
+
 // == UPDATE ==
 
 /// Returns true if the symlink wasn't skipped
@@ -563,6 +730,126 @@ pub fn update_template(
                 source, target.target, comparison
             );
             Ok(false)
+        }
+    }
+}
+
+/// Copies `source` to `cached.target`, creating parent directories as needed.
+/// Returns a fresh `CopyEntry` with both checksums set to `source_hash`.
+fn perform_copy_update(
+    source: &Path,
+    cached: &CopyEntry,
+    target: &CopyTarget,
+    fs: &mut dyn Filesystem,
+    source_hash: u64,
+) -> Result<Option<CopyEntry>> {
+    debug_assert!(
+        cached.target == target.target,
+        "cached.target {:?} must match target.target {:?}",
+        cached.target,
+        target.target
+    );
+    fs.create_dir_all(
+        cached
+            .target
+            .parent()
+            .context("get parent of target file")?,
+        &target.owner,
+    )
+    .context("create parent for target file")?;
+    fs.copy_file(source, &cached.target, &target.owner)
+        .context("copy source to target")?;
+    fs.copy_permissions(source, &cached.target, &target.owner)
+        .context("copy permissions from source to target")?;
+    Ok(Some(CopyEntry {
+        target: cached.target.clone(),
+        source_checksum: source_hash,
+        target_checksum: source_hash,
+    }))
+}
+
+/// Returns `Some(entry)` with updated checksums if the copy was processed successfully,
+/// or `None` if it was skipped due to an external modification.
+pub fn update_copy(
+    source: &Path,
+    target: &CopyTarget,
+    cached: &CopyEntry,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<Option<CopyEntry>> {
+    debug!("Updating copy {:?} -> {:?}...", source, cached.target);
+
+    let source_hash = fs.checksum_file(source).context("checksum source")?;
+    let source_hash = match source_hash {
+        FileHash::Hash(h) => h,
+        _ => {
+            error!(
+                "Updating copy {:?} -> {:?} but source is missing. Skipping.",
+                source, cached.target
+            );
+            return Ok(None);
+        }
+    };
+
+    let target_hash = fs
+        .checksum_file(&cached.target)
+        .context("checksum target")?;
+    debug!("Source hash: {source_hash:#018x}, target hash: {target_hash}");
+
+    let source_changed = source_hash != cached.source_checksum;
+    let target_changed = !matches!(&target_hash, FileHash::Hash(h) if *h == cached.target_checksum);
+
+    match (source_changed, target_changed, &target_hash) {
+        (false, false, _) => {
+            // Nothing changed: ensure owner/perms are correct
+            debug!("Already up to date");
+            fs.set_owner(&cached.target, &target.owner)
+                .context("set target file owner")?;
+            fs.copy_permissions(source, &cached.target, &target.owner)
+                .context("copy permissions from source to target")?;
+            Ok(Some(CopyEntry {
+                target: cached.target.clone(),
+                source_checksum: source_hash,
+                target_checksum: cached.target_checksum,
+            }))
+        }
+        (true, false, _) => {
+            // Source updated, target untouched: re-copy
+            info!(
+                "{} copy {:?} -> {:?} (source changed)",
+                "[~]".yellow(),
+                source,
+                cached.target
+            );
+            fs.remove_file(&cached.target)
+                .context("remove stale copy target")?;
+            perform_copy_update(source, cached, target, fs, source_hash)
+        }
+        (_, true, FileHash::NotPresent) => {
+            // Target missing: recreate (no remove_file needed)
+            warn!(
+                "Updating copy {:?} -> {:?} but target is missing. Recreating.",
+                source, cached.target
+            );
+            perform_copy_update(source, cached, target, fs, source_hash)
+        }
+        (_, true, _) if force => {
+            // Target externally modified but --force
+            warn!(
+                "Updating copy {:?} -> {:?} but target was externally modified or is not a regular file. Forcing.",
+                source, cached.target
+            );
+            fs.remove_file(&cached.target)
+                .context("remove externally modified target")?;
+            perform_copy_update(source, cached, target, fs, source_hash)
+        }
+        (_, true, _) => {
+            // Target externally modified: back off
+            error!(
+                "Updating copy {:?} -> {:?} but target was externally modified or is not a regular file. Skipping.",
+                source, cached.target
+            );
+            Ok(None)
         }
     }
 }

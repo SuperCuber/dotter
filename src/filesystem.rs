@@ -49,6 +49,10 @@ pub trait Filesystem {
     /// Check state of expected symbolic link on disk
     fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison>;
 
+    /// Compute the xxh3 hash of a file. Returns `NotPresent` if missing, `NotRegularFile`
+    /// if the path is a symlink or directory.
+    fn checksum_file(&mut self, path: &Path) -> Result<FileHash>;
+
     /// Removes a file or folder, elevating privileges if needed
     fn remove_file(&mut self, path: &Path) -> Result<()>;
 
@@ -117,6 +121,10 @@ impl Filesystem for RealFilesystem {
         trace!("Cache state: {:#?}", cache_state);
 
         Ok(compare_template(target_state, cache_state))
+    }
+
+    fn checksum_file(&mut self, path: &Path) -> Result<FileHash> {
+        checksum_file(path)
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -283,6 +291,10 @@ impl Filesystem for RealFilesystem {
         Ok(compare_template(target_state, cache_state))
     }
 
+    fn checksum_file(&mut self, path: &Path) -> Result<FileHash> {
+        checksum_file(path)
+    }
+
     fn remove_file(&mut self, path: &Path) -> Result<()> {
         let metadata = path.symlink_metadata().context("get metadata")?;
         let result = if metadata.is_dir() {
@@ -422,8 +434,8 @@ impl Filesystem for RealFilesystem {
         use std::io::Write;
 
         if let Some(owner) = owner {
-            let contents = std::fs::read_to_string(source)
-                .context("read source file contents as current user")?;
+            let contents =
+                std::fs::read(source).context("read source file contents as current user")?;
             let mut child = self
                 .sudo(format!(
                     "Copying {source:?} -> {target:?} as user {owner:?}"
@@ -443,7 +455,7 @@ impl Filesystem for RealFilesystem {
                 .stdin
                 .as_ref()
                 .expect("has stdin")
-                .write_all(contents.as_bytes())
+                .write_all(&contents)
                 .context("give input to tee")?;
 
             let success = child.wait().context("wait for sudo tee")?.success();
@@ -595,6 +607,20 @@ impl Filesystem for DryRunFilesystem {
         };
 
         Ok(compare_template(target_state, cache_state))
+    }
+
+    fn checksum_file(&mut self, path: &Path) -> Result<FileHash> {
+        use xxhash_rust::xxh3::xxh3_64;
+        match self.file_states.get(path) {
+            Some(FileState::Missing) => Ok(FileHash::NotPresent),
+            Some(FileState::SymbolicLink(_) | FileState::Directory) => Ok(FileHash::NotRegularFile),
+            Some(FileState::File(Some(content))) => Ok(FileHash::Hash(xxh3_64(content.as_bytes()))),
+            // Binary content not tracked in dry-run; fall back to real disk.
+            // NOTE: hash reflects pre-deploy on-disk state, not simulated state.
+            Some(FileState::File(None)) => checksum_file(path),
+            // Path not in simulated state; fall back to real filesystem.
+            None => checksum_file(path),
+        }
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -779,6 +805,27 @@ impl std::fmt::Display for TemplateComparison {
     }
 }
 
+/// Result of hashing a file on disk.
+#[derive(Debug, PartialEq, Eq)]
+pub enum FileHash {
+    /// File does not exist.
+    NotPresent,
+    /// Path exists but is not a regular file (symlink, directory, etc.).
+    NotRegularFile,
+    /// xxh3 hash of the file's contents.
+    Hash(u64),
+}
+
+impl std::fmt::Display for FileHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            FileHash::NotPresent => "not present".fmt(f),
+            FileHash::NotRegularFile => "not a regular file".fmt(f),
+            FileHash::Hash(h) => write!(f, "hash({h:#018x})"),
+        }
+    }
+}
+
 fn compare_template(target_state: FileState, cache_state: FileState) -> TemplateComparison {
     match (target_state, cache_state) {
         (FileState::File(t), FileState::File(c)) => {
@@ -793,6 +840,18 @@ fn compare_template(target_state: FileState, cache_state: FileState) -> Template
         (FileState::Missing, FileState::Missing) => TemplateComparison::BothMissing,
         _ => TemplateComparison::TargetNotRegularFile,
     }
+}
+
+pub(crate) fn checksum_file(path: &Path) -> Result<FileHash> {
+    use xxhash_rust::xxh3::xxh3_64;
+    match path.symlink_metadata() {
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(FileHash::NotPresent),
+        Err(e) => return Err(e).context("stat file for checksum"),
+        Ok(m) if !m.is_file() => return Ok(FileHash::NotRegularFile),
+        Ok(_) => {}
+    }
+    let bytes = std::fs::read(path).context("read file for checksum")?;
+    Ok(FileHash::Hash(xxh3_64(&bytes)))
 }
 
 // === Utility functions ===

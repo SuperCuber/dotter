@@ -46,12 +46,34 @@ pub struct TemplateTarget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct CopyTarget {
+    pub target: PathBuf,
+    pub owner: Option<UnixUser>,
+    pub recurse: Option<bool>,
+    #[serde(rename = "if")]
+    pub condition: Option<String>,
+}
+
+/// Cached state of a deployed copy: target path plus checksums recorded at deploy time.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct CopyEntry {
+    pub target: PathBuf,
+    /// xxh3 hash of the source file at last deploy time.
+    pub source_checksum: u64,
+    /// xxh3 hash of the target file at last deploy time.
+    pub target_checksum: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(from = "FileTargetOuterRepr", into = "FileTargetOuterRepr")]
 pub enum FileTarget {
     Automatic(PathBuf),
     Symbolic(SymbolicTarget),
     #[serde(rename = "template")]
     ComplexTemplate(TemplateTarget),
+    Copy(CopyTarget),
 }
 
 // Shims to allow Serde to represent FileTarget::Automatic as untagged while the
@@ -69,6 +91,7 @@ enum FileTargetInnerRepr {
     Symbolic(SymbolicTarget),
     #[serde(rename = "template")]
     ComplexTemplate(TemplateTarget),
+    Copy(CopyTarget),
 }
 
 pub type Files = BTreeMap<PathBuf, FileTarget>;
@@ -81,6 +104,7 @@ pub type Helpers = BTreeMap<String, PathBuf>;
 pub enum DefaultTargetType {
     Symbolic,
     Template,
+    Copy,
     #[default]
     Automatic,
 }
@@ -210,6 +234,8 @@ pub fn load_configuration(
 pub struct Cache {
     pub symlinks: BTreeMap<PathBuf, PathBuf>,
     pub templates: BTreeMap<PathBuf, PathBuf>,
+    #[serde(default)]
+    pub copies: BTreeMap<PathBuf, CopyEntry>,
 }
 
 pub fn save_dummy_config(
@@ -400,6 +426,7 @@ fn merge_configuration_files(
                 DefaultTargetType::Template => {
                     FileTarget::ComplexTemplate(TemplateTarget::from(target.clone()))
                 }
+                DefaultTargetType::Copy => FileTarget::Copy(CopyTarget::from(target.clone())),
                 _ => continue,
             };
         }
@@ -426,7 +453,8 @@ impl FileTarget {
         match self {
             FileTarget::Automatic(path) => path,
             FileTarget::Symbolic(SymbolicTarget { target, .. })
-            | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => target,
+            | FileTarget::ComplexTemplate(TemplateTarget { target, .. })
+            | FileTarget::Copy(CopyTarget { target, .. }) => target,
         }
     }
 
@@ -434,7 +462,8 @@ impl FileTarget {
         match self {
             FileTarget::Automatic(path) => *path = new_path.into(),
             FileTarget::Symbolic(SymbolicTarget { target, .. })
-            | FileTarget::ComplexTemplate(TemplateTarget { target, .. }) => {
+            | FileTarget::ComplexTemplate(TemplateTarget { target, .. })
+            | FileTarget::Copy(CopyTarget { target, .. }) => {
                 *target = new_path.into();
             }
         }
@@ -444,7 +473,8 @@ impl FileTarget {
         match self {
             FileTarget::Automatic(_) => None,
             FileTarget::Symbolic(SymbolicTarget { condition, .. })
-            | FileTarget::ComplexTemplate(TemplateTarget { condition, .. }) => condition.as_ref(),
+            | FileTarget::ComplexTemplate(TemplateTarget { condition, .. })
+            | FileTarget::Copy(CopyTarget { condition, .. }) => condition.as_ref(),
         }
     }
 }
@@ -463,6 +493,7 @@ impl From<FileTargetOuterRepr> for FileTarget {
             OR::Simple(x) => Self::Automatic(x),
             OR::Complex(IR::Symbolic(x)) => Self::Symbolic(x),
             OR::Complex(IR::ComplexTemplate(x)) => Self::ComplexTemplate(x),
+            OR::Complex(IR::Copy(x)) => Self::Copy(x),
         }
     }
 }
@@ -474,6 +505,7 @@ impl From<FileTarget> for FileTargetOuterRepr {
             FileTarget::Automatic(x) => Self::Simple(x),
             FileTarget::Symbolic(x) => Self::Complex(IR::Symbolic(x)),
             FileTarget::ComplexTemplate(x) => Self::Complex(IR::ComplexTemplate(x)),
+            FileTarget::Copy(x) => Self::Complex(IR::Copy(x)),
         }
     }
 }
@@ -497,6 +529,17 @@ impl<T: Into<PathBuf>> From<T> for TemplateTarget {
             append: None,
             prepend: None,
             condition: None,
+        }
+    }
+}
+
+impl<T: Into<PathBuf>> From<T> for CopyTarget {
+    fn from(input: T) -> Self {
+        CopyTarget {
+            target: input.into(),
+            owner: None,
+            condition: None,
+            recurse: None,
         }
     }
 }
@@ -547,6 +590,12 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
     // precedence over the global default
     let recurse = match target {
         FileTarget::Symbolic(SymbolicTarget {
+            target: _,
+            owner: _,
+            condition: _,
+            recurse: Some(rec),
+        }) => *rec,
+        FileTarget::Copy(CopyTarget {
             target: _,
             owner: _,
             condition: _,
@@ -666,6 +715,51 @@ mod test {
     }
 
     #[test]
+    fn deserialize_copy_file_target() {
+        #[derive(Debug, Deserialize)]
+        struct Helper {
+            file: FileTarget,
+        }
+        let parse = toml::from_str::<Helper>;
+
+        assert_eq!(
+            parse(
+                r#"
+                [file]
+                target = '~/.QuarticCat'
+                type = 'copy'
+            "#,
+            )
+            .unwrap()
+            .file,
+            FileTarget::Copy(PathBuf::from("~/.QuarticCat").into()),
+        );
+        assert_ne!(
+            parse(
+                r#"
+                [file]
+                target = '~/.QuarticCat'
+                type = 'copy'
+                if = 'bash'
+            "#,
+            )
+            .unwrap()
+            .file,
+            FileTarget::Copy(PathBuf::from("~/.QuarticCat").into()),
+        );
+        // copy type rejects template-only fields
+        parse(
+            r#"
+            [file]
+            target = '~/.QuarticCat'
+            type = 'copy'
+            append = 'whatever'
+        "#,
+        )
+        .unwrap_err();
+    }
+
+    #[test]
     fn settting_default_target_type_symbolic() {
         let global: GlobalConfig = toml::from_str(
             r#"
@@ -768,6 +862,63 @@ mod test {
         assert_eq!(
             derby,
             &FileTarget::Symbolic(PathBuf::from("~/.DerbyLantern").into())
+        );
+    }
+
+    #[test]
+    fn setting_default_target_type_copy() {
+        let global: GlobalConfig = toml::from_str(
+            r#"
+                [settings]
+                default_target_type = "copy"
+
+                [cat]
+                depends = []
+
+                [cat.files]
+                cat = '~/.QuarticCat'
+
+                [derby]
+                depends = []
+
+                [derby.files]
+                derby = { target = '~/.DerbyLantern', type = 'template' }
+
+                [sliver]
+                depends = []
+
+                [sliver.files]
+                sliver = { target = '~/.SliverBodacious', type = 'symbolic' }
+            "#,
+        )
+        .unwrap();
+
+        let local: LocalConfig = toml::from_str(
+            r#"
+               packages = ['cat', 'derby', 'sliver']
+           "#,
+        )
+        .unwrap();
+
+        let config = merge_configuration_files(global, local, None).unwrap();
+
+        let cat = config.files.get(&PathBuf::from("cat")).unwrap();
+        let derby = config.files.get(&PathBuf::from("derby")).unwrap();
+        let sliver = config.files.get(&PathBuf::from("sliver")).unwrap();
+
+        // Automatic targets become Copy when default_target_type = "copy"
+        assert_eq!(
+            cat,
+            &FileTarget::Copy(PathBuf::from("~/.QuarticCat").into())
+        );
+        // Explicitly typed files are unaffected
+        assert_eq!(
+            derby,
+            &FileTarget::ComplexTemplate(PathBuf::from("~/.DerbyLantern").into())
+        );
+        assert_eq!(
+            sliver,
+            &FileTarget::Symbolic(PathBuf::from("~/.SliverBodacious").into())
         );
     }
 
