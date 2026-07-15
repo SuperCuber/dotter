@@ -5,13 +5,13 @@ use anyhow::{Context, Result};
 use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
-use crate::config::{SymbolicTarget, TemplateTarget, Variables};
+use crate::config::{CachedSymlinkTarget, SymbolicTarget, TemplateTarget, Variables};
 use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool>;
+    fn delete_symlink(&mut self, source: &Path, target: &CachedSymlinkTarget) -> Result<bool>;
     fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool>;
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
     fn create_template(
@@ -56,7 +56,7 @@ impl<'a> RealActionRunner<'a> {
 }
 
 impl ActionRunner for RealActionRunner<'_> {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool> {
+    fn delete_symlink(&mut self, source: &Path, target: &CachedSymlinkTarget) -> Result<bool> {
         delete_symlink(source, target, self.fs, self.force)
     }
     fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool> {
@@ -108,44 +108,49 @@ impl ActionRunner for RealActionRunner<'_> {
 /// Returns true if symlink should be deleted from cache
 pub fn delete_symlink(
     source: &Path,
-    target: &Path,
+    target: &CachedSymlinkTarget,
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    info!("{} symlink {:?} -> {:?}", "[-]".red(), source, target);
+    info!(
+        "{} symlink {:?} -> {:?}",
+        "[-]".red(),
+        source,
+        target.target
+    );
 
     let comparison = fs
-        .compare_symlink(source, target)
+        .compare_symlink(source, &target.target, &target.owner)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
         SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, &target.target)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
         SymlinkComparison::OnlySourceExists | SymlinkComparison::BothMissing => {
             warn!(
                 "Deleting symlink {:?} -> {:?} but target doesn't exist. Removing from cache anyways.",
-                source, target
+                source, target.target
             );
             Ok(true)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink if force => {
             warn!(
                 "Deleting symlink {:?} -> {:?} but {}. Forcing.",
-                source, target, comparison
+                source, target.target, comparison
             );
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, &target.target)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
         SymlinkComparison::Changed | SymlinkComparison::TargetNotSymlink => {
             error!(
                 "Deleting {:?} -> {:?} but {}. Skipping.",
-                source, target, comparison
+                source, target.target, comparison
             );
             Ok(false)
         }
@@ -170,7 +175,7 @@ pub fn delete_template(
     info!("{} template {:?} -> {:?}", "[-]".red(), source, target);
 
     let comparison = fs
-        .compare_template(target, cache)
+        .compare_template(target, cache, &None)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -249,7 +254,7 @@ pub fn create_symlink(
     );
 
     let comparison = fs
-        .compare_symlink(source, &target.target)
+        .compare_symlink(source, &target.target, &target.owner)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -321,7 +326,7 @@ pub fn create_template(
     );
 
     let comparison = fs
-        .compare_template(&target.target, cache)
+        .compare_template(&target.target, cache, &target.owner)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -404,7 +409,7 @@ pub fn update_symlink(
     debug!("Updating symlink {:?} -> {:?}...", source, target.target);
 
     let comparison = fs
-        .compare_symlink(source, &target.target)
+        .compare_symlink(source, &target.target, &target.owner)
         .context("detect symlink's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -472,7 +477,7 @@ pub fn update_template(
 ) -> Result<bool> {
     debug!("Updating template {:?} -> {:?}...", source, target.target);
     let comparison = fs
-        .compare_template(&target.target, cache)
+        .compare_template(&target.target, cache, &target.owner)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
@@ -482,6 +487,7 @@ pub fn update_template(
             difference::print_template_diff(
                 source,
                 target,
+                fs,
                 handlebars,
                 variables,
                 diff_context_lines,
@@ -525,6 +531,7 @@ pub fn update_template(
             difference::print_template_diff(
                 source,
                 target,
+                fs,
                 handlebars,
                 variables,
                 diff_context_lines,
@@ -538,7 +545,7 @@ pub fn update_template(
         TemplateComparison::Changed => {
             // At this point, we're not sure if there's a difference between the rendered source
             // and target, only that the target has been modified in some way.
-            let diff = generate_template_diff(source, target, handlebars, variables, false)
+            let diff = generate_template_diff(source, target, fs, handlebars, variables, false)
                 .context("diff source and target")?;
             if diff_nonempty(&diff) {
                 error!(
@@ -576,7 +583,7 @@ pub(crate) fn perform_template_deploy(
     variables: &Variables,
 ) -> Result<()> {
     let file_contents = fs
-        .read_to_string(source)
+        .read_to_string(source, &None)
         .context("read template source file")?;
     let file_contents = match target {
         Some(t) => t.apply_actions(file_contents),
