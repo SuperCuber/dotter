@@ -3,6 +3,14 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand, CommandFactory, FromArgMatches};
 use clap_complete::Shell;
 
+fn merge_setting<T>(current: T, repo: Option<T>, global: Option<T>, from_cli: bool) -> T {
+    if from_cli {
+        current
+    } else {
+        repo.or(global).unwrap_or(current)
+    }
+}
+
 type ForceType = bool;
 type NoConfirmType = bool;
 type QuietType= bool;
@@ -165,25 +173,39 @@ pub fn get_options() -> Options {
 
     let repo_settings = load_settings_file(std::path::Path::new("dotter.toml")).unwrap_or_default();
 
-    let from_cli = |id: &str| {
-        matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
-    };
+    let from_cli =
+        |id: &str| matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine);
 
-    if !from_cli("force") {
-        opt.force = repo_settings.force.or(global_settings.force).unwrap_or(opt.force);
-    }
-    if !from_cli("noconfirm") {
-        opt.noconfirm = repo_settings.noconfirm.or(global_settings.noconfirm).unwrap_or(opt.noconfirm);
-    }
-    if !from_cli("quiet") {
-        opt.quiet = repo_settings.quiet.or(global_settings.quiet).unwrap_or(opt.quiet);
-    }
-    if !from_cli("diff_context_lines") {
-        opt.diff_context_lines = repo_settings.diff_context_lines.or(global_settings.diff_context_lines).unwrap_or(opt.diff_context_lines);
-    }
-    if !from_cli("verbosity") {
-        opt.verbosity = repo_settings.verbosity.or(global_settings.verbosity).unwrap_or(opt.verbosity);
-    }
+    opt.force = merge_setting(
+        opt.force,
+        repo_settings.force,
+        global_settings.force,
+        from_cli("force"),
+    );
+    opt.noconfirm = merge_setting(
+        opt.noconfirm,
+        repo_settings.noconfirm,
+        global_settings.noconfirm,
+        from_cli("noconfirm"),
+    );
+    opt.quiet = merge_setting(
+        opt.quiet,
+        repo_settings.quiet,
+        global_settings.quiet,
+        from_cli("quiet"),
+    );
+    opt.diff_context_lines = merge_setting(
+        opt.diff_context_lines,
+        repo_settings.diff_context_lines,
+        global_settings.diff_context_lines,
+        from_cli("diff_context_lines"),
+    );
+    opt.verbosity = merge_setting(
+        opt.verbosity,
+        repo_settings.verbosity,
+        global_settings.verbosity,
+        from_cli("verbosity"),
+    );
 
     if opt.dry_run {
         opt.verbosity = std::cmp::max(opt.verbosity, 1);
