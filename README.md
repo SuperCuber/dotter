@@ -24,7 +24,16 @@ The following AUR packages are available:
 All of those are maintained by [orhun](https://github.com/orhun/) - huge thanks to him!
 
 ## Windows
-Dotter is available on [Scoop](https://scoop.sh). Run `scoop install dotter` to install the latest release.
+
+### Winget
+```powershell
+winget install SuperCuber.Dotter
+```
+
+### Scoop
+```powershell
+scoop install dotter
+```
 
 ## Others
 
