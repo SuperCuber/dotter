@@ -13,6 +13,19 @@ pub(crate) fn run_hook(
     handlebars: &Handlebars<'_>,
     variables: &crate::config::Variables,
 ) -> Result<()> {
+    let bat_sibling = if cfg!(windows) && location.extension().is_some_and(|e| e == "sh") {
+        let candidate = location.with_extension("bat");
+        if candidate.exists() {
+            debug!("Using hook file {:?} on windows", candidate);
+            Some(candidate)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let location: &Path = bat_sibling.as_deref().unwrap_or(location);
+
     if !location.exists() {
         debug!("Hook file at {:?} missing", location);
         return Ok(());
