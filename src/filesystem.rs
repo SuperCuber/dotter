@@ -532,8 +532,7 @@ pub struct DryRunFilesystem {
 
 #[derive(Debug, Clone, PartialEq)]
 enum FileState {
-    /// None if file is invalid UTF-8
-    File(Option<String>),
+    File(Vec<u8>),
     SymbolicLink(PathBuf),
     Directory,
     Missing,
@@ -606,7 +605,7 @@ impl Filesystem for DryRunFilesystem {
     fn read_to_string(&mut self, path: &Path) -> Result<String> {
         debug!("Reading contents of file {:?}", path);
         match self.get_state(path).context("get file state")? {
-            FileState::File(s) => Ok(s.context("invalid utf-8 in template source")?),
+            FileState::File(s) => String::from_utf8(s).context("invalid utf-8 in template source"),
             _ => anyhow::bail!("writing to non-file"),
         }
     }
@@ -614,7 +613,7 @@ impl Filesystem for DryRunFilesystem {
     fn write(&mut self, path: &Path, content: String) -> Result<()> {
         debug!("Writing contents {:?} to file {:?}", content, path);
         self.file_states
-            .insert(path.into(), FileState::File(Some(content)));
+            .insert(path.into(), FileState::File(content.into_bytes()));
         Ok(())
     }
 
@@ -701,9 +700,8 @@ fn get_file_state(path: &Path) -> Result<FileState> {
         return Ok(FileState::Directory);
     }
 
-    match fs::read_to_string(path) {
-        Ok(f) => Ok(FileState::File(Some(f))),
-        Err(e) if e.kind() == ErrorKind::InvalidData => Ok(FileState::File(None)),
+    match fs::read(path) {
+        Ok(f) => Ok(FileState::File(f)),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(FileState::Missing),
         Err(e) => Err(e).context("read contents of file that isn't symbolic or directory")?,
     }
@@ -971,7 +969,7 @@ mod test {
         // Verify all actions
         assert_eq!(
             fs.file_states.get(&PathBuf::from("source")),
-            Some(&FileState::File(Some("{{name}}".into())))
+            Some(&FileState::File("{{name}}".into()))
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("cache_dir")),
@@ -979,7 +977,7 @@ mod test {
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("cache_dir/cache")),
-            Some(&FileState::File(Some("John".into())))
+            Some(&FileState::File("John".into()))
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("target_dir")),
@@ -987,7 +985,7 @@ mod test {
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("target_dir/target")),
-            Some(&FileState::File(Some("John".into())))
+            Some(&FileState::File("John".into()))
         );
     }
 
