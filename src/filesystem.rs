@@ -422,8 +422,8 @@ impl Filesystem for RealFilesystem {
         use std::io::Write;
 
         if let Some(owner) = owner {
-            let contents = std::fs::read_to_string(source)
-                .context("read source file contents as current user")?;
+            let contents =
+                std::fs::read(source).context("read source file contents as current user")?;
             let mut child = self
                 .sudo(format!(
                     "Copying {source:?} -> {target:?} as user {owner:?}"
@@ -443,7 +443,7 @@ impl Filesystem for RealFilesystem {
                 .stdin
                 .as_ref()
                 .expect("has stdin")
-                .write_all(contents.as_bytes())
+                .write_all(&contents)
                 .context("give input to tee")?;
 
             let success = child.wait().context("wait for sudo tee")?.success();
@@ -826,7 +826,7 @@ pub fn is_template(source: &Path) -> Result<bool> {
 
     if file.read_to_string(&mut buf).is_err() {
         warn!(
-            "File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.",
+            "File {:?} is not valid UTF-8 - not detecting as a template. Explicitly specify it to silence this message.",
             source
         );
         Ok(false)
