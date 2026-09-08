@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use crate::actions::{self, ActionRunner, RealActionRunner};
 use crate::args::Options;
-use crate::config::{self, Cache, FileTarget, SymbolicTarget, TemplateTarget};
+use crate::config::{self, Cache, CopyTarget, FileTarget, SymbolicTarget, TemplateTarget};
 use crate::display_error;
 use crate::filesystem::{self, Filesystem, load_file};
 use crate::handlebars_helpers::create_new_handlebars;
@@ -79,6 +79,7 @@ Proceeding by copying instead of symlinking."
 
     let mut desired_symlinks = BTreeMap::<PathBuf, SymbolicTarget>::new();
     let mut desired_templates = BTreeMap::<PathBuf, TemplateTarget>::new();
+    let mut desired_copies = BTreeMap::<PathBuf, CopyTarget>::new();
 
     for (source, target) in config.files {
         if symlinks_enabled {
@@ -95,6 +96,9 @@ Proceeding by copying instead of symlinking."
                 FileTarget::Symbolic(target) => {
                     desired_symlinks.insert(source, target);
                 }
+                FileTarget::Copy(target) => {
+                    desired_copies.insert(source, target);
+                }
                 FileTarget::ComplexTemplate(target) => {
                     desired_templates.insert(source, target);
                 }
@@ -106,6 +110,9 @@ Proceeding by copying instead of symlinking."
                 }
                 FileTarget::Symbolic(target) => {
                     desired_templates.insert(source, target.into_template());
+                }
+                FileTarget::Copy(target) => {
+                    desired_copies.insert(source, target);
                 }
                 FileTarget::ComplexTemplate(target) => {
                     desired_templates.insert(source, target);
@@ -128,6 +135,7 @@ Proceeding by copying instead of symlinking."
         &mut runner,
         &desired_symlinks,
         &desired_templates,
+        &desired_copies,
         &mut cache,
         opt,
     );
@@ -222,6 +230,22 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
         );
     }
 
+    for (deleted_copy, target) in cache.copies.clone() {
+        execute_action(
+            actions::delete_copy(
+                &deleted_copy,
+                &opt.cache_directory.join(&deleted_copy),
+                &target,
+                fs,
+                opt.force,
+            ),
+            || cache.copies.remove(&deleted_copy),
+            || format!("delete copy {deleted_copy:?} -> {target:?}"),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
     // === Post-undeploy ===
 
     if suggest_force {
@@ -255,6 +279,7 @@ fn run_deploy<A: ActionRunner>(
     runner: &mut A,
     desired_symlinks: &BTreeMap<PathBuf, SymbolicTarget>,
     desired_templates: &BTreeMap<PathBuf, TemplateTarget>,
+    desired_copies: &BTreeMap<PathBuf, CopyTarget>,
     cache: &mut Cache,
     opt: &Options,
 ) -> (bool, bool) {
@@ -272,12 +297,21 @@ fn run_deploy<A: ActionRunner>(
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
+    let existing_copies: BTreeSet<(PathBuf, PathBuf)> = cache
+        .copies
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
 
     let desired_symlinks: BTreeMap<(PathBuf, PathBuf), _> = desired_symlinks
         .iter()
         .map(|(k, v)| ((k.clone(), v.target.clone()), v))
         .collect();
     let desired_templates: BTreeMap<(PathBuf, PathBuf), _> = desired_templates
+        .iter()
+        .map(|(k, v)| ((k.clone(), v.target.clone()), v))
+        .collect();
+    let desired_copies: BTreeMap<(PathBuf, PathBuf), _> = desired_copies
         .iter()
         .map(|(k, v)| ((k.clone(), v.target.clone()), v))
         .collect();
@@ -304,6 +338,16 @@ fn run_deploy<A: ActionRunner>(
             runner.delete_template(source, &opt.cache_directory.join(source), target),
             || resulting_cache.templates.remove(source),
             || format!("delete template {source:?} -> {target:?}"),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
+    for (source, target) in existing_copies.difference(&desired_copies.keys().cloned().collect()) {
+        execute_action(
+            runner.delete_copy(source, &opt.cache_directory.join(source), target),
+            || resulting_cache.copies.remove(source),
+            || format!("delete copy {source:?} -> {target:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -353,6 +397,28 @@ fn run_deploy<A: ActionRunner>(
         );
     }
 
+    for (source, target_path) in desired_copies
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .difference(&existing_copies)
+    {
+        let target = desired_copies
+            .get(&(source.into(), target_path.into()))
+            .unwrap();
+        execute_action(
+            runner.create_copy(source, &opt.cache_directory.join(source), target),
+            || {
+                resulting_cache
+                    .copies
+                    .insert(source.clone(), target_path.clone())
+            },
+            || format!("create copy {source:?} -> {target_path:?}"),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
     for (source, target_path) in
         existing_symlinks.intersection(&desired_symlinks.keys().cloned().collect())
     {
@@ -378,6 +444,21 @@ fn run_deploy<A: ActionRunner>(
             runner.update_template(source, &opt.cache_directory.join(source), target),
             || (),
             || format!("update template {source:?} -> {target_path:?}"),
+            &mut suggest_force,
+            &mut error_occurred,
+        );
+    }
+
+    for (source, target_path) in
+        existing_copies.intersection(&desired_copies.keys().cloned().collect())
+    {
+        let target = desired_copies
+            .get(&(source.into(), target_path.into()))
+            .unwrap();
+        execute_action(
+            runner.update_copy(source, &opt.cache_directory.join(source), target),
+            || (),
+            || format!("update copy {source:?} -> {target_path:?}"),
             &mut suggest_force,
             &mut error_occurred,
         );
@@ -464,6 +545,7 @@ mod test {
             &mut runner,
             &desired_symlinks,
             &desired_templates,
+            &BTreeMap::new(),
             &mut cache,
             &Options {
                 cache_directory: "cache".into(),
@@ -479,6 +561,104 @@ mod test {
         assert!(cache.templates.contains_key(&PathBuf::from("b_in")));
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 1);
+    }
+
+    #[test]
+    fn high_level_copy() {
+        // State
+        let c_out: CopyTarget = "c_out".into();
+
+        let desired_copies = maplit::btreemap! {
+            PathBuf::from("c_in") => c_out.clone()
+        };
+
+        let opt = Options {
+            cache_directory: "cache".into(),
+            force: false,
+            ..Options::default()
+        };
+
+        // First deploy creates the copy
+        let mut runner = actions::MockActionRunner::new();
+        let mut cache = Cache::default();
+
+        runner
+            .expect_create_copy()
+            .times(1)
+            .with(
+                function(path_eq("c_in")),
+                function(path_eq("cache/c_in")),
+                eq(c_out.clone()),
+            )
+            .returning(|_, _, _| Ok(true));
+
+        let (suggest_force, error_occurred) = run_deploy(
+            &mut runner,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &desired_copies,
+            &mut cache,
+            &opt,
+        );
+
+        assert!(!suggest_force);
+        assert!(!error_occurred);
+        assert_eq!(
+            cache.copies.get(&PathBuf::from("c_in")),
+            Some(&PathBuf::from("c_out"))
+        );
+        assert_eq!(cache.symlinks.len(), 0);
+        assert_eq!(cache.templates.len(), 0);
+
+        // Second deploy updates it
+        let mut runner = actions::MockActionRunner::new();
+        runner
+            .expect_update_copy()
+            .times(1)
+            .with(
+                function(path_eq("c_in")),
+                function(path_eq("cache/c_in")),
+                eq(c_out),
+            )
+            .returning(|_, _, _| Ok(true));
+
+        let (suggest_force, error_occurred) = run_deploy(
+            &mut runner,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &desired_copies,
+            &mut cache,
+            &opt,
+        );
+
+        assert!(!suggest_force);
+        assert!(!error_occurred);
+        assert_eq!(cache.copies.len(), 1);
+
+        // Removing it from the configuration deletes it
+        let mut runner = actions::MockActionRunner::new();
+        runner
+            .expect_delete_copy()
+            .times(1)
+            .with(
+                function(path_eq("c_in")),
+                function(path_eq("cache/c_in")),
+                function(path_eq("c_out")),
+            )
+            .returning(|_, _, _| Ok(true));
+
+        let (suggest_force, error_occurred) = run_deploy(
+            &mut runner,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &mut cache,
+            &opt,
+        );
+
+        assert!(!suggest_force);
+        assert!(!error_occurred);
+        assert_eq!(cache.copies.len(), 0);
     }
 
     #[test]
@@ -521,6 +701,7 @@ mod test {
             &mut runner,
             &desired_symlinks,
             &desired_templates,
+            &BTreeMap::new(),
             &mut cache,
             &Options {
                 cache_directory: "cache".into(),
@@ -552,6 +733,7 @@ mod test {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
             templates: BTreeMap::new(),
+            copies: BTreeMap::new(),
         };
 
         // Expectation
@@ -572,6 +754,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
+            &BTreeMap::new(),
             &BTreeMap::new(),
             &mut cache,
             &Options {
@@ -604,6 +787,7 @@ mod test {
             templates: maplit::btreemap! {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
+            copies: BTreeMap::new(),
         };
 
         // Expectation
@@ -628,6 +812,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
+            &BTreeMap::new(),
             &BTreeMap::new(),
             &mut cache,
             &Options {
@@ -659,6 +844,7 @@ mod test {
             templates: maplit::btreemap! {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
+            copies: BTreeMap::new(),
         };
 
         // Expectation
@@ -677,6 +863,7 @@ mod test {
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
             &desired_symlinks,
+            &BTreeMap::new(),
             &BTreeMap::new(),
             &mut cache,
             &Options {
@@ -795,6 +982,82 @@ mod test {
                     &PathBuf::from("b_in"),
                     &PathBuf::from("cache/b_cache"),
                     &PathBuf::from("b_out").into(),
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn low_level_copy() {
+        // Setup
+        let mut fs = crate::filesystem::MockFilesystem::new();
+        let mut seq = mockall::Sequence::new();
+
+        let opt = Options::default();
+        let handlebars = handlebars::Handlebars::new();
+        let variables = toml::map::Map::new();
+
+        // Expectation
+        fs.expect_compare_cached_file()
+            .times(1)
+            .with(
+                function(path_eq("c_out")),
+                function(path_eq("cache/c_cache")),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(CachedFileComparison::BothMissing));
+        fs.expect_create_dir_all()
+            .times(1)
+            .with(function(path_eq("")), eq(None)) // parent of c_out
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_create_dir_all()
+            .times(1)
+            .with(function(path_eq("cache")), eq(None))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_copy_file()
+            .times(1)
+            .with(
+                function(path_eq("c_in")),
+                function(path_eq("cache/c_cache")),
+                eq(None),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+        fs.expect_copy_file()
+            .times(1)
+            .with(
+                function(path_eq("cache/c_cache")),
+                function(path_eq("c_out")),
+                eq(None),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+        fs.expect_copy_permissions()
+            .times(1)
+            .with(
+                function(path_eq("c_in")),
+                function(path_eq("c_out")),
+                eq(None),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(()));
+
+        // Reality
+        let mut runner = actions::RealActionRunner::new(
+            &mut fs,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        );
+        assert!(
+            runner
+                .create_copy(
+                    &PathBuf::from("c_in"),
+                    &PathBuf::from("cache/c_cache"),
+                    &PathBuf::from("c_out").into(),
                 )
                 .unwrap()
         );
