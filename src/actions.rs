@@ -7,7 +7,7 @@ use handlebars::Handlebars;
 
 use crate::config::{SymbolicTarget, TemplateTarget, Variables};
 use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
-use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
+use crate::filesystem::{CachedFileComparison, Filesystem, SymlinkComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
@@ -170,19 +170,19 @@ pub fn delete_template(
     info!("{} template {:?} -> {:?}", "[-]".red(), source, target);
 
     let comparison = fs
-        .compare_template(target, cache)
+        .compare_cached_file(target, cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::Identical => {
+        CachedFileComparison::Identical => {
             debug!("Performing deletion");
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
             perform_template_target_deletion(fs, target)
                 .context("perform template target deletion")?;
             Ok(true)
         }
-        TemplateComparison::OnlyCacheExists => {
+        CachedFileComparison::OnlyCacheExists => {
             warn!(
                 "Deleting template {:?} -> {:?} but {}. Deleting cache anyways.",
                 source, target, comparison
@@ -190,7 +190,7 @@ pub fn delete_template(
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
             Ok(true)
         }
-        TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
+        CachedFileComparison::OnlyTargetExists | CachedFileComparison::BothMissing => {
             error!(
                 "Deleting template {:?} -> {:?} but cache doesn't exist. Cache probably CORRUPTED.",
                 source, target
@@ -198,7 +198,7 @@ pub fn delete_template(
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(false)
         }
-        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
+        CachedFileComparison::Changed | CachedFileComparison::TargetNotRegularFile if force => {
             warn!(
                 "Deleting template {:?} -> {:?} but {}. Forcing.",
                 source, target, comparison
@@ -208,7 +208,7 @@ pub fn delete_template(
                 .context("perform template target deletion")?;
             Ok(true)
         }
-        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {
+        CachedFileComparison::Changed | CachedFileComparison::TargetNotRegularFile => {
             error!(
                 "Deleting template {:?} -> {:?} but {}. Skipping.",
                 source, target, comparison
@@ -321,12 +321,12 @@ pub fn create_template(
     );
 
     let comparison = fs
-        .compare_template(&target.target, cache)
+        .compare_cached_file(&target.target, cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::BothMissing => {
+        CachedFileComparison::BothMissing => {
             debug!("Performing creation");
             fs.create_dir_all(
                 target
@@ -340,7 +340,7 @@ pub fn create_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::OnlyCacheExists | TemplateComparison::Identical => {
+        CachedFileComparison::OnlyCacheExists | CachedFileComparison::Identical => {
             warn!(
                 "Creating template {:?} -> {:?} but cache file already exists. This is probably a result of an error in the last run.",
                 source, target.target
@@ -357,9 +357,9 @@ pub fn create_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::TargetNotRegularFile
-        | TemplateComparison::Changed
-        | TemplateComparison::OnlyTargetExists
+        CachedFileComparison::TargetNotRegularFile
+        | CachedFileComparison::Changed
+        | CachedFileComparison::OnlyTargetExists
             if force =>
         {
             warn!(
@@ -380,9 +380,9 @@ pub fn create_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::TargetNotRegularFile
-        | TemplateComparison::Changed
-        | TemplateComparison::OnlyTargetExists => {
+        CachedFileComparison::TargetNotRegularFile
+        | CachedFileComparison::Changed
+        | CachedFileComparison::OnlyTargetExists => {
             error!(
                 "Creating template {:?} -> {:?} but target file already exists. Skipping.",
                 source, target.target
@@ -472,12 +472,12 @@ pub fn update_template(
 ) -> Result<bool> {
     debug!("Updating template {:?} -> {:?}...", source, target.target);
     let comparison = fs
-        .compare_template(&target.target, cache)
+        .compare_cached_file(&target.target, cache)
         .context("detect templated file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::Identical => {
+        CachedFileComparison::Identical => {
             debug!("Performing update");
             difference::print_template_diff(
                 source,
@@ -492,7 +492,7 @@ pub fn update_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::OnlyCacheExists => {
+        CachedFileComparison::OnlyCacheExists => {
             warn!(
                 "Updating template {:?} -> {:?} but target is missing. Creating it anyways.",
                 source, target.target
@@ -509,7 +509,7 @@ pub fn update_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
+        CachedFileComparison::OnlyTargetExists | CachedFileComparison::BothMissing => {
             error!(
                 "Updating template {:?} -> {:?} but cache is missing. Cache is CORRUPTED.",
                 source, target.target
@@ -517,7 +517,7 @@ pub fn update_template(
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(true)
         }
-        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
+        CachedFileComparison::Changed | CachedFileComparison::TargetNotRegularFile if force => {
             warn!(
                 "Updating template {:?} -> {:?} but {}. Forcing.",
                 source, target.target, comparison
@@ -535,7 +535,7 @@ pub fn update_template(
                 .context("perform template cache")?;
             Ok(true)
         }
-        TemplateComparison::Changed => {
+        CachedFileComparison::Changed => {
             // At this point, we're not sure if there's a difference between the rendered source
             // and target, only that the target has been modified in some way.
             let diff = generate_template_diff(source, target, handlebars, variables, false)
@@ -557,7 +557,7 @@ pub fn update_template(
             }
         }
 
-        TemplateComparison::TargetNotRegularFile => {
+        CachedFileComparison::TargetNotRegularFile => {
             error!(
                 "Updating template {:?} -> {:?} but {}. Skipping.",
                 source, target.target, comparison

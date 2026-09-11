@@ -412,7 +412,7 @@ fn execute_action<T, S: FnOnce() -> T, E: FnOnce() -> String>(
 
 #[cfg(test)]
 mod test {
-    use crate::filesystem::{SymlinkComparison, TemplateComparison};
+    use crate::filesystem::{CachedFileComparison, SymlinkComparison};
 
     use std::path::{Path, PathBuf};
 
@@ -726,14 +726,14 @@ mod test {
             .returning(|_, _, _| Ok(()));
 
         // create_template
-        fs.expect_compare_template()
+        fs.expect_compare_cached_file()
             .times(1)
             .with(
                 function(path_eq("b_out")),
                 function(path_eq("cache/b_cache")),
             )
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(TemplateComparison::BothMissing));
+            .returning(|_, _| Ok(CachedFileComparison::BothMissing));
         fs.expect_create_dir_all()
             .times(1)
             .with(function(path_eq("")), eq(None)) // parent of b_out
@@ -819,14 +819,14 @@ mod test {
             .returning(|_, _| Ok(SymlinkComparison::Changed));
 
         // create_template
-        fs.expect_compare_template()
+        fs.expect_compare_cached_file()
             .times(1)
             .with(
                 function(path_eq("b_out")),
                 function(path_eq("cache/b_cache")),
             )
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(TemplateComparison::Changed));
+            .returning(|_, _| Ok(CachedFileComparison::Changed));
 
         // Reality
         let mut runner = actions::RealActionRunner::new(
