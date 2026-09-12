@@ -195,7 +195,7 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
 
     for (deleted_symlink, target) in cache.symlinks.clone() {
         execute_action(
-            actions::delete_symlink(&deleted_symlink, &target, fs, opt.force),
+            actions::delete_symlink(&deleted_symlink, &target, fs, opt.force, false),
             || cache.symlinks.remove(&deleted_symlink),
             || format!("delete symlink {deleted_symlink:?} -> {target:?}"),
             &mut suggest_force,
@@ -211,6 +211,7 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
                 &target,
                 fs,
                 opt.force,
+                false,
             ),
             || cache.templates.remove(&deleted_template),
             || format!("delete template {deleted_template:?} -> {target:?}"),
@@ -227,6 +228,7 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
                 &target,
                 fs,
                 opt.force,
+                false,
             ),
             || cache.copies.remove(&deleted_copy),
             || format!("delete copy {deleted_copy:?} -> {target:?}"),
@@ -305,6 +307,16 @@ fn run_deploy<A: ActionRunner>(
         .map(|(k, v)| ((k.clone(), v.target.clone()), v))
         .collect();
 
+    // A target that changes its type is deleted and then deployed again at the same path.
+    // Deleting its emptied parent directories in between would ask the user about each of them,
+    // and recreating them would lose their mode and owner.
+    let redeployed_targets: BTreeSet<&PathBuf> = desired_symlinks
+        .keys()
+        .chain(desired_templates.keys())
+        .chain(desired_copies.keys())
+        .map(|(_, target)| target)
+        .collect();
+
     // Avoid modifying cache while iterating over it
     let mut resulting_cache = cache.clone();
 
@@ -312,7 +324,7 @@ fn run_deploy<A: ActionRunner>(
         existing_symlinks.difference(&desired_symlinks.keys().cloned().collect())
     {
         execute_action(
-            runner.delete_symlink(source, target),
+            runner.delete_symlink(source, target, redeployed_targets.contains(target)),
             || resulting_cache.symlinks.remove(source),
             || format!("delete symlink {source:?} -> {target:?}"),
             &mut suggest_force,
@@ -324,7 +336,12 @@ fn run_deploy<A: ActionRunner>(
         existing_templates.difference(&desired_templates.keys().cloned().collect())
     {
         execute_action(
-            runner.delete_template(source, &opt.cache_directory.join(source), target),
+            runner.delete_template(
+                source,
+                &opt.cache_directory.join(source),
+                target,
+                redeployed_targets.contains(target),
+            ),
             || resulting_cache.templates.remove(source),
             || format!("delete template {source:?} -> {target:?}"),
             &mut suggest_force,
@@ -334,7 +351,12 @@ fn run_deploy<A: ActionRunner>(
 
     for (source, target) in existing_copies.difference(&desired_copies.keys().cloned().collect()) {
         execute_action(
-            runner.delete_copy(source, &opt.cache_directory.join(source), target),
+            runner.delete_copy(
+                source,
+                &opt.cache_directory.join(source),
+                target,
+                redeployed_targets.contains(target),
+            ),
             || resulting_cache.copies.remove(source),
             || format!("delete copy {source:?} -> {target:?}"),
             &mut suggest_force,
@@ -633,8 +655,9 @@ mod test {
                 function(path_eq("c_in")),
                 function(path_eq("cache/c_in")),
                 function(path_eq("c_out")),
+                eq(false),
             )
-            .returning(|_, _, _| Ok(true));
+            .returning(|_, _, _, _| Ok(true));
 
         let (suggest_force, error_occurred) = run_deploy(
             &mut runner,
@@ -729,9 +752,13 @@ mod test {
         runner
             .expect_delete_symlink()
             .times(1)
-            .with(function(path_eq("a_in")), function(path_eq("a_out_old")))
+            .with(
+                function(path_eq("a_in")),
+                function(path_eq("a_out_old")),
+                eq(false),
+            )
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(true));
+            .returning(|_, _, _| Ok(true));
         runner
             .expect_create_symlink()
             .times(1)
@@ -787,9 +814,10 @@ mod test {
                 function(path_eq("a_in")),
                 function(path_eq("cache/a_in")),
                 function(path_eq("a_out_old")),
+                eq(false),
             )
             .in_sequence(&mut seq)
-            .returning(|_, _, _| Ok(true));
+            .returning(|_, _, _, _| Ok(true));
         runner
             .expect_create_symlink()
             .times(1)
@@ -819,6 +847,69 @@ mod test {
     }
 
     #[test]
+    fn high_level_change_type_same_target() {
+        // Setup
+        let a_out: CopyTarget = "a_out".into();
+
+        let desired_copies = maplit::btreemap! {
+            PathBuf::from("a_in") => a_out.clone()
+        };
+
+        let mut runner = actions::MockActionRunner::new();
+        let mut seq = mockall::Sequence::new();
+        let mut cache = Cache {
+            symlinks: BTreeMap::new(),
+            templates: maplit::btreemap! {
+                PathBuf::from("a_in") => "a_out".into()
+            },
+            copies: BTreeMap::new(),
+        };
+
+        // Expectation
+        runner
+            .expect_delete_template()
+            .times(1)
+            .with(
+                function(path_eq("a_in")),
+                function(path_eq("cache/a_in")),
+                function(path_eq("a_out")),
+                eq(true),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _, _| Ok(true));
+        runner
+            .expect_create_copy()
+            .times(1)
+            .with(
+                function(path_eq("a_in")),
+                function(path_eq("cache/a_in")),
+                eq(a_out),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _, _| Ok(true));
+
+        // Reality
+        let (suggest_force, error_occurred) = run_deploy(
+            &mut runner,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &desired_copies,
+            &mut cache,
+            &Options {
+                cache_directory: "cache".into(),
+                force: false,
+                ..Options::default()
+            },
+        );
+
+        assert!(!suggest_force);
+        assert!(!error_occurred);
+
+        assert_eq!(cache.copies.len(), 1);
+        assert_eq!(cache.templates.len(), 0);
+    }
+
+    #[test]
     #[ignore] // This is desired, but not implemented: see issue #22
     fn high_level_skip_change_type() {
         // Setup
@@ -844,9 +935,10 @@ mod test {
                 function(path_eq("a_in")),
                 function(path_eq("cache/a_in")),
                 function(path_eq("a_out_old")),
+                eq(false),
             )
             .in_sequence(&mut seq)
-            .returning(|_, _, _| Ok(false));
+            .returning(|_, _, _, _| Ok(false));
 
         // Reality
         let (suggest_force, error_occurred) = run_deploy(
@@ -1047,6 +1139,61 @@ mod test {
                     &PathBuf::from("c_in"),
                     &PathBuf::from("cache/c_cache"),
                     &PathBuf::from("c_out").into(),
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn low_level_delete_keep_parents() {
+        // Setup
+        let mut fs = crate::filesystem::MockFilesystem::new();
+        let mut seq = mockall::Sequence::new();
+
+        let opt = Options::default();
+        let handlebars = handlebars::Handlebars::new();
+        let variables = toml::map::Map::new();
+
+        // Expectation: the cache's parents are cleaned up, but the target's are not
+        fs.expect_compare_cached_file()
+            .times(1)
+            .with(
+                function(path_eq("b_out")),
+                function(path_eq("cache/b_cache")),
+            )
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(CachedFileComparison::Identical));
+        fs.expect_remove_file()
+            .times(1)
+            .with(function(path_eq("cache/b_cache")))
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(()));
+        fs.expect_delete_parents()
+            .times(1)
+            .with(function(path_eq("cache/b_cache")), eq(true))
+            .in_sequence(&mut seq)
+            .returning(|_, _| Ok(()));
+        fs.expect_remove_file()
+            .times(1)
+            .with(function(path_eq("b_out")))
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(()));
+
+        // Reality
+        let mut runner = actions::RealActionRunner::new(
+            &mut fs,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        );
+        assert!(
+            runner
+                .delete_template(
+                    &PathBuf::from("b_in"),
+                    &PathBuf::from("cache/b_cache"),
+                    &PathBuf::from("b_out"),
+                    true,
                 )
                 .unwrap()
         );

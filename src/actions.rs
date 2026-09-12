@@ -13,9 +13,21 @@ use crate::filesystem::{CachedFileComparison, Filesystem, SymlinkComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool>;
-    fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool>;
-    fn delete_copy(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool>;
+    fn delete_symlink(&mut self, source: &Path, target: &Path, keep_parents: bool) -> Result<bool>;
+    fn delete_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool>;
+    fn delete_copy(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool>;
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
     fn create_template(
         &mut self,
@@ -61,14 +73,26 @@ impl<'a> RealActionRunner<'a> {
 }
 
 impl ActionRunner for RealActionRunner<'_> {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool> {
-        delete_symlink(source, target, self.fs, self.force)
+    fn delete_symlink(&mut self, source: &Path, target: &Path, keep_parents: bool) -> Result<bool> {
+        delete_symlink(source, target, self.fs, self.force, keep_parents)
     }
-    fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool> {
-        delete_template(source, cache, target, self.fs, self.force)
+    fn delete_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool> {
+        delete_template(source, cache, target, self.fs, self.force, keep_parents)
     }
-    fn delete_copy(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool> {
-        delete_copy(source, cache, target, self.fs, self.force)
+    fn delete_copy(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool> {
+        delete_copy(source, cache, target, self.fs, self.force, keep_parents)
     }
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool> {
         create_symlink(source, target, self.fs, self.force)
@@ -234,6 +258,9 @@ impl CachedTarget<'_> {
 }
 
 // == DELETE ==
+//
+// `keep_parents` leaves the target's parent directories in place even if the deletion empties
+// them, for a target path that is deployed again right afterwards.
 
 /// Returns true if symlink should be deleted from cache
 pub fn delete_symlink(
@@ -241,6 +268,7 @@ pub fn delete_symlink(
     target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
+    keep_parents: bool,
 ) -> Result<bool> {
     info!("{} symlink {:?} -> {:?}", "[-]".red(), source, target);
 
@@ -252,7 +280,7 @@ pub fn delete_symlink(
     match comparison {
         SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, target, keep_parents)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
@@ -268,7 +296,7 @@ pub fn delete_symlink(
                 "Deleting symlink {:?} -> {:?} but {}. Forcing.",
                 source, target, comparison
             );
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, target, keep_parents)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
@@ -282,10 +310,16 @@ pub fn delete_symlink(
     }
 }
 
-fn perform_symlink_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
+fn perform_symlink_target_deletion(
+    fs: &mut dyn Filesystem,
+    target: &Path,
+    keep_parents: bool,
+) -> Result<()> {
     fs.remove_file(target).context("remove symlink")?;
-    fs.delete_parents(target, false)
-        .context("delete parents of symlink")?;
+    if !keep_parents {
+        fs.delete_parents(target, false)
+            .context("delete parents of symlink")?;
+    }
     Ok(())
 }
 
@@ -296,8 +330,9 @@ pub fn delete_template(
     target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
+    keep_parents: bool,
 ) -> Result<bool> {
-    delete_cached_file("template", source, cache, target, fs, force)
+    delete_cached_file("template", source, cache, target, fs, force, keep_parents)
 }
 
 /// Returns true if copy should be deleted from cache
@@ -307,8 +342,9 @@ pub fn delete_copy(
     target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
+    keep_parents: bool,
 ) -> Result<bool> {
-    delete_cached_file("copy", source, cache, target, fs, force)
+    delete_cached_file("copy", source, cache, target, fs, force, keep_parents)
 }
 
 /// Deletes a file that was deployed through the cache - a template or a copy.
@@ -320,6 +356,7 @@ fn delete_cached_file(
     target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
+    keep_parents: bool,
 ) -> Result<bool> {
     info!("{} {} {:?} -> {:?}", "[-]".red(), kind, source, target);
 
@@ -332,7 +369,8 @@ fn delete_cached_file(
         CachedFileComparison::Identical => {
             debug!("Performing deletion");
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
-            perform_cached_target_deletion(fs, target).context("perform target deletion")?;
+            perform_cached_target_deletion(fs, target, keep_parents)
+                .context("perform target deletion")?;
             Ok(true)
         }
         CachedFileComparison::OnlyCacheExists => {
@@ -357,7 +395,8 @@ fn delete_cached_file(
                 kind, source, target, comparison
             );
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
-            perform_cached_target_deletion(fs, target).context("perform target deletion")?;
+            perform_cached_target_deletion(fs, target, keep_parents)
+                .context("perform target deletion")?;
             Ok(true)
         }
         CachedFileComparison::Changed | CachedFileComparison::TargetNotRegularFile => {
@@ -377,10 +416,16 @@ fn perform_cache_deletion(fs: &mut dyn Filesystem, cache: &Path) -> Result<()> {
     Ok(())
 }
 
-fn perform_cached_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
+fn perform_cached_target_deletion(
+    fs: &mut dyn Filesystem,
+    target: &Path,
+    keep_parents: bool,
+) -> Result<()> {
     fs.remove_file(target).context("delete target file")?;
-    fs.delete_parents(target, false)
-        .context("delete parent directory in target location")?;
+    if !keep_parents {
+        fs.delete_parents(target, false)
+            .context("delete parent directory in target location")?;
+    }
     Ok(())
 }
 
