@@ -803,7 +803,7 @@ pub fn ask_boolean(prompt: &str) -> bool {
     let mut buf = String::from("a"); // enter the loop at least once
     while !(buf.to_lowercase().starts_with('y')
         || buf.to_lowercase().starts_with('n')
-        || buf.is_empty())
+        || buf.trim().is_empty())
     {
         eprintln!("{prompt}");
         buf.clear();
