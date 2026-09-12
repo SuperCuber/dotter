@@ -381,7 +381,16 @@ fn delete_cached_file(
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
             Ok(true)
         }
-        CachedFileComparison::OnlyTargetExists | CachedFileComparison::BothMissing => {
+        // Keeping the entry would leave it pointing at the cache file of whatever is deployed from
+        // the same source next, such as a copy replacing a template, and delete that later on.
+        CachedFileComparison::BothMissing => {
+            warn!(
+                "Deleting {} {:?} -> {:?} but {}. Removing from cache anyways.",
+                kind, source, target, comparison
+            );
+            Ok(true)
+        }
+        CachedFileComparison::OnlyTargetExists => {
             error!(
                 "Deleting {} {:?} -> {:?} but cache doesn't exist. Cache probably CORRUPTED.",
                 kind, source, target

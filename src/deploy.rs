@@ -1200,6 +1200,44 @@ mod test {
     }
 
     #[test]
+    fn low_level_delete_both_missing() {
+        // Setup
+        let mut fs = crate::filesystem::MockFilesystem::new();
+
+        let opt = Options::default();
+        let handlebars = handlebars::Handlebars::new();
+        let variables = toml::map::Map::new();
+
+        // Expectation: nothing is removed, but the entry is dropped from the cache
+        fs.expect_compare_cached_file()
+            .times(1)
+            .with(
+                function(path_eq("b_out")),
+                function(path_eq("cache/b_cache")),
+            )
+            .returning(|_, _| Ok(CachedFileComparison::BothMissing));
+
+        // Reality
+        let mut runner = actions::RealActionRunner::new(
+            &mut fs,
+            &handlebars,
+            &variables,
+            opt.force,
+            opt.diff_context_lines,
+        );
+        assert!(
+            runner
+                .delete_template(
+                    &PathBuf::from("b_in"),
+                    &PathBuf::from("cache/b_cache"),
+                    &PathBuf::from("b_out"),
+                    false,
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
     fn low_level_skip() {
         // Setup
         let mut fs = crate::filesystem::MockFilesystem::new();
