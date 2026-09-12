@@ -6,7 +6,7 @@ use std::cmp::{max, min};
 use std::fs;
 use std::path::Path;
 
-use crate::config::{TemplateTarget, Variables};
+use crate::config::{CopyTarget, TemplateTarget, Variables};
 
 pub type Diff = Vec<diff::Result<String>>;
 pub type HunkDiff = Vec<(usize, usize, Diff)>;
@@ -64,6 +64,66 @@ pub fn generate_template_diff(
     };
 
     Ok(diff_result.into_iter().map(to_owned_diff_result).collect())
+}
+
+pub fn print_copy_diff(source: &Path, target: &CopyTarget, diff_context_lines: usize) {
+    if log_enabled!(log::Level::Info) {
+        match generate_copy_diff(source, &target.target, true) {
+            Ok(Some(diff)) => {
+                if diff_nonempty(&diff) {
+                    info!(
+                        "{} copy {:?} -> {:?}",
+                        "[~]".yellow(),
+                        source,
+                        target.target
+                    );
+                    print_diff(&diff, diff_context_lines);
+                }
+            }
+            Ok(None) => {
+                info!(
+                    "{} copy {:?} -> {:?} (binary contents changed)",
+                    "[~]".yellow(),
+                    source,
+                    target.target
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to generate diff for copy {:?} -> {:?} on step: {}",
+                    source, target.target, e
+                );
+            }
+        }
+    }
+}
+
+/// Returns `None` if the two files differ but at least one of them isn't valid UTF-8,
+/// since only their equality - not the difference between them - can be displayed.
+pub fn generate_copy_diff(
+    source: &Path,
+    target: &Path,
+    source_to_target: bool,
+) -> Result<Option<Diff>> {
+    let source_contents = fs::read(source).context("read copy source file")?;
+    let target_contents = fs::read(target).context("read copy target file")?;
+
+    let (Ok(source_contents), Ok(target_contents)) = (
+        std::str::from_utf8(&source_contents),
+        std::str::from_utf8(&target_contents),
+    ) else {
+        return Ok((source_contents == target_contents).then(Vec::new));
+    };
+
+    let diff_result = if source_to_target {
+        diff::lines(target_contents, source_contents)
+    } else {
+        diff::lines(source_contents, target_contents)
+    };
+
+    Ok(Some(
+        diff_result.into_iter().map(to_owned_diff_result).collect(),
+    ))
 }
 
 fn to_owned_diff_result(from: diff::Result<&str>) -> diff::Result<String> {

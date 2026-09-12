@@ -46,8 +46,8 @@ pub trait Filesystem {
     /// Check state of expected symlink on disk
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison>;
 
-    /// Check state of expected symbolic link on disk
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison>;
+    /// Check state of a deployed file against its cached copy on disk
+    fn compare_cached_file(&mut self, target: &Path, cache: &Path) -> Result<CachedFileComparison>;
 
     /// Removes a file or folder, elevating privileges if needed
     fn remove_file(&mut self, path: &Path) -> Result<()>;
@@ -110,13 +110,13 @@ impl Filesystem for RealFilesystem {
         compare_symlink(source, source_state, link_state)
     }
 
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+    fn compare_cached_file(&mut self, target: &Path, cache: &Path) -> Result<CachedFileComparison> {
         let target_state = get_file_state(target).context("get state of target")?;
         trace!("Target state: {:#?}", target_state);
         let cache_state = get_file_state(cache).context("get state of cache")?;
         trace!("Cache state: {:#?}", cache_state);
 
-        Ok(compare_template(target_state, cache_state))
+        Ok(compare_cached_file(target_state, cache_state))
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -276,11 +276,11 @@ impl Filesystem for RealFilesystem {
         compare_symlink(source, source_state, link_state)
     }
 
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+    fn compare_cached_file(&mut self, target: &Path, cache: &Path) -> Result<CachedFileComparison> {
         let target_state = get_file_state(target).context("get state of target")?;
         let cache_state = get_file_state(cache).context("get state of cache")?;
 
-        Ok(compare_template(target_state, cache_state))
+        Ok(compare_cached_file(target_state, cache_state))
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -422,8 +422,8 @@ impl Filesystem for RealFilesystem {
         use std::io::Write;
 
         if let Some(owner) = owner {
-            let contents = std::fs::read_to_string(source)
-                .context("read source file contents as current user")?;
+            let contents =
+                std::fs::read(source).context("read source file contents as current user")?;
             let mut child = self
                 .sudo(format!(
                     "Copying {source:?} -> {target:?} as user {owner:?}"
@@ -443,7 +443,7 @@ impl Filesystem for RealFilesystem {
                 .stdin
                 .as_ref()
                 .expect("has stdin")
-                .write_all(contents.as_bytes())
+                .write_all(&contents)
                 .context("give input to tee")?;
 
             let success = child.wait().context("wait for sudo tee")?.success();
@@ -532,8 +532,7 @@ pub struct DryRunFilesystem {
 
 #[derive(Debug, Clone, PartialEq)]
 enum FileState {
-    /// None if file is invalid UTF-8
-    File(Option<String>),
+    File(Vec<u8>),
     SymbolicLink(PathBuf),
     Directory,
     Missing,
@@ -576,7 +575,7 @@ impl Filesystem for DryRunFilesystem {
         compare_symlink(source, source_state, link_state)
     }
 
-    fn compare_template(&mut self, target: &Path, cache: &Path) -> Result<TemplateComparison> {
+    fn compare_cached_file(&mut self, target: &Path, cache: &Path) -> Result<CachedFileComparison> {
         let target_state = if let Some(state) = self.file_states.get(target) {
             debug!("Cached (probably not actual) target state: {:?}", state);
             state.clone()
@@ -594,7 +593,7 @@ impl Filesystem for DryRunFilesystem {
             state
         };
 
-        Ok(compare_template(target_state, cache_state))
+        Ok(compare_cached_file(target_state, cache_state))
     }
 
     fn remove_file(&mut self, path: &Path) -> Result<()> {
@@ -606,7 +605,7 @@ impl Filesystem for DryRunFilesystem {
     fn read_to_string(&mut self, path: &Path) -> Result<String> {
         debug!("Reading contents of file {:?}", path);
         match self.get_state(path).context("get file state")? {
-            FileState::File(s) => Ok(s.context("invalid utf-8 in template source")?),
+            FileState::File(s) => String::from_utf8(s).context("invalid utf-8 in template source"),
             _ => anyhow::bail!("writing to non-file"),
         }
     }
@@ -614,7 +613,7 @@ impl Filesystem for DryRunFilesystem {
     fn write(&mut self, path: &Path, content: String) -> Result<()> {
         debug!("Writing contents {:?} to file {:?}", content, path);
         self.file_states
-            .insert(path.into(), FileState::File(Some(content)));
+            .insert(path.into(), FileState::File(content.into_bytes()));
         Ok(())
     }
 
@@ -701,9 +700,8 @@ fn get_file_state(path: &Path) -> Result<FileState> {
         return Ok(FileState::Directory);
     }
 
-    match fs::read_to_string(path) {
-        Ok(f) => Ok(FileState::File(Some(f))),
-        Err(e) if e.kind() == ErrorKind::InvalidData => Ok(FileState::File(None)),
+    match fs::read(path) {
+        Ok(f) => Ok(FileState::File(f)),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(FileState::Missing),
         Err(e) => Err(e).context("read contents of file that isn't symbolic or directory")?,
     }
@@ -755,7 +753,7 @@ fn compare_symlink(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum TemplateComparison {
+pub enum CachedFileComparison {
     Identical,
     OnlyCacheExists,
     OnlyTargetExists,
@@ -764,9 +762,9 @@ pub enum TemplateComparison {
     BothMissing,
 }
 
-impl std::fmt::Display for TemplateComparison {
+impl std::fmt::Display for CachedFileComparison {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        use self::TemplateComparison::*;
+        use self::CachedFileComparison::*;
         match self {
             Identical => "target and cache's contents are equal",
             OnlyCacheExists => "target doesn't exist",
@@ -779,19 +777,19 @@ impl std::fmt::Display for TemplateComparison {
     }
 }
 
-fn compare_template(target_state: FileState, cache_state: FileState) -> TemplateComparison {
+fn compare_cached_file(target_state: FileState, cache_state: FileState) -> CachedFileComparison {
     match (target_state, cache_state) {
         (FileState::File(t), FileState::File(c)) => {
             if t == c {
-                TemplateComparison::Identical
+                CachedFileComparison::Identical
             } else {
-                TemplateComparison::Changed
+                CachedFileComparison::Changed
             }
         }
-        (FileState::File(_), FileState::Missing) => TemplateComparison::OnlyTargetExists,
-        (FileState::Missing, FileState::File(_)) => TemplateComparison::OnlyCacheExists,
-        (FileState::Missing, FileState::Missing) => TemplateComparison::BothMissing,
-        _ => TemplateComparison::TargetNotRegularFile,
+        (FileState::File(_), FileState::Missing) => CachedFileComparison::OnlyTargetExists,
+        (FileState::Missing, FileState::File(_)) => CachedFileComparison::OnlyCacheExists,
+        (FileState::Missing, FileState::Missing) => CachedFileComparison::BothMissing,
+        _ => CachedFileComparison::TargetNotRegularFile,
     }
 }
 
@@ -805,7 +803,7 @@ pub fn ask_boolean(prompt: &str) -> bool {
     let mut buf = String::from("a"); // enter the loop at least once
     while !(buf.to_lowercase().starts_with('y')
         || buf.to_lowercase().starts_with('n')
-        || buf.is_empty())
+        || buf.trim().is_empty())
     {
         eprintln!("{prompt}");
         buf.clear();
@@ -828,7 +826,7 @@ pub fn is_template(source: &Path) -> Result<bool> {
 
     if file.read_to_string(&mut buf).is_err() {
         warn!(
-            "File {:?} is not valid UTF-8 - detecting as symlink. Explicitly specify it to silence this message.",
+            "File {:?} is not valid UTF-8 - not detecting as a template. Explicitly specify it to silence this message.",
             source
         );
         Ok(false)
@@ -930,12 +928,12 @@ mod test {
         fs.remove_file(&PathBuf::from("target_dir/target")).unwrap();
 
         assert_eq!(
-            fs.compare_template(
+            fs.compare_cached_file(
                 &PathBuf::from("target_dir/target"),
                 &PathBuf::from("cache_dir/cache")
             )
             .unwrap(),
-            TemplateComparison::BothMissing
+            CachedFileComparison::BothMissing
         );
 
         fs.create_dir_all(&PathBuf::from("target_dir"), &None)
@@ -971,7 +969,7 @@ mod test {
         // Verify all actions
         assert_eq!(
             fs.file_states.get(&PathBuf::from("source")),
-            Some(&FileState::File(Some("{{name}}".into())))
+            Some(&FileState::File("{{name}}".into()))
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("cache_dir")),
@@ -979,7 +977,7 @@ mod test {
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("cache_dir/cache")),
-            Some(&FileState::File(Some("John".into())))
+            Some(&FileState::File("John".into()))
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("target_dir")),
@@ -987,7 +985,7 @@ mod test {
         );
         assert_eq!(
             fs.file_states.get(&PathBuf::from("target_dir/target")),
-            Some(&FileState::File(Some("John".into())))
+            Some(&FileState::File("John".into()))
         );
     }
 

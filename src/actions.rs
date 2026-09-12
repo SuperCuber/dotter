@@ -5,14 +5,29 @@ use anyhow::{Context, Result};
 use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
-use crate::config::{SymbolicTarget, TemplateTarget, Variables};
-use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
-use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
+use crate::config::{CopyTarget, SymbolicTarget, TemplateTarget, UnixUser, Variables};
+use crate::difference::{
+    self, Diff, diff_nonempty, generate_copy_diff, generate_template_diff, print_diff,
+};
+use crate::filesystem::{CachedFileComparison, Filesystem, SymlinkComparison};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool>;
-    fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool>;
+    fn delete_symlink(&mut self, source: &Path, target: &Path, keep_parents: bool) -> Result<bool>;
+    fn delete_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool>;
+    fn delete_copy(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool>;
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
     fn create_template(
         &mut self,
@@ -20,6 +35,7 @@ pub trait ActionRunner {
         cache: &Path,
         target: &TemplateTarget,
     ) -> Result<bool>;
+    fn create_copy(&mut self, source: &Path, cache: &Path, target: &CopyTarget) -> Result<bool>;
     fn update_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool>;
     fn update_template(
         &mut self,
@@ -27,6 +43,7 @@ pub trait ActionRunner {
         cache: &Path,
         target: &TemplateTarget,
     ) -> Result<bool>;
+    fn update_copy(&mut self, source: &Path, cache: &Path, target: &CopyTarget) -> Result<bool>;
 }
 
 pub struct RealActionRunner<'a> {
@@ -56,11 +73,26 @@ impl<'a> RealActionRunner<'a> {
 }
 
 impl ActionRunner for RealActionRunner<'_> {
-    fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool> {
-        delete_symlink(source, target, self.fs, self.force)
+    fn delete_symlink(&mut self, source: &Path, target: &Path, keep_parents: bool) -> Result<bool> {
+        delete_symlink(source, target, self.fs, self.force, keep_parents)
     }
-    fn delete_template(&mut self, source: &Path, cache: &Path, target: &Path) -> Result<bool> {
-        delete_template(source, cache, target, self.fs, self.force)
+    fn delete_template(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool> {
+        delete_template(source, cache, target, self.fs, self.force, keep_parents)
+    }
+    fn delete_copy(
+        &mut self,
+        source: &Path,
+        cache: &Path,
+        target: &Path,
+        keep_parents: bool,
+    ) -> Result<bool> {
+        delete_copy(source, cache, target, self.fs, self.force, keep_parents)
     }
     fn create_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool> {
         create_symlink(source, target, self.fs, self.force)
@@ -80,6 +112,9 @@ impl ActionRunner for RealActionRunner<'_> {
             self.variables,
             self.force,
         )
+    }
+    fn create_copy(&mut self, source: &Path, cache: &Path, target: &CopyTarget) -> Result<bool> {
+        create_copy(source, cache, target, self.fs, self.force)
     }
     fn update_symlink(&mut self, source: &Path, target: &SymbolicTarget) -> Result<bool> {
         update_symlink(source, target, self.fs, self.force)
@@ -101,9 +136,131 @@ impl ActionRunner for RealActionRunner<'_> {
             self.diff_context_lines,
         )
     }
+    fn update_copy(&mut self, source: &Path, cache: &Path, target: &CopyTarget) -> Result<bool> {
+        update_copy(
+            source,
+            cache,
+            target,
+            self.fs,
+            self.force,
+            self.diff_context_lines,
+        )
+    }
+}
+
+// == CACHED TARGETS ==
+
+/// A target that is deployed through the cache directory - a template or a copy.
+enum CachedTarget<'a> {
+    Template {
+        target: &'a TemplateTarget,
+        handlebars: &'a Handlebars<'a>,
+        variables: &'a Variables,
+    },
+    Copy(&'a CopyTarget),
+}
+
+/// How a target's contents differ from what would be deployed to it right now.
+enum TargetModification {
+    Diff(Diff),
+    /// The contents differ, but at least one of the two sides isn't valid UTF-8, so only
+    /// their inequality can be reported and not the difference itself.
+    Binary,
+}
+
+impl CachedTarget<'_> {
+    fn kind(&self) -> &'static str {
+        match self {
+            CachedTarget::Template { .. } => "template",
+            CachedTarget::Copy(_) => "copy",
+        }
+    }
+
+    fn target(&self) -> &Path {
+        match self {
+            CachedTarget::Template { target, .. } => &target.target,
+            CachedTarget::Copy(target) => &target.target,
+        }
+    }
+
+    fn owner(&self) -> &Option<UnixUser> {
+        match self {
+            CachedTarget::Template { target, .. } => &target.owner,
+            CachedTarget::Copy(target) => &target.owner,
+        }
+    }
+
+    fn print_diff(&self, source: &Path, diff_context_lines: usize) {
+        match *self {
+            CachedTarget::Template {
+                target,
+                handlebars,
+                variables,
+            } => difference::print_template_diff(
+                source,
+                target,
+                handlebars,
+                variables,
+                diff_context_lines,
+            ),
+            CachedTarget::Copy(target) => {
+                difference::print_copy_diff(source, target, diff_context_lines)
+            }
+        }
+    }
+
+    fn deploy(&self, source: &Path, cache: &Path, fs: &mut dyn Filesystem) -> Result<()> {
+        match *self {
+            CachedTarget::Template {
+                target,
+                handlebars,
+                variables,
+            } => perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
+                .context("perform template cache"),
+            CachedTarget::Copy(target) => {
+                perform_copy_deploy(source, cache, target, fs).context("perform copy")
+            }
+        }
+    }
+
+    fn create_parent(&self, fs: &mut dyn Filesystem) -> Result<()> {
+        fs.create_dir_all(
+            self.target()
+                .parent()
+                .context("get parent of target file")?,
+            self.owner(),
+        )
+        .context("create parent for target file")
+    }
+
+    /// Compares the target's contents against what would be deployed to it now. Returns `None`
+    /// when they are equal - the target was modified, but into the contents it is about to
+    /// receive anyways, so there is nothing of the user's to lose by overwriting it.
+    fn modification(&self, source: &Path) -> Result<Option<TargetModification>> {
+        match *self {
+            CachedTarget::Template {
+                target,
+                handlebars,
+                variables,
+            } => {
+                let diff = generate_template_diff(source, target, handlebars, variables, false)?;
+                Ok(diff_nonempty(&diff).then_some(TargetModification::Diff(diff)))
+            }
+            CachedTarget::Copy(target) => {
+                Ok(match generate_copy_diff(source, &target.target, false)? {
+                    Some(diff) if !diff_nonempty(&diff) => None,
+                    Some(diff) => Some(TargetModification::Diff(diff)),
+                    None => Some(TargetModification::Binary),
+                })
+            }
+        }
+    }
 }
 
 // == DELETE ==
+//
+// `keep_parents` leaves the target's parent directories in place even if the deletion empties
+// them, for a target path that is deployed again right afterwards.
 
 /// Returns true if symlink should be deleted from cache
 pub fn delete_symlink(
@@ -111,6 +268,7 @@ pub fn delete_symlink(
     target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
+    keep_parents: bool,
 ) -> Result<bool> {
     info!("{} symlink {:?} -> {:?}", "[-]".red(), source, target);
 
@@ -122,7 +280,7 @@ pub fn delete_symlink(
     match comparison {
         SymlinkComparison::Identical | SymlinkComparison::OnlyTargetExists => {
             debug!("Performing deletion");
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, target, keep_parents)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
@@ -138,7 +296,7 @@ pub fn delete_symlink(
                 "Deleting symlink {:?} -> {:?} but {}. Forcing.",
                 source, target, comparison
             );
-            perform_symlink_target_deletion(fs, target)
+            perform_symlink_target_deletion(fs, target, keep_parents)
                 .context("perform symlink target deletion")?;
             Ok(true)
         }
@@ -152,10 +310,16 @@ pub fn delete_symlink(
     }
 }
 
-fn perform_symlink_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
+fn perform_symlink_target_deletion(
+    fs: &mut dyn Filesystem,
+    target: &Path,
+    keep_parents: bool,
+) -> Result<()> {
     fs.remove_file(target).context("remove symlink")?;
-    fs.delete_parents(target, false)
-        .context("delete parents of symlink")?;
+    if !keep_parents {
+        fs.delete_parents(target, false)
+            .context("delete parents of symlink")?;
+    }
     Ok(())
 }
 
@@ -166,52 +330,88 @@ pub fn delete_template(
     target: &Path,
     fs: &mut dyn Filesystem,
     force: bool,
+    keep_parents: bool,
 ) -> Result<bool> {
-    info!("{} template {:?} -> {:?}", "[-]".red(), source, target);
+    delete_cached_file("template", source, cache, target, fs, force, keep_parents)
+}
+
+/// Returns true if copy should be deleted from cache
+pub fn delete_copy(
+    source: &Path,
+    cache: &Path,
+    target: &Path,
+    fs: &mut dyn Filesystem,
+    force: bool,
+    keep_parents: bool,
+) -> Result<bool> {
+    delete_cached_file("copy", source, cache, target, fs, force, keep_parents)
+}
+
+/// Deletes a file that was deployed through the cache - a template or a copy.
+/// Returns true if it should be deleted from cache
+fn delete_cached_file(
+    kind: &str,
+    source: &Path,
+    cache: &Path,
+    target: &Path,
+    fs: &mut dyn Filesystem,
+    force: bool,
+    keep_parents: bool,
+) -> Result<bool> {
+    info!("{} {} {:?} -> {:?}", "[-]".red(), kind, source, target);
 
     let comparison = fs
-        .compare_template(target, cache)
-        .context("detect templated file's current state")?;
+        .compare_cached_file(target, cache)
+        .context("detect deployed file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::Identical => {
+        CachedFileComparison::Identical => {
             debug!("Performing deletion");
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
-            perform_template_target_deletion(fs, target)
-                .context("perform template target deletion")?;
+            perform_cached_target_deletion(fs, target, keep_parents)
+                .context("perform target deletion")?;
             Ok(true)
         }
-        TemplateComparison::OnlyCacheExists => {
+        CachedFileComparison::OnlyCacheExists => {
             warn!(
-                "Deleting template {:?} -> {:?} but {}. Deleting cache anyways.",
-                source, target, comparison
+                "Deleting {} {:?} -> {:?} but {}. Deleting cache anyways.",
+                kind, source, target, comparison
             );
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
             Ok(true)
         }
-        TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
+        // Keeping the entry would leave it pointing at the cache file of whatever is deployed from
+        // the same source next, such as a copy replacing a template, and delete that later on.
+        CachedFileComparison::BothMissing => {
+            warn!(
+                "Deleting {} {:?} -> {:?} but {}. Removing from cache anyways.",
+                kind, source, target, comparison
+            );
+            Ok(true)
+        }
+        CachedFileComparison::OnlyTargetExists => {
             error!(
-                "Deleting template {:?} -> {:?} but cache doesn't exist. Cache probably CORRUPTED.",
-                source, target
+                "Deleting {} {:?} -> {:?} but cache doesn't exist. Cache probably CORRUPTED.",
+                kind, source, target
             );
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(false)
         }
-        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
+        CachedFileComparison::Changed | CachedFileComparison::TargetNotRegularFile if force => {
             warn!(
-                "Deleting template {:?} -> {:?} but {}. Forcing.",
-                source, target, comparison
+                "Deleting {} {:?} -> {:?} but {}. Forcing.",
+                kind, source, target, comparison
             );
             perform_cache_deletion(fs, cache).context("perform cache deletion")?;
-            perform_template_target_deletion(fs, target)
-                .context("perform template target deletion")?;
+            perform_cached_target_deletion(fs, target, keep_parents)
+                .context("perform target deletion")?;
             Ok(true)
         }
-        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile => {
+        CachedFileComparison::Changed | CachedFileComparison::TargetNotRegularFile => {
             error!(
-                "Deleting template {:?} -> {:?} but {}. Skipping.",
-                source, target, comparison
+                "Deleting {} {:?} -> {:?} but {}. Skipping.",
+                kind, source, target, comparison
             );
             Ok(false)
         }
@@ -219,16 +419,22 @@ pub fn delete_template(
 }
 
 fn perform_cache_deletion(fs: &mut dyn Filesystem, cache: &Path) -> Result<()> {
-    fs.remove_file(cache).context("delete template cache")?;
+    fs.remove_file(cache).context("delete cache file")?;
     fs.delete_parents(cache, true)
         .context("delete parent directory in cache")?;
     Ok(())
 }
 
-fn perform_template_target_deletion(fs: &mut dyn Filesystem, target: &Path) -> Result<()> {
+fn perform_cached_target_deletion(
+    fs: &mut dyn Filesystem,
+    target: &Path,
+    keep_parents: bool,
+) -> Result<()> {
     fs.remove_file(target).context("delete target file")?;
-    fs.delete_parents(target, false)
-        .context("delete parent directory in target location")?;
+    if !keep_parents {
+        fs.delete_parents(target, false)
+            .context("delete parent directory in target location")?;
+    }
     Ok(())
 }
 
@@ -313,79 +519,91 @@ pub fn create_template(
     variables: &Variables,
     force: bool,
 ) -> Result<bool> {
-    info!(
-        "{} template {:?} -> {:?}",
-        "[+]".green(),
+    create_cached_file(
         source,
-        target.target
+        cache,
+        &CachedTarget::Template {
+            target,
+            handlebars,
+            variables,
+        },
+        fs,
+        force,
+    )
+}
+
+/// Returns true if the copy should be added to cache
+pub fn create_copy(
+    source: &Path,
+    cache: &Path,
+    target: &CopyTarget,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<bool> {
+    create_cached_file(source, cache, &CachedTarget::Copy(target), fs, force)
+}
+
+/// Creates a file that is deployed through the cache - a template or a copy.
+/// Returns true if it should be added to cache
+fn create_cached_file(
+    source: &Path,
+    cache: &Path,
+    target: &CachedTarget<'_>,
+    fs: &mut dyn Filesystem,
+    force: bool,
+) -> Result<bool> {
+    let kind = target.kind();
+    let target_path = target.target();
+    info!(
+        "{} {} {:?} -> {:?}",
+        "[+]".green(),
+        kind,
+        source,
+        target_path
     );
 
     let comparison = fs
-        .compare_template(&target.target, cache)
-        .context("detect templated file's current state")?;
+        .compare_cached_file(target_path, cache)
+        .context("detect deployed file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::BothMissing => {
+        CachedFileComparison::BothMissing => {
             debug!("Performing creation");
-            fs.create_dir_all(
-                target
-                    .target
-                    .parent()
-                    .context("get parent of target file")?,
-                &target.owner,
-            )
-            .context("create parent for target file")?;
-            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
-                .context("perform template cache")?;
+            target.create_parent(fs)?;
+            target.deploy(source, cache, fs)?;
             Ok(true)
         }
-        TemplateComparison::OnlyCacheExists | TemplateComparison::Identical => {
+        CachedFileComparison::OnlyCacheExists | CachedFileComparison::Identical => {
             warn!(
-                "Creating template {:?} -> {:?} but cache file already exists. This is probably a result of an error in the last run.",
-                source, target.target
+                "Creating {} {:?} -> {:?} but cache file already exists. This is probably a result of an error in the last run.",
+                kind, source, target_path
             );
-            fs.create_dir_all(
-                target
-                    .target
-                    .parent()
-                    .context("get parent of target file")?,
-                &target.owner,
-            )
-            .context("create parent for target file")?;
-            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
-                .context("perform template cache")?;
+            target.create_parent(fs)?;
+            target.deploy(source, cache, fs)?;
             Ok(true)
         }
-        TemplateComparison::TargetNotRegularFile
-        | TemplateComparison::Changed
-        | TemplateComparison::OnlyTargetExists
+        CachedFileComparison::TargetNotRegularFile
+        | CachedFileComparison::Changed
+        | CachedFileComparison::OnlyTargetExists
             if force =>
         {
             warn!(
-                "Creating template {:?} -> {:?} but target file already exists. Forcing.",
-                source, target.target
+                "Creating {} {:?} -> {:?} but target file already exists. Forcing.",
+                kind, source, target_path
             );
-            fs.remove_file(&target.target)
+            fs.remove_file(target_path)
                 .context("remove existing file while forcing")?;
-            fs.create_dir_all(
-                target
-                    .target
-                    .parent()
-                    .context("get parent of target file")?,
-                &target.owner,
-            )
-            .context("create parent for target file")?;
-            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
-                .context("perform template cache")?;
+            target.create_parent(fs)?;
+            target.deploy(source, cache, fs)?;
             Ok(true)
         }
-        TemplateComparison::TargetNotRegularFile
-        | TemplateComparison::Changed
-        | TemplateComparison::OnlyTargetExists => {
+        CachedFileComparison::TargetNotRegularFile
+        | CachedFileComparison::Changed
+        | CachedFileComparison::OnlyTargetExists => {
             error!(
-                "Creating template {:?} -> {:?} but target file already exists. Skipping.",
-                source, target.target
+                "Creating {} {:?} -> {:?} but target file already exists. Skipping.",
+                kind, source, target_path
             );
             Ok(false)
         }
@@ -470,97 +688,126 @@ pub fn update_template(
     force: bool,
     diff_context_lines: usize,
 ) -> Result<bool> {
-    debug!("Updating template {:?} -> {:?}...", source, target.target);
+    update_cached_file(
+        source,
+        cache,
+        &CachedTarget::Template {
+            target,
+            handlebars,
+            variables,
+        },
+        fs,
+        force,
+        diff_context_lines,
+    )
+}
+
+/// Returns true if the copy was not skipped
+pub fn update_copy(
+    source: &Path,
+    cache: &Path,
+    target: &CopyTarget,
+    fs: &mut dyn Filesystem,
+    force: bool,
+    diff_context_lines: usize,
+) -> Result<bool> {
+    update_cached_file(
+        source,
+        cache,
+        &CachedTarget::Copy(target),
+        fs,
+        force,
+        diff_context_lines,
+    )
+}
+
+/// Updates a file that is deployed through the cache - a template or a copy.
+/// Returns true if it was not skipped
+fn update_cached_file(
+    source: &Path,
+    cache: &Path,
+    target: &CachedTarget<'_>,
+    fs: &mut dyn Filesystem,
+    force: bool,
+    diff_context_lines: usize,
+) -> Result<bool> {
+    let kind = target.kind();
+    let target_path = target.target();
+    debug!("Updating {} {:?} -> {:?}...", kind, source, target_path);
+
     let comparison = fs
-        .compare_template(&target.target, cache)
-        .context("detect templated file's current state")?;
+        .compare_cached_file(target_path, cache)
+        .context("detect deployed file's current state")?;
     debug!("Current state: {}", comparison);
 
     match comparison {
-        TemplateComparison::Identical => {
+        CachedFileComparison::Identical => {
             debug!("Performing update");
-            difference::print_template_diff(
-                source,
-                target,
-                handlebars,
-                variables,
-                diff_context_lines,
-            );
-            fs.set_owner(&target.target, &target.owner)
+            target.print_diff(source, diff_context_lines);
+            fs.set_owner(target_path, target.owner())
                 .context("set target file owner")?;
-            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
-                .context("perform template cache")?;
+            target.deploy(source, cache, fs)?;
             Ok(true)
         }
-        TemplateComparison::OnlyCacheExists => {
+        CachedFileComparison::OnlyCacheExists => {
             warn!(
-                "Updating template {:?} -> {:?} but target is missing. Creating it anyways.",
-                source, target.target
+                "Updating {} {:?} -> {:?} but target is missing. Creating it anyways.",
+                kind, source, target_path
             );
-            fs.create_dir_all(
-                target
-                    .target
-                    .parent()
-                    .context("get parent of target file")?,
-                &target.owner,
-            )
-            .context("create parent for target file")?;
-            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
-                .context("perform template cache")?;
+            target.create_parent(fs)?;
+            target.deploy(source, cache, fs)?;
             Ok(true)
         }
-        TemplateComparison::OnlyTargetExists | TemplateComparison::BothMissing => {
+        CachedFileComparison::OnlyTargetExists | CachedFileComparison::BothMissing => {
             error!(
-                "Updating template {:?} -> {:?} but cache is missing. Cache is CORRUPTED.",
-                source, target.target
+                "Updating {} {:?} -> {:?} but cache is missing. Cache is CORRUPTED.",
+                kind, source, target_path
             );
             error!("This is probably a bug. Delete cache.toml and cache/ folder.");
             Ok(true)
         }
-        TemplateComparison::Changed | TemplateComparison::TargetNotRegularFile if force => {
+        CachedFileComparison::Changed | CachedFileComparison::TargetNotRegularFile if force => {
             warn!(
-                "Updating template {:?} -> {:?} but {}. Forcing.",
-                source, target.target, comparison
+                "Updating {} {:?} -> {:?} but {}. Forcing.",
+                kind, source, target_path, comparison
             );
-            difference::print_template_diff(
-                source,
-                target,
-                handlebars,
-                variables,
-                diff_context_lines,
-            );
-            fs.remove_file(&target.target)
+            target.print_diff(source, diff_context_lines);
+            fs.remove_file(target_path)
                 .context("remove target while forcing")?;
-            perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
-                .context("perform template cache")?;
+            target.deploy(source, cache, fs)?;
             Ok(true)
         }
-        TemplateComparison::Changed => {
-            // At this point, we're not sure if there's a difference between the rendered source
-            // and target, only that the target has been modified in some way.
-            let diff = generate_template_diff(source, target, handlebars, variables, false)
-                .context("diff source and target")?;
-            if diff_nonempty(&diff) {
-                error!(
-                    "Updating template {:?} -> {:?} but {}. Skipping",
-                    source, target.target, comparison
-                );
-                if log_enabled!(log::Level::Info) {
-                    info!("Refusing because of the following changes in target location: ");
-                    print_diff(&diff, diff_context_lines);
+        CachedFileComparison::Changed => {
+            match target
+                .modification(source)
+                .context("diff source and target")?
+            {
+                None => {
+                    target.deploy(source, cache, fs)?;
+                    Ok(true)
                 }
-                Ok(false)
-            } else {
-                perform_template_deploy(source, cache, Some(target), fs, handlebars, variables)
-                    .context("perform template cache")?;
-                Ok(true)
+                Some(modification) => {
+                    error!(
+                        "Updating {} {:?} -> {:?} but {}. Skipping",
+                        kind, source, target_path, comparison
+                    );
+                    if log_enabled!(log::Level::Info) {
+                        info!("Refusing because of the following changes in target location: ");
+                        match modification {
+                            TargetModification::Diff(diff) => print_diff(&diff, diff_context_lines),
+                            TargetModification::Binary => {
+                                info!("Target's contents are binary and differ from the source")
+                            }
+                        }
+                    }
+                    Ok(false)
+                }
             }
         }
-
-        TemplateComparison::TargetNotRegularFile => {
+        CachedFileComparison::TargetNotRegularFile => {
             error!(
-                "Updating template {:?} -> {:?} but {}. Skipping.",
-                source, target.target, comparison
+                "Updating {} {:?} -> {:?} but {}. Skipping.",
+                kind, source, target_path, comparison
             );
             Ok(false)
         }
@@ -599,6 +846,27 @@ pub(crate) fn perform_template_deploy(
         fs.copy_permissions(source, &target.target, &target.owner)
             .context("copy permissions from source to target")?;
     }
+
+    Ok(())
+}
+
+fn perform_copy_deploy(
+    source: &Path,
+    cache: &Path,
+    target: &CopyTarget,
+    fs: &mut dyn Filesystem,
+) -> Result<()> {
+    // Cache
+    fs.create_dir_all(cache.parent().context("get parent of cache file")?, &None)
+        .context("create parent for cache file")?;
+    fs.copy_file(source, cache, &None)
+        .context("copy source file to cache")?;
+
+    // Target
+    fs.copy_file(cache, &target.target, &target.owner)
+        .context("copy file from cache to target")?;
+    fs.copy_permissions(source, &target.target, &target.owner)
+        .context("copy permissions from source to target")?;
 
     Ok(())
 }
