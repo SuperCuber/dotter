@@ -15,16 +15,16 @@ pub(crate) async fn watch(opt: Options) -> Result<()> {
 
     let filter = GlobsetFilterer::new(
         std::env::current_dir()?,
+        vec![],
         vec![
-            (format!("!{}/", opt.cache_directory.display()), None),
-            (format!("!{}", opt.cache_file.display()), None),
-            ("!.git/".to_string(), None),
-            ("!DOTTER_SYMLINK_TEST".to_string(), None),
+            (format!("{}/", opt.cache_directory.display()), None),
+            (format!("{}", opt.cache_file.display()), None),
+            (".git/".to_string(), None),
+            ("DOTTER_SYMLINK_TEST".to_string(), None),
         ],
         vec![],
         vec![],
         vec![],
-        vec![], // Add the 6th argument (extensions)
     )
     .await?;
 
