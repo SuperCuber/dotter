@@ -30,6 +30,7 @@ toml = "1"
 watchexec = { version = "8", optional = true }
 watchexec-events = { version = "6.0.0", optional = true }
 watchexec-filterer-globset = { version = "8", optional = true }
+dirs = "4.0.0"
 
 [features]
 default = ["scripting", "watch"]
