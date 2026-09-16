@@ -501,6 +501,7 @@ dependencies = [
  "clap_complete",
  "crossterm",
  "diff",
+ "dirs",
  "dunce",
  "evalexpr",
  "handlebars",
