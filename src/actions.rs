@@ -9,6 +9,20 @@ use crate::config::{SymbolicTarget, TemplateTarget, Variables};
 use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
 
+/// A template's target must never resolve to the template's own source.
+fn check_not_self(source: &Path, target: &Path) -> Result<()> {
+    if same_file::is_same_file(source, target)? {
+        anyhow::bail!(
+            "target {:?} is the same file as source {:?} - refusing to deploy, as that would \
+             overwrite the source. This usually means the target resolves through a symlink \
+             back into the repository.",
+            target,
+            source
+        );
+    }
+    Ok(())
+}
+
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
     fn delete_symlink(&mut self, source: &Path, target: &Path) -> Result<bool>;
@@ -320,6 +334,8 @@ pub fn create_template(
         target.target
     );
 
+    check_not_self(source, &target.target)?;
+
     let comparison = fs
         .compare_template(&target.target, cache)
         .context("detect templated file's current state")?;
@@ -471,6 +487,9 @@ pub fn update_template(
     diff_context_lines: usize,
 ) -> Result<bool> {
     debug!("Updating template {:?} -> {:?}...", source, target.target);
+
+    check_not_self(source, &target.target)?;
+
     let comparison = fs
         .compare_template(&target.target, cache)
         .context("detect templated file's current state")?;
@@ -601,4 +620,42 @@ pub(crate) fn perform_template_deploy(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::check_not_self;
+    use std::fs;
+
+    #[test]
+    fn self_overwrite_guard() {
+        let dir = std::env::temp_dir().join("dotter-self-overwrite-guard");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let source = dir.join("source");
+        let other = dir.join("other");
+        fs::write(&source, "content").unwrap();
+        fs::write(&other, "content").unwrap();
+
+        // Distinct files with identical contents are fine.
+        check_not_self(&source, &other).unwrap();
+
+        // A target that is the same file spelled differently is not.
+        let alias = dir.join(".").join("source");
+        check_not_self(&source, &alias).unwrap_err();
+
+        // The real case: the target resolves through a symlink back into the source tree.
+        #[cfg(unix)]
+        {
+            let link_dir = dir.join("linked");
+            std::os::unix::fs::symlink(&dir, &link_dir).unwrap();
+            check_not_self(&source, &link_dir.join("source")).unwrap_err();
+        }
+
+        // A target that does not exist yet is fine.
+        check_not_self(&source, &dir.join("missing")).unwrap();
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }

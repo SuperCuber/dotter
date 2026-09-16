@@ -22,6 +22,7 @@ hostname = "0.3.*"
 log = "0.4.*"
 maplit = "1.*"
 evalexpr = "13"
+same-file = "1.*"
 serde = { version = "1.*", features = ["derive"] }
 shellexpand = "2.*"
 simplelog = "0.12.*"
