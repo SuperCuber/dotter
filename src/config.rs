@@ -24,12 +24,21 @@ impl fmt::Display for UnixUser {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(untagged)]
+pub enum Recurse {
+    /// `true` recurses all the way down, `false` keeps the directory as a single target
+    Bool(bool),
+    /// Recurse this many levels, then keep the remaining directories as single targets
+    Depth(u32),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(deny_unknown_fields)]
 pub struct SymbolicTarget {
     pub target: PathBuf,
     pub owner: Option<UnixUser>,
-    pub recurse: Option<bool>,
+    pub recurse: Option<Recurse>,
     #[serde(rename = "if")]
     pub condition: Option<String>,
 }
@@ -552,12 +561,12 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
             condition: _,
             recurse: Some(rec),
         }) => *rec,
-        _ => config.recurse,
+        _ => Recurse::Bool(config.recurse),
     };
 
-    trace!("expanding '{source:?}', recurse: {recurse}");
+    trace!("expanding '{source:?}', recurse: {recurse:?}");
 
-    if !recurse || !metadata.is_dir() {
+    if matches!(recurse, Recurse::Bool(false) | Recurse::Depth(0)) || !metadata.is_dir() {
         let mut map = Files::new();
         map.insert(source.into(), target.clone());
         Ok(map)
@@ -569,6 +578,11 @@ fn expand_directory(source: &Path, target: &FileTarget, config: &Configuration) 
                 let child_source = PathBuf::from(source).join(&child);
                 let mut child_target = target.clone();
                 child_target.set_path(child_target.path().join(&child));
+                if let (FileTarget::Symbolic(symbolic), Recurse::Depth(depth)) =
+                    (&mut child_target, recurse)
+                {
+                    symbolic.recurse = Some(Recurse::Depth(depth - 1));
+                }
                 expand_directory(&child_source, &child_target, config)
                     .context(format!("expand file {child_source:?}"))
             })
@@ -663,6 +677,77 @@ mod test {
             "#,
         )
         .unwrap_err();
+
+        let recurse = |value: &str| match toml::from_str::<Helper>(&format!(
+            "file = {{ target = '~/.QuarticCat', type = 'symbolic', recurse = {value} }}"
+        ))
+        .map(|helper| helper.file)
+        {
+            Ok(FileTarget::Symbolic(target)) => Ok(target.recurse),
+            Ok(other) => panic!("unexpected target {other:?}"),
+            Err(err) => Err(err),
+        };
+        assert_eq!(recurse("true").unwrap(), Some(Recurse::Bool(true)));
+        assert_eq!(recurse("false").unwrap(), Some(Recurse::Bool(false)));
+        assert_eq!(recurse("1").unwrap(), Some(Recurse::Depth(1)));
+        recurse("-1").unwrap_err();
+    }
+
+    #[test]
+    fn expand_directory_recurse_depth() {
+        let root = std::env::temp_dir().join(format!("dotter-recurse-{}", std::process::id()));
+        let source = root.join("skills");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(source.join("a/scripts")).unwrap();
+        fs::write(source.join("a/SKILL.md"), "").unwrap();
+        fs::write(source.join("a/scripts/run.py"), "").unwrap();
+        fs::create_dir_all(source.join("b")).unwrap();
+        fs::write(source.join("b/SKILL.md"), "").unwrap();
+
+        let config = Configuration {
+            files: Files::new(),
+            variables: Variables::new(),
+            #[cfg(feature = "scripting")]
+            helpers: Helpers::new(),
+            packages: BTreeMap::new(),
+            recurse: true,
+            settings: Settings::default(),
+        };
+        let expand = |recurse| {
+            let target = FileTarget::Symbolic(SymbolicTarget {
+                recurse: Some(recurse),
+                ..PathBuf::from("~/skills").into()
+            });
+            expand_directory(&source, &target, &config)
+                .unwrap()
+                .into_iter()
+                .map(|(s, t)| {
+                    let relative = s.strip_prefix(&source).unwrap().to_owned();
+                    assert_eq!(t.path(), Path::new("~/skills").join(&relative));
+                    relative
+                })
+                .collect::<Vec<_>>()
+        };
+        let paths = |paths: &[&str]| {
+            paths
+                .iter()
+                .map(|p| p.split('/').collect::<PathBuf>())
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(expand(Recurse::Bool(false)), paths(&[""]));
+        assert_eq!(expand(Recurse::Depth(0)), paths(&[""]));
+        assert_eq!(expand(Recurse::Depth(1)), paths(&["a", "b"]));
+        assert_eq!(
+            expand(Recurse::Depth(2)),
+            paths(&["a/SKILL.md", "a/scripts", "b/SKILL.md"])
+        );
+        assert_eq!(
+            expand(Recurse::Bool(true)),
+            paths(&["a/SKILL.md", "a/scripts/run.py", "b/SKILL.md"])
+        );
+
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
