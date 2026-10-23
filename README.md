@@ -117,8 +117,11 @@ Every target is checked before any changes, then all copies are prepared before
 replacing links. A preflight or copy failure leaves targets and the cache
 unchanged. Replacement or cache-write failures can leave some files detached:
 successful changes are checkpointed, and rerunning `detach` reconciles regular
-files left by an interrupted run. The command does not provide an all-or-nothing
-transaction or protect against concurrent changes to the same files.
+files left by an interrupted run. Source bindings are saved in the cache before
+replacing links, so source symlink chains can also be resumed safely. Finish an
+interrupted detach before opening its cache with an older version of Dotter.
+The command does not provide an all-or-nothing transaction or protect against
+concurrent changes to the same files.
 
 File contents and basic permissions are preserved; timestamps, ACLs and extended
 attributes are not guaranteed. Files remain independent after the source

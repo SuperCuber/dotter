@@ -310,6 +310,36 @@ fn source_snapshot_survives_detaching_another_link_in_its_chain() {
 }
 
 #[test]
+fn resumes_source_chain_using_bindings_saved_in_cache() {
+    let f = Fixture::new();
+    let source = f.path("source");
+    let alias = f.path("alias");
+    let first = f.path("home/first");
+    let second = f.path("home/second");
+    fs::write(&source, "keep").unwrap();
+    // The first target was already detached and checkpointed by a previous run.
+    fs::write(&first, "keep").unwrap();
+    if !link(&first, &alias) || !link(&source, &second) {
+        return;
+    }
+    f.cache(&[(&alias, &second)], &[]);
+    let mut cache = fs::read_to_string(f.path("cache.toml")).unwrap();
+    cache.push_str(&format!(
+        "[detach_sources]\n{:?} = {:?}\n",
+        alias.to_str().unwrap(),
+        source.to_str().unwrap()
+    ));
+    fs::write(f.path("cache.toml"), &cache).unwrap();
+    success(f.run(&["--dry-run"]));
+    assert_eq!(fs::read_to_string(f.path("cache.toml")).unwrap(), cache);
+    success(f.run(&[]));
+    fs::remove_file(source).unwrap();
+    assert!(!fs::symlink_metadata(&second).unwrap().is_symlink());
+    assert_eq!(fs::read(second).unwrap(), b"keep");
+    f.no_temporary_files();
+}
+
+#[test]
 fn template_symlink_and_duplicate_target_block_preflight() {
     let f = Fixture::new();
     let source = f.path("source");

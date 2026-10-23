@@ -43,6 +43,7 @@ pub fn init(opt: Options) -> Result<()> {
         config::Cache {
             symlinks: BTreeMap::default(),
             templates: BTreeMap::default(),
+            detach_sources: BTreeMap::default(),
         },
     )
     .context("save empty cache file")?;

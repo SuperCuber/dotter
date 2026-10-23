@@ -62,7 +62,9 @@ fn run(
                     targets.insert(absolute),
                     "target occurs more than once in cache"
                 );
-                let state = fs.inspect_detach((!template).then_some(source.as_path()), target)?;
+                let expected_source = cache.detach_sources.get(source).unwrap_or(source);
+                let state =
+                    fs.inspect_detach((!template).then_some(expected_source.as_path()), target)?;
                 if let Some(identity) = filesystem::file_identity(target)? {
                     ensure!(
                         Some(identity) != cache_identity,
@@ -120,6 +122,26 @@ fn run(
     for entry in &entries {
         recheck(fs, entry)?;
     }
+
+    // Persist every source binding before changing a link in another source's
+    // chain. A failed per-file checkpoint must still be safe to retry on disk.
+    let mut checkpoint = cache.clone();
+    checkpoint.detach_sources = entries
+        .iter()
+        .filter_map(|entry| match &entry.state {
+            DetachState::Symlink(source) => Some((entry.source.clone(), source.clone())),
+            _ => None,
+        })
+        .collect();
+    if checkpoint.detach_sources != cache.detach_sources {
+        let mut prepared_cache = fs
+            .prepare_detach_cache(cache_file, &checkpoint)
+            .context("prepare source bindings before detaching any files")?;
+        fs.replace_detach(&mut prepared_cache, cache_file)
+            .context("save source bindings before detaching any files")?;
+        *cache = checkpoint;
+    }
+
     for entry in &mut entries {
         recheck(fs, entry)?;
         let mut checkpoint = cache.clone();
@@ -127,6 +149,7 @@ fn run(
             checkpoint.templates.remove(&entry.source);
         } else {
             checkpoint.symlinks.remove(&entry.source);
+            checkpoint.detach_sources.remove(&entry.source);
         }
         let mut prepared_cache = fs
             .prepare_detach_cache(cache_file, &checkpoint)
@@ -190,6 +213,112 @@ mod tests {
         Cache {
             symlinks: [("a".into(), "home/a".into()), ("b".into(), "home/b".into())].into(),
             templates: Default::default(),
+            detach_sources: Default::default(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_chain_can_resume_after_a_failed_checkpoint() {
+        use crate::filesystem::RealFilesystem;
+        use std::fs;
+        use std::os::unix::fs::symlink;
+
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+
+        for fail_first_checkpoint in [true, false] {
+            let root = std::env::temp_dir().join(format!(
+                "dotter-detach-resume-{}-{fail_first_checkpoint}",
+                std::process::id()
+            ));
+            fs::create_dir(&root).unwrap();
+            let root = Cleanup(root.canonicalize().unwrap());
+            let source = root.0.join("a-source");
+            let alias = root.0.join("z-source");
+            let first = root.0.join("first");
+            let second = root.0.join("second");
+            let cache_file = root.0.join("cache.toml");
+            fs::write(&source, "keep").unwrap();
+            symlink(&source, &first).unwrap();
+            symlink(&first, &alias).unwrap();
+            symlink(&source, &second).unwrap();
+            let mut cache = Cache::default();
+            cache.symlinks.insert(source.clone(), first.clone());
+            cache.symlinks.insert(alias, second.clone());
+            filesystem::save_file(&cache_file, &cache).unwrap();
+
+            let mut fs = MockFilesystem::new();
+            fs.expect_inspect_detach().returning(|source, target| {
+                RealFilesystem::new(true).inspect_detach(source, target)
+            });
+            fs.expect_prepare_detach().returning(|source, target| {
+                RealFilesystem::new(true).prepare_detach(source, target)
+            });
+            fs.expect_prepare_detach_cache()
+                .returning(move |path, cache| {
+                    if !fail_first_checkpoint && cache.symlinks.is_empty() {
+                        bail!("cache preparation failed after the first checkpoint");
+                    }
+                    RealFilesystem::new(true).prepare_detach_cache(path, cache)
+                });
+            let first_target = first.clone();
+            let cache_target = cache_file.clone();
+            fs.expect_replace_detach()
+                .returning(move |prepared, target| {
+                    if fail_first_checkpoint
+                        && target == cache_target
+                        && !fs::symlink_metadata(&first_target).unwrap().is_symlink()
+                    {
+                        bail!("first checkpoint replacement failed");
+                    }
+                    RealFilesystem::new(true).replace_detach(prepared, target)
+                });
+            assert!(run(&mut fs, &mut cache, &cache_file, false).is_err());
+            assert!(!fs::symlink_metadata(&first).unwrap().is_symlink());
+            assert!(fs::symlink_metadata(&second).unwrap().is_symlink());
+
+            // Reload from disk, as a new process would after the failure.
+            let mut cache = filesystem::load_file(&cache_file).unwrap().unwrap();
+            let unrelated = root.0.join("unrelated");
+            fs::write(&unrelated, "do not copy").unwrap();
+            fs::remove_file(&second).unwrap();
+            symlink(&unrelated, &second).unwrap();
+            let saved_cache = fs::read(&cache_file).unwrap();
+            assert!(
+                run(
+                    &mut RealFilesystem::new(true),
+                    &mut cache,
+                    &cache_file,
+                    false
+                )
+                .is_err()
+            );
+            assert!(fs::symlink_metadata(&second).unwrap().is_symlink());
+            assert_eq!(fs::read(&cache_file).unwrap(), saved_cache);
+            fs::remove_file(&second).unwrap();
+            symlink(&source, &second).unwrap();
+            run(
+                &mut RealFilesystem::new(true),
+                &mut cache,
+                &cache_file,
+                false,
+            )
+            .unwrap();
+            fs::remove_file(source).unwrap();
+            assert_eq!(fs::read(first).unwrap(), b"keep");
+            assert_eq!(fs::read(second).unwrap(), b"keep");
+            assert!(cache.symlinks.is_empty());
+            assert!(cache.detach_sources.is_empty());
+            assert!(
+                !fs::read_to_string(cache_file)
+                    .unwrap()
+                    .contains("detach_sources")
+            );
         }
     }
 
@@ -242,7 +371,7 @@ mod tests {
         let mut cache = two_links();
         let mut fs = MockFilesystem::new();
         fs.expect_inspect_detach()
-            .times(5)
+            .times(4)
             .returning(|_, _| Ok(DetachState::Symlink(PathBuf::from("resolved-source"))));
         fs.expect_prepare_detach()
             .times(2)
@@ -266,15 +395,15 @@ mod tests {
             .times(2)
             .returning(|_, _| Ok(PreparedFile::default()));
         fs.expect_prepare_detach_cache()
-            .times(2)
+            .times(3)
             .returning(|_, _| Ok(PreparedFile::default()));
         let mut checkpoints = 0;
         fs.expect_replace_detach()
-            .times(4)
+            .times(5)
             .returning(move |_, path| {
                 if path == Path::new("cache.toml") {
                     checkpoints += 1;
-                    if checkpoints == 2 {
+                    if checkpoints == 3 {
                         bail!("cache rename failed");
                     }
                 }
@@ -296,11 +425,15 @@ mod tests {
             .times(2)
             .returning(|_, _| Ok(PreparedFile::default()));
         fs.expect_prepare_detach_cache()
-            .times(1)
+            .times(2)
             .returning(|_, _| Ok(PreparedFile::default()));
-        fs.expect_replace_detach()
-            .times(1)
-            .returning(|_, _| bail!("rename failed"));
+        fs.expect_replace_detach().times(2).returning(|_, target| {
+            if target == Path::new("cache.toml") {
+                Ok(())
+            } else {
+                bail!("rename failed")
+            }
+        });
         assert!(run(&mut fs, &mut cache, Path::new("cache.toml"), false).is_err());
         assert_eq!(cache.symlinks.len(), 2);
     }
