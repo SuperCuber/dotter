@@ -49,6 +49,7 @@ Usage: dotter [OPTIONS] [COMMAND]
 Commands:
   deploy           Deploy the files to their respective targets. This is the default subcommand
   undeploy         Delete all deployed files from their target locations. Note that this operates on all files that are currently in cache
+  detach           Leave deployed files in place as regular files and stop tracking them
   init             Initialize global.toml with a single package containing all the files in the current directory pointing to a dummy value and a local.toml that selects that package
   watch            Run continuously, watching the repository for changes and deploying as soon as they happen. Can be ran with `--dry-run`
   gen-completions  Generate shell completions
@@ -90,6 +91,39 @@ Options:
   -V, --version
           Print version
 ```
+
+# Leaving Dotter
+
+To stop managing deployed files while keeping their current contents:
+
+```sh
+dotter detach --dry-run
+dotter detach
+```
+
+`detach` replaces file symlinks with independent regular files and removes their
+entries from the cache. Rendered templates and manually edited regular files stay
+unchanged. Sources in your dotfiles repository and rendered files in the cache
+directory are kept. This preserves the current configuration, not the files that
+existed before the first deployment.
+
+The command uses all entries in `cache.toml`, including disabled packages, without
+loading configuration or running hooks. It requires a valid regular cache file.
+Directories, broken or redirected symlinks, and special files are not supported.
+On Unix, the cache and symlinks must belong to the current user; no privilege
+elevation is attempted. `--force` and `--patch` are not supported.
+
+Every target is checked before any changes, then all copies are prepared before
+replacing links. A preflight or copy failure leaves targets and the cache
+unchanged. Replacement or cache-write failures can leave some files detached:
+successful changes are checkpointed, and rerunning `detach` reconciles regular
+files left by an interrupted run. The command does not provide an all-or-nothing
+transaction or protect against concurrent changes to the same files.
+
+File contents and basic permissions are preserved; timestamps, ACLs and extended
+attributes are not guaranteed. Files remain independent after the source
+repository is removed. A later `deploy` may report conflicts with those files;
+review them before choosing whether to overwrite them.
 
 # Contributing
 Contributions to Dotter are welcome, whether in the form of a pull request or an issue (for bug repots, feature requests, or other helpful comments)

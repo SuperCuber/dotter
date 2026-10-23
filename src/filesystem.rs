@@ -12,6 +12,11 @@ use std::process::Command;
 
 use crate::config::UnixUser;
 
+mod detach;
+mod identity;
+pub use detach::{DetachState, PreparedFile, validate_detach_cache};
+pub use identity::file_identity;
+
 // === Serialize/deserialize files ===
 
 /// Returns Ok(None) if file was not found, otherwise Ok(Some(data)) or Err
@@ -43,6 +48,36 @@ where
 
 #[cfg_attr(test, mockall::automock)]
 pub trait Filesystem {
+    /// Validate a cached target without changing it. None denotes a template.
+    // mockall 0.12 requires an explicit lifetime inside Option<&Path>.
+    #[allow(clippy::needless_lifetimes)]
+    fn inspect_detach<'a>(
+        &mut self,
+        source: Option<&'a Path>,
+        target: &Path,
+    ) -> Result<DetachState> {
+        detach::inspect(source, target)
+    }
+
+    /// Prepare an independent copy next to a target without replacing it.
+    fn prepare_detach(&mut self, source: &Path, target: &Path) -> Result<PreparedFile> {
+        detach::prepare_copy(source, target)
+    }
+
+    /// Serialize a cache checkpoint into a temporary file next to the cache.
+    fn prepare_detach_cache(
+        &mut self,
+        cache_file: &Path,
+        cache: &crate::config::Cache,
+    ) -> Result<PreparedFile> {
+        detach::prepare_cache(cache_file, cache)
+    }
+
+    /// Atomically replace a file or symlink with a prepared regular file.
+    fn replace_detach(&mut self, prepared: &mut PreparedFile, target: &Path) -> Result<()> {
+        prepared.persist(target)
+    }
+
     /// Check state of expected symlink on disk
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison>;
 
@@ -555,6 +590,22 @@ impl DryRunFilesystem {
 }
 
 impl Filesystem for DryRunFilesystem {
+    fn prepare_detach(&mut self, _source: &Path, _target: &Path) -> Result<PreparedFile> {
+        anyhow::bail!("dry run cannot prepare files")
+    }
+
+    fn prepare_detach_cache(
+        &mut self,
+        _cache_file: &Path,
+        _cache: &crate::config::Cache,
+    ) -> Result<PreparedFile> {
+        anyhow::bail!("dry run cannot prepare cache checkpoints")
+    }
+
+    fn replace_detach(&mut self, _prepared: &mut PreparedFile, _target: &Path) -> Result<()> {
+        anyhow::bail!("dry run cannot replace files")
+    }
+
     fn compare_symlink(&mut self, source: &Path, link: &Path) -> Result<SymlinkComparison> {
         let source_state = if let Some(state) = self.file_states.get(source) {
             debug!("Cached (probably not actual) source state: {:?}", state);

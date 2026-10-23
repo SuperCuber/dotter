@@ -97,6 +97,9 @@ pub enum Action {
     /// Note that this operates on all files that are currently in cache.
     Undeploy,
 
+    /// Leave deployed files in place as regular files and stop tracking them.
+    Detach,
+
     /// Initialize global.toml with a single package containing all the files in the current
     /// directory pointing to a dummy value and a local.toml that selects that package.
     Init,

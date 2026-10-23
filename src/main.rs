@@ -5,6 +5,7 @@ mod actions;
 mod args;
 mod config;
 mod deploy;
+mod detach;
 mod difference;
 mod filesystem;
 mod handlebars_helpers;
@@ -105,6 +106,7 @@ Otherwise, run `dotter undeploy` as root, remove cache.toml and cache/ folders, 
                 return Ok(false);
             }
         }
+        args::Action::Detach => detach::detach(&opt).context("detach")?,
         args::Action::Init => {
             debug!("Initializing repo...");
             init::init(opt).context("initalize directory")?;
