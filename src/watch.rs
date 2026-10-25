@@ -29,8 +29,17 @@ impl Filterer for ModificationFilterer {
     }
 }
 
-fn deploy_and_report(opt: &Options) {
-    println!("[Dotter] Deploying...");
+fn deploy_and_report(opt: &Options, changes_detected: bool) {
+    if crate::ui::fancy() {
+        let message = if changes_detected {
+            "Changes detected, deploying..."
+        } else {
+            "Deploying..."
+        };
+        anstream::println!("{} {message}", crate::ui::paint(crate::ui::HINT, "::"));
+    } else {
+        println!("[Dotter] Deploying...");
+    }
     if let Err(e) = deploy::deploy(opt) {
         display_error(e);
     }
@@ -63,7 +72,7 @@ pub(crate) async fn watch(opt: Options) -> Result<()> {
 
     config.filterer(ModificationFilterer(filter));
 
-    deploy_and_report(&opt);
+    deploy_and_report(&opt, false);
 
     config.on_action(move |mut action| {
         if action.signals().next().is_some() {
@@ -74,7 +83,7 @@ pub(crate) async fn watch(opt: Options) -> Result<()> {
         debug!("Changes detected in watched files.");
         trace!("Changed files: {:#?}", action.paths().collect::<Vec<_>>());
 
-        deploy_and_report(&opt);
+        deploy_and_report(&opt, true);
 
         action
     });

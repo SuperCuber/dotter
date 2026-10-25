@@ -2,12 +2,12 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crossterm::style::Stylize;
 use handlebars::Handlebars;
 
 use crate::config::{SymbolicTarget, TemplateTarget, Variables};
-use crate::difference::{self, diff_nonempty, generate_template_diff, print_diff};
+use crate::difference::{self, generate_template_diff};
 use crate::filesystem::{Filesystem, SymlinkComparison, TemplateComparison};
+use crate::ui;
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ActionRunner {
@@ -112,7 +112,7 @@ pub fn delete_symlink(
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    info!("{} symlink {:?} -> {:?}", "[-]".red(), source, target);
+    info!("{}", ui::action(ui::Op::Remove, "symlink", source, target));
 
     let comparison = fs
         .compare_symlink(source, target)
@@ -167,7 +167,7 @@ pub fn delete_template(
     fs: &mut dyn Filesystem,
     force: bool,
 ) -> Result<bool> {
-    info!("{} template {:?} -> {:?}", "[-]".red(), source, target);
+    info!("{}", ui::action(ui::Op::Remove, "template", source, target));
 
     let comparison = fs
         .compare_template(target, cache)
@@ -242,10 +242,8 @@ pub fn create_symlink(
     force: bool,
 ) -> Result<bool> {
     info!(
-        "{} symlink {:?} -> {:?}",
-        "[+]".green(),
-        source,
-        target.target
+        "{}",
+        ui::action(ui::Op::Add, "symlink", source, &target.target)
     );
 
     let comparison = fs
@@ -314,10 +312,8 @@ pub fn create_template(
     force: bool,
 ) -> Result<bool> {
     info!(
-        "{} template {:?} -> {:?}",
-        "[+]".green(),
-        source,
-        target.target
+        "{}",
+        ui::action(ui::Op::Add, "template", source, &target.target)
     );
 
     let comparison = fs
@@ -540,14 +536,18 @@ pub fn update_template(
             // and target, only that the target has been modified in some way.
             let diff = generate_template_diff(source, target, handlebars, variables, false)
                 .context("diff source and target")?;
-            if diff_nonempty(&diff) {
+            if diff.has_changes() {
                 error!(
                     "Updating template {:?} -> {:?} but {}. Skipping",
                     source, target.target, comparison
                 );
                 if log_enabled!(log::Level::Info) {
-                    info!("Refusing because of the following changes in target location: ");
-                    print_diff(&diff, diff_context_lines);
+                    if ui::fancy() {
+                        info!("  Refusing because of the following changes in the target file:");
+                    } else {
+                        info!("Refusing because of the following changes in target location: ");
+                    }
+                    diff.print(diff_context_lines);
                 }
                 Ok(false)
             } else {

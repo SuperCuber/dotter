@@ -12,6 +12,7 @@ use crate::display_error;
 use crate::filesystem::{self, Filesystem, load_file};
 use crate::handlebars_helpers::create_new_handlebars;
 use crate::hooks;
+use crate::ui;
 
 /// Returns true if an error was printed
 pub fn deploy(opt: &Options) -> Result<bool> {
@@ -124,7 +125,7 @@ Proceeding by copying instead of symlinking."
         opt.diff_context_lines,
     );
 
-    let (suggest_force, mut error_occurred) = run_deploy(
+    let summary = run_deploy(
         &mut runner,
         &desired_symlinks,
         &desired_templates,
@@ -134,15 +135,19 @@ Proceeding by copying instead of symlinking."
 
     // === Post-deploy ===
 
-    if suggest_force {
+    let show_summary = ui::fancy() && !opt.quiet;
+    if summary.skipped > 0 && !show_summary {
         error!(
             "Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag."
         );
-        error_occurred = true;
     }
 
     if !opt.dry_run {
         filesystem::save_file(&opt.cache_file, cache).context("save cache")?;
+    }
+
+    if show_summary {
+        summary.print("Deployed", opt.dry_run);
     }
 
     debug!("Running post-deploy hook");
@@ -156,7 +161,7 @@ Proceeding by copying instead of symlinking."
         .context("run post-deploy hook")?;
     }
 
-    Ok(error_occurred)
+    Ok(summary.error_occurred())
 }
 
 pub fn undeploy(opt: &Options) -> Result<bool> {
@@ -182,8 +187,7 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
         .context("run pre-undeploy hook")?;
     }
 
-    let mut suggest_force = false;
-    let mut error_occurred = false;
+    let mut summary = Summary::default();
 
     let (mut real_fs, mut dry_run_fs);
     let fs: &mut dyn Filesystem = if !opt.dry_run {
@@ -201,8 +205,8 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
             actions::delete_symlink(&deleted_symlink, &target, fs, opt.force),
             || cache.symlinks.remove(&deleted_symlink),
             || format!("delete symlink {deleted_symlink:?} -> {target:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Removed,
+            &mut summary,
         );
     }
 
@@ -217,24 +221,28 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
             ),
             || cache.templates.remove(&deleted_template),
             || format!("delete template {deleted_template:?} -> {target:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Removed,
+            &mut summary,
         );
     }
 
     // === Post-undeploy ===
 
-    if suggest_force {
+    let show_summary = ui::fancy() && !opt.quiet;
+    if summary.skipped > 0 && !show_summary {
         error!(
             "Some files were skipped. To ignore errors and overwrite unexpected target files, use the --force flag."
         );
-        error_occurred = true;
     }
 
     if !opt.dry_run {
         // Should be empty if everything went well, but if some things were skipped this contains
         // them.
         filesystem::save_file(&opt.cache_file, cache).context("save cache")?;
+    }
+
+    if show_summary {
+        summary.print("Undeployed", opt.dry_run);
     }
 
     debug!("Running post-undeploy hook");
@@ -248,7 +256,7 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
         .context("run post-undeploy hook")?;
     }
 
-    Ok(error_occurred)
+    Ok(summary.error_occurred())
 }
 
 fn run_deploy<A: ActionRunner>(
@@ -257,9 +265,8 @@ fn run_deploy<A: ActionRunner>(
     desired_templates: &BTreeMap<PathBuf, TemplateTarget>,
     cache: &mut Cache,
     opt: &Options,
-) -> (bool, bool) {
-    let mut suggest_force = false;
-    let mut error_occurred = false;
+) -> Summary {
+    let mut summary = Summary::default();
 
     // Index by both source and target location
     let existing_symlinks: BTreeSet<(PathBuf, PathBuf)> = cache
@@ -292,8 +299,8 @@ fn run_deploy<A: ActionRunner>(
             runner.delete_symlink(source, target),
             || resulting_cache.symlinks.remove(source),
             || format!("delete symlink {source:?} -> {target:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Removed,
+            &mut summary,
         );
     }
 
@@ -304,8 +311,8 @@ fn run_deploy<A: ActionRunner>(
             runner.delete_template(source, &opt.cache_directory.join(source), target),
             || resulting_cache.templates.remove(source),
             || format!("delete template {source:?} -> {target:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Removed,
+            &mut summary,
         );
     }
 
@@ -326,8 +333,8 @@ fn run_deploy<A: ActionRunner>(
                     .insert(source.clone(), target_path.clone())
             },
             || format!("create symlink {source:?} -> {target_path:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Added,
+            &mut summary,
         );
     }
 
@@ -348,8 +355,8 @@ fn run_deploy<A: ActionRunner>(
                     .insert(source.clone(), target_path.clone())
             },
             || format!("create template {source:?} -> {target_path:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Added,
+            &mut summary,
         );
     }
 
@@ -363,8 +370,8 @@ fn run_deploy<A: ActionRunner>(
             runner.update_symlink(source, target),
             || (),
             || format!("update symlink {source:?} -> {target_path:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Unchanged,
+            &mut summary,
         );
     }
 
@@ -378,14 +385,78 @@ fn run_deploy<A: ActionRunner>(
             runner.update_template(source, &opt.cache_directory.join(source), target),
             || (),
             || format!("update template {source:?} -> {target_path:?}"),
-            &mut suggest_force,
-            &mut error_occurred,
+            Count::Unchanged,
+            &mut summary,
         );
     }
 
     *cache = resulting_cache;
 
-    (suggest_force, error_occurred)
+    summary
+}
+
+/// Tally of the actions performed during a deploy or undeploy
+#[derive(Debug, Default)]
+struct Summary {
+    added: usize,
+    removed: usize,
+    skipped: usize,
+    failed: usize,
+}
+
+/// What to count when an action succeeds
+#[derive(Debug, Clone, Copy)]
+enum Count {
+    Added,
+    Removed,
+    Unchanged,
+}
+
+impl Summary {
+    fn error_occurred(&self) -> bool {
+        self.skipped > 0 || self.failed > 0
+    }
+
+    /// Prints a one-line summary of the run. Prints nothing if no files were added, removed, or
+    /// skipped.
+    fn print(&self, heading: &str, dry_run: bool) {
+        let parts: Vec<String> = [
+            (
+                self.added,
+                if dry_run { "to add" } else { "added" },
+                ui::ADDED,
+            ),
+            (
+                self.removed,
+                if dry_run { "to remove" } else { "removed" },
+                ui::REMOVED,
+            ),
+            (self.skipped, "skipped", ui::CHANGED),
+            (self.failed, "failed", ui::ERROR),
+        ]
+        .into_iter()
+        .filter(|(count, ..)| *count > 0)
+        .map(|(count, label, style)| ui::paint(style, format!("{count} {label}")))
+        .collect();
+
+        if parts.is_empty() {
+            return;
+        }
+
+        let heading = if dry_run { "Dry run" } else { heading };
+        anstream::println!(
+            "{} {}",
+            ui::paint(ui::BOLD, format!("{heading}:")),
+            parts.join(", ")
+        );
+
+        if self.skipped > 0 {
+            anstream::eprintln!(
+                "{} to overwrite unexpected target files instead of skipping them, use --force",
+                ui::paint(ui::HINT, "hint:")
+            );
+        }
+    }
 }
 
 /// Used to remove duplication
@@ -393,19 +464,24 @@ fn execute_action<T, S: FnOnce() -> T, E: FnOnce() -> String>(
     result: Result<bool>,
     success: S,
     context: E,
-    suggest_force: &mut bool,
-    error_occurred: &mut bool,
+    count: Count,
+    summary: &mut Summary,
 ) {
     match result {
         Ok(true) => {
             success();
+            match count {
+                Count::Added => summary.added += 1,
+                Count::Removed => summary.removed += 1,
+                Count::Unchanged => {}
+            }
         }
         Ok(false) => {
-            *suggest_force = true;
+            summary.skipped += 1;
         }
         Err(e) => {
             display_error(e.context(context()));
-            *error_occurred = true;
+            summary.failed += 1;
         }
     }
 }
@@ -460,7 +536,7 @@ mod test {
             .in_sequence(&mut seq)
             .returning(|_, _, _| Ok(true));
 
-        let (suggest_force, error_occurred) = run_deploy(
+        let summary = run_deploy(
             &mut runner,
             &desired_symlinks,
             &desired_templates,
@@ -472,8 +548,8 @@ mod test {
             },
         );
 
-        assert!(!suggest_force);
-        assert!(!error_occurred);
+        assert_eq!(summary.skipped, 0);
+        assert_eq!(summary.failed, 0);
 
         assert!(cache.symlinks.contains_key(&PathBuf::from("a_in")));
         assert!(cache.templates.contains_key(&PathBuf::from("b_in")));
@@ -517,7 +593,7 @@ mod test {
             .returning(|_, _, _| Ok(false));
 
         // Reality
-        let (suggest_force, error_occurred) = run_deploy(
+        let summary = run_deploy(
             &mut runner,
             &desired_symlinks,
             &desired_templates,
@@ -529,8 +605,8 @@ mod test {
             },
         );
 
-        assert!(suggest_force);
-        assert!(error_occurred);
+        assert_eq!(summary.skipped, 1);
+        assert_eq!(summary.failed, 1);
 
         assert_eq!(cache.symlinks.len(), 0);
         assert_eq!(cache.templates.len(), 0);
@@ -569,7 +645,7 @@ mod test {
             .returning(|_, _| Ok(true));
 
         // Reality
-        let (suggest_force, error_occurred) = run_deploy(
+        let summary = run_deploy(
             &mut runner,
             &desired_symlinks,
             &BTreeMap::new(),
@@ -581,8 +657,8 @@ mod test {
             },
         );
 
-        assert!(!suggest_force);
-        assert!(!error_occurred);
+        assert_eq!(summary.skipped, 0);
+        assert_eq!(summary.failed, 0);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);
@@ -625,7 +701,7 @@ mod test {
             .returning(|_, _| Ok(true));
 
         // Reality
-        let (suggest_force, error_occurred) = run_deploy(
+        let summary = run_deploy(
             &mut runner,
             &desired_symlinks,
             &BTreeMap::new(),
@@ -637,8 +713,8 @@ mod test {
             },
         );
 
-        assert!(!suggest_force);
-        assert!(!error_occurred);
+        assert_eq!(summary.skipped, 0);
+        assert_eq!(summary.failed, 0);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);
@@ -674,7 +750,7 @@ mod test {
             .returning(|_, _, _| Ok(false));
 
         // Reality
-        let (suggest_force, error_occurred) = run_deploy(
+        let summary = run_deploy(
             &mut runner,
             &desired_symlinks,
             &BTreeMap::new(),
@@ -686,8 +762,8 @@ mod test {
             },
         );
 
-        assert!(!suggest_force);
-        assert!(!error_occurred);
+        assert_eq!(summary.skipped, 0);
+        assert_eq!(summary.failed, 0);
 
         assert_eq!(cache.symlinks.len(), 1);
         assert_eq!(cache.templates.len(), 0);

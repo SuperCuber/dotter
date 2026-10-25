@@ -145,12 +145,7 @@ impl Filesystem for RealFilesystem {
                 .next()
                 .is_none()
         {
-            if (self.noconfirm || no_ask)
-                || ask_boolean(&format!(
-                    "Directory at {:?} is now empty. Delete [y/N]? ",
-                    path
-                ))
-            {
+            if (self.noconfirm || no_ask) || crate::ui::confirm_delete_empty_dir(path) {
                 std::fs::remove_dir(path).context(format!("remove directory {:?}", path))?;
             }
             path = path.parent().context(format!("get parent of {:?}", path))?;
@@ -328,11 +323,7 @@ impl Filesystem for RealFilesystem {
                 .next()
                 .is_none()
         {
-            if (self.noconfirm || no_ask)
-                || ask_boolean(&format!(
-                    "Directory at {path:?} is now empty. Delete [y/N]? "
-                ))
-            {
+            if (self.noconfirm || no_ask) || crate::ui::confirm_delete_empty_dir(path) {
                 match std::fs::remove_dir(path) {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
@@ -799,23 +790,6 @@ fn compare_template(target_state: FileState, cache_state: FileState) -> Template
 pub fn real_path(path: &Path) -> Result<PathBuf, io::Error> {
     let path = std::fs::canonicalize(path)?;
     Ok(platform_dunce(&path))
-}
-
-pub fn ask_boolean(prompt: &str) -> bool {
-    let mut buf = String::from("a"); // enter the loop at least once
-    while !(buf.to_lowercase().starts_with('y')
-        || buf.to_lowercase().starts_with('n')
-        || buf.is_empty())
-    {
-        eprintln!("{prompt}");
-        buf.clear();
-        io::stdin()
-            .read_line(&mut buf)
-            .expect("Failed to read line from stdin");
-    }
-
-    // If empty defaults to no
-    buf.to_lowercase().starts_with('y')
 }
 
 pub fn is_template(source: &Path) -> Result<bool> {

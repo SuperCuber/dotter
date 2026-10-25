@@ -10,6 +10,7 @@ mod filesystem;
 mod handlebars_helpers;
 mod hooks;
 mod init;
+mod ui;
 #[cfg(feature = "watch")]
 mod watch;
 
@@ -33,13 +34,23 @@ fn main() {
 
 pub(crate) fn display_error(error: anyhow::Error) {
     let mut chain = error.chain();
-    let mut error_message = format!("Failed to {}\nCaused by:\n", chain.next().unwrap());
+    let mut error_message = format!("Failed to {}", chain.next().unwrap());
 
-    for e in chain {
-        writeln!(error_message, "    {e}").unwrap();
+    if ui::fancy() {
+        for e in chain {
+            write!(
+                error_message,
+                "\n  {} {e}",
+                ui::paint(ui::DIM, "caused by:")
+            )
+            .unwrap();
+        }
+    } else {
+        error_message.push_str("\nCaused by:");
+        for e in chain {
+            write!(error_message, "\n    {e}").unwrap();
+        }
     }
-    // Remove last \n
-    error_message.pop();
 
     error!("{}", error_message);
 }
@@ -49,32 +60,19 @@ fn run() -> Result<bool> {
     // Parse arguments
     let opt = args::get_options();
 
-    use simplelog::LevelFilter;
+    use log::LevelFilter;
 
-    simplelog::TermLogger::init(
-        if opt.quiet {
-            LevelFilter::Error
-        } else {
-            match opt.verbosity {
-                0 => LevelFilter::Warn,
-                1 => LevelFilter::Info,
-                2 => LevelFilter::Debug,
-                3 => LevelFilter::Trace,
-                _ => unreachable!(),
-            }
-        },
-        simplelog::ConfigBuilder::new()
-            .set_time_level(LevelFilter::Off)
-            .set_location_level(LevelFilter::Debug)
-            .set_target_level(LevelFilter::Off)
-            .set_thread_level(LevelFilter::Off)
-            .set_level_padding(simplelog::LevelPadding::Left)
-            .add_filter_allow("dotter".into())
-            .build(),
-        simplelog::TerminalMode::Mixed,
-        simplelog::ColorChoice::Auto,
-    )
-    .unwrap();
+    ui::init_logger(if opt.quiet {
+        LevelFilter::Error
+    } else {
+        match opt.verbosity {
+            0 => LevelFilter::Warn,
+            1 => LevelFilter::Info,
+            2 => LevelFilter::Debug,
+            3 => LevelFilter::Trace,
+            _ => unreachable!(),
+        }
+    });
 
     trace!("Loaded options: {:#?}", opt);
 

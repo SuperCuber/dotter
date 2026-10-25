@@ -1,15 +1,99 @@
 use anyhow::{Context, Result};
 use crossterm::style::Stylize;
 use handlebars::Handlebars;
+use similar::{ChangeTag, TextDiff};
 
 use std::cmp::{max, min};
 use std::fs;
 use std::path::Path;
 
 use crate::config::{TemplateTarget, Variables};
+use crate::ui;
 
-pub type Diff = Vec<diff::Result<String>>;
-pub type HunkDiff = Vec<(usize, usize, Diff)>;
+/// The difference between two versions of a file's contents.
+pub struct Diff {
+    old: String,
+    new: String,
+}
+
+type LineDiff<'a> = Vec<diff::Result<&'a str>>;
+type HunkDiff<'a> = Vec<(usize, usize, LineDiff<'a>)>;
+
+impl Diff {
+    pub fn new(old: String, new: String) -> Diff {
+        Diff { old, new }
+    }
+
+    /// Whether there are any differences between the two versions.
+    pub fn has_changes(&self) -> bool {
+        diff::lines(&self.old, &self.new).iter().any(is_different)
+    }
+
+    /// Prints the changed hunks, each surrounded by `context_lines` lines of unchanged context.
+    pub fn print(&self, context_lines: usize) {
+        if ui::fancy() {
+            self.print_fancy(context_lines);
+        } else {
+            print_diff(&diff::lines(&self.old, &self.new), context_lines);
+        }
+    }
+
+    fn print_fancy(&self, context_lines: usize) {
+        let diff = TextDiff::from_lines(&self.old, &self.new);
+        let max_line = max(self.old.lines().count(), self.new.lines().count());
+        let width = max_line.to_string().len();
+
+        for (i, group) in diff.grouped_ops(context_lines).iter().enumerate() {
+            if i > 0 {
+                anstream::println!(
+                    "    {}",
+                    ui::paint(ui::DIM, format!("{:w$} {:w$} ┊", "", "", w = width))
+                );
+            }
+
+            for op in group {
+                for change in diff.iter_inline_changes(op) {
+                    let (sign, style) = match change.tag() {
+                        ChangeTag::Delete => ('-', ui::REMOVED),
+                        ChangeTag::Insert => ('+', ui::ADDED),
+                        ChangeTag::Equal => (' ', anstyle::Style::new()),
+                    };
+                    let line_number =
+                        |index: Option<usize>| index.map_or(String::new(), |i| (i + 1).to_string());
+
+                    let mut line = String::new();
+                    for (emphasized, value) in change.iter_strings_lossy() {
+                        let value = value.trim_end_matches(['\n', '\r']);
+                        if emphasized {
+                            line.push_str(&ui::paint(style.bold().underline(), value));
+                        } else {
+                            line.push_str(&ui::paint(style, value));
+                        }
+                    }
+
+                    if change.missing_newline() {
+                        line.push_str(&ui::paint(ui::DIM, " (no newline at end of file)"));
+                    }
+
+                    anstream::println!(
+                        "    {} {}{}",
+                        ui::paint(
+                            ui::DIM,
+                            format!(
+                                "{:>w$} {:>w$} │",
+                                line_number(change.old_index()),
+                                line_number(change.new_index()),
+                                w = width
+                            )
+                        ),
+                        ui::paint(style, format!("{sign} ")),
+                        line
+                    );
+                }
+            }
+        }
+    }
+}
 
 pub fn print_template_diff(
     source: &Path,
@@ -21,14 +105,12 @@ pub fn print_template_diff(
     if log_enabled!(log::Level::Info) {
         match generate_template_diff(source, target, handlebars, variables, true) {
             Ok(diff) => {
-                if diff_nonempty(&diff) {
+                if diff.has_changes() {
                     info!(
-                        "{} template {:?} -> {:?}",
-                        "[~]".yellow(),
-                        source,
-                        target.target
+                        "{}",
+                        ui::action(ui::Op::Change, "template", source, &target.target)
                     );
-                    print_diff(&diff, diff_context_lines);
+                    diff.print(diff_context_lines);
                 }
             }
             Err(e) => {
@@ -57,36 +139,16 @@ pub fn generate_template_diff(
     let target_contents =
         fs::read_to_string(&target.target).context("read template target file")?;
 
-    let diff_result = if source_to_target {
-        diff::lines(&target_contents, &rendered)
+    Ok(if source_to_target {
+        Diff::new(target_contents, rendered)
     } else {
-        diff::lines(&rendered, &target_contents)
-    };
-
-    Ok(diff_result.into_iter().map(to_owned_diff_result).collect())
+        Diff::new(rendered, target_contents)
+    })
 }
 
-fn to_owned_diff_result(from: diff::Result<&str>) -> diff::Result<String> {
-    match from {
-        diff::Result::Left(s) => diff::Result::Left(s.to_string()),
-        diff::Result::Right(s) => diff::Result::Right(s.to_string()),
-        diff::Result::Both(s1, s2) => diff::Result::Both(s1.to_string(), s2.to_string()),
-    }
-}
+// === Classic renderer, used when stdout is not a terminal ===
 
-pub fn diff_nonempty(diff: &[diff::Result<String>]) -> bool {
-    for line in diff {
-        match line {
-            diff::Result::Both(..) => {}
-            _ => {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-fn hunkify_diff(diff: &[diff::Result<String>], extra_lines: usize) -> HunkDiff {
+fn hunkify_diff<'a>(diff: &[diff::Result<&'a str>], extra_lines: usize) -> HunkDiff<'a> {
     let mut hunks = vec![];
 
     let mut left_line_number: usize = 1;
@@ -149,11 +211,11 @@ fn hunkify_diff(diff: &[diff::Result<String>], extra_lines: usize) -> HunkDiff {
     hunks
 }
 
-fn is_different(diff: &diff::Result<String>) -> bool {
+fn is_different(diff: &diff::Result<&str>) -> bool {
     !matches!(diff, diff::Result::Both(..))
 }
 
-fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digits: usize) {
+fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: LineDiff<'_>, max_digits: usize) {
     for line in hunk {
         match line {
             diff::Result::Left(l) => {
@@ -191,7 +253,7 @@ fn print_hunk(mut left_line: usize, mut right_line: usize, hunk: Diff, max_digit
     }
 }
 
-pub fn print_diff(diff: &[diff::Result<String>], extra_lines: usize) {
+fn print_diff(diff: &[diff::Result<&str>], extra_lines: usize) {
     let mut diff = hunkify_diff(diff, extra_lines);
 
     let last_hunk = diff.pop().expect("at least one hunk");
@@ -204,4 +266,27 @@ pub fn print_diff(diff: &[diff::Result<String>], extra_lines: usize) {
     }
 
     print_hunk(last_hunk.0, last_hunk.1, last_hunk.2, max_possible_digits);
+}
+
+#[cfg(test)]
+mod test {
+    use super::Diff;
+
+    fn changed(old: &str, new: &str) -> bool {
+        Diff::new(old.into(), new.into()).has_changes()
+    }
+
+    #[test]
+    fn identical_is_not_a_change() {
+        assert!(!changed("a\nb\n", "a\nb\n"));
+        assert!(!changed("a\r\nb\r\n", "a\nb\n"));
+        assert!(!changed("", ""));
+    }
+
+    #[test]
+    fn content_change_is_a_change() {
+        assert!(changed("a\nb\n", "a\nc\n"));
+        assert!(changed("", "a\n"));
+        assert!(changed("a\nb", "a\nb\n"));
+    }
 }
