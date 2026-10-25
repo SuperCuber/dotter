@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use watchexec::error::RuntimeError;
 use watchexec::filter::Filterer;
 use watchexec::sources::fs::Watcher;
-use watchexec::{Config, Watchexec};
+use watchexec::{Config, ErrorHook, Watchexec};
 use watchexec_events::filekind::FileEventKind;
 use watchexec_events::{Event, Priority, Tag};
 use watchexec_filterer_globset::GlobsetFilterer;
@@ -26,6 +26,29 @@ impl Filterer for ModificationFilterer {
             return Ok(false);
         }
         self.0.check_event(event, priority)
+    }
+}
+
+fn report_watcher_error(hook: ErrorHook) {
+    let error: &dyn std::error::Error = &hook.error;
+    let chain: Vec<&dyn std::error::Error> =
+        std::iter::successors(Some(error), |e| e.source()).collect();
+
+    // A file that disappears before the watcher can look at it, such as one of git's lock
+    // files, is harmless
+    let vanished = chain.iter().any(|e| {
+        e.downcast_ref::<std::io::Error>()
+            .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound)
+    });
+    let message = chain
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(": ");
+    if vanished {
+        debug!("Watcher error: {message}");
+    } else {
+        log::error!("Watcher error: {message}");
     }
 }
 
@@ -79,9 +102,7 @@ pub(crate) async fn watch(opt: Options) -> Result<()> {
         action
     });
 
-    config.on_error(move |e| {
-        log::error!("Watcher error: {e:#?}");
-    });
+    config.on_error(report_watcher_error);
 
     let we = Watchexec::with_config(config)?;
     we.main().await.context("run watchexec main loop")??;
