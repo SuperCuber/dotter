@@ -199,7 +199,10 @@ pub fn undeploy(opt: &Options) -> Result<bool> {
     for (deleted_symlink, target) in cache.symlinks.clone() {
         execute_action(
             actions::delete_symlink(&deleted_symlink, &target, fs, opt.force),
-            || cache.symlinks.remove(&deleted_symlink),
+            || {
+                cache.detach_sources.remove(&deleted_symlink);
+                cache.symlinks.remove(&deleted_symlink)
+            },
             || format!("delete symlink {deleted_symlink:?} -> {target:?}"),
             &mut suggest_force,
             &mut error_occurred,
@@ -290,7 +293,10 @@ fn run_deploy<A: ActionRunner>(
     {
         execute_action(
             runner.delete_symlink(source, target),
-            || resulting_cache.symlinks.remove(source),
+            || {
+                resulting_cache.detach_sources.remove(source);
+                resulting_cache.symlinks.remove(source)
+            },
             || format!("delete symlink {source:?} -> {target:?}"),
             &mut suggest_force,
             &mut error_occurred,
@@ -321,6 +327,7 @@ fn run_deploy<A: ActionRunner>(
         execute_action(
             runner.create_symlink(source, target),
             || {
+                resulting_cache.detach_sources.remove(source);
                 resulting_cache
                     .symlinks
                     .insert(source.clone(), target_path.clone())
@@ -361,7 +368,7 @@ fn run_deploy<A: ActionRunner>(
             .unwrap();
         execute_action(
             runner.update_symlink(source, target),
-            || (),
+            || resulting_cache.detach_sources.remove(source),
             || format!("update symlink {source:?} -> {target_path:?}"),
             &mut suggest_force,
             &mut error_occurred,
@@ -423,6 +430,32 @@ mod test {
     fn path_eq(expected: &str) -> impl Fn(&Path) -> bool {
         let expected = PathBuf::from(expected);
         move |actual| actual == expected
+    }
+
+    #[test]
+    fn deploy_only_discards_detach_binding_after_successful_update() {
+        for updated in [true, false] {
+            let source = PathBuf::from("source");
+            let target: SymbolicTarget = "target".into();
+            let mut cache = Cache::default();
+            cache.symlinks.insert(source.clone(), target.target.clone());
+            cache.detach_sources.insert(source.clone(), "frozen".into());
+            let mut runner = actions::MockActionRunner::new();
+            runner
+                .expect_update_symlink()
+                .times(1)
+                .returning(move |_, _| Ok(updated));
+
+            run_deploy(
+                &mut runner,
+                &[(source.clone(), target)].into(),
+                &BTreeMap::new(),
+                &mut cache,
+                &Options::default(),
+            );
+
+            assert_eq!(cache.detach_sources.contains_key(&source), !updated);
+        }
     }
 
     #[test]
@@ -552,6 +585,7 @@ mod test {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
             templates: BTreeMap::new(),
+            detach_sources: BTreeMap::new(),
         };
 
         // Expectation
@@ -604,6 +638,7 @@ mod test {
             templates: maplit::btreemap! {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
+            detach_sources: BTreeMap::new(),
         };
 
         // Expectation
@@ -659,6 +694,7 @@ mod test {
             templates: maplit::btreemap! {
                 PathBuf::from("a_in") => "a_out_old".into()
             },
+            detach_sources: BTreeMap::new(),
         };
 
         // Expectation

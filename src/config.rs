@@ -210,6 +210,9 @@ pub fn load_configuration(
 pub struct Cache {
     pub symlinks: BTreeMap<PathBuf, PathBuf>,
     pub templates: BTreeMap<PathBuf, PathBuf>,
+    /// Frozen sources for resuming an interrupted detach, keyed by original source.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub detach_sources: BTreeMap<PathBuf, PathBuf>,
 }
 
 pub fn save_dummy_config(
