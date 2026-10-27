@@ -17,6 +17,7 @@ clap = { version = "4.4.18", features = ["derive"] }
 clap_complete = "4.4.10"
 crossterm = "0.29.0"
 diff = "0.1.*"
+globset = "0.4"
 handlebars = "6.*"
 hostname = "0.3.*"
 log = "0.4.*"
@@ -43,6 +44,7 @@ features = ["string", "json"]
 
 [dev-dependencies]
 mockall = "0.12.1"
+tempfile = "3"
 # Enable this instead for better failure messages (on nightly only)
 # mockall = { version = "0.9.*", features = ["nightly"] }
 
